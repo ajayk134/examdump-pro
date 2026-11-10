@@ -83,8 +83,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     allowList: ['127.0.0.1'],
   });
 
-  app.get('/openapi.json', async (_request, reply) => reply.send(buildOpenApi(env.PUBLIC_WEB_URL)));
-  app.get('/docs', async (_request, reply) => {
+  app.get('/api/openapi.json', async (_request, reply) => reply.send(buildOpenApi(env.PUBLIC_WEB_URL)));
+  app.get('/api/docs', async (_request, reply) => {
     reply.type('text/html').send(`<!doctype html>
 <html><head><meta charset="utf-8"/><title>ExamDump Pro API</title>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>

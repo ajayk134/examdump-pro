@@ -120,6 +120,6 @@ export function buildOpenApi(publicWebUrl: string) {
       '/admin/settings': { get: { tags: ['Admin'], security: bearer, summary: 'Get settings', responses: { 200: ok('Settings') } }, patch: { tags: ['Admin'], security: bearer, summary: 'Update settings', responses: { 200: ok('Settings updated') } } },
       '/admin/dataset/sync': { post: { tags: ['Admin'], security: bearer, summary: 'Sync dataset catalog from GitHub', responses: { 200: ok('Sync result') } } },
     },
-    externalDocs: { url: `${publicWebUrl}/docs`, description: 'Full documentation' },
+    externalDocs: { url: `${publicWebUrl}/api/docs`, description: 'Full documentation' },
   };
 }
