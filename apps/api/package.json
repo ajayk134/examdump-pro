@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "tsx src/db/seed.ts",
-    "sync:dataset": "tsx src/scripts/sync-dataset.ts"
+    "sync:dataset": "tsx src/scripts/sync-dataset.ts",
+    "migrate": "tsx src/scripts/migrate.ts"
   },
   "dependencies": {
     "@examdump/data-client": "*",

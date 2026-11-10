@@ -97,6 +97,7 @@ For the web app during local development, copy
 | `npm test` | Shared + data-client + API tests |
 | `npm run test:api` | API integration tests |
 | `npm run seed` | Seed plans, settings, admin and catalogue |
+| `npm run migrate -w @examdump/api` | Apply pending data migrations |
 | `npm run sync:dataset -w @examdump/api` | Re-index the GitHub dataset |
 
 ## Environment

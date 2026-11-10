@@ -148,6 +148,24 @@ Restore with `./restore.sh <archive>` (see script header).
 - Ship container logs to your log platform of choice (JSON logs via pino).
 - The admin console exposes user, revenue, subscription and catalogue counters.
 
+### Migrations
+
+Run pending data migrations as part of a release (before restarting the API):
+
+```bash
+cd /opt/examdump
+doppler run --project examdump-pro --config prd -- npm ci
+doppler run --project examdump-pro --config prd -- npm run migrate -w @examdump/api
+```
+
+### Optional: prebuilt images (CD)
+
+`.github/workflows/release.yml` builds and pushes
+`ghcr.io/<owner>/examdump-pro-api` and `ghcr.io/<owner>/examdump-pro-web` on
+version tags (`v*`) or manual dispatch. To use them instead of building on the VM,
+replace the `build:` sections in `docker-compose.yml` with `image:` references
+and run `podman compose pull`.
+
 ### Scaling
 
 The API is stateless. To scale on a larger VM, run multiple `api` replicas behind

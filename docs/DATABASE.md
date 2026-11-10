@@ -113,6 +113,17 @@ periodically against a scratch database.
 
 ## Migrations
 
-This project uses additive, schema-driven changes. For destructive changes,
-write a one-off script under `apps/api/src/scripts/` and run it with
-`doppler run -- npx tsx src/scripts/<name>.ts` before deploying the new code.
+Migrations are declared in `apps/api/src/scripts/migrate.ts` and recorded in a
+`migrations` collection so each runs exactly once. Run them before deploying
+schema-affecting changes:
+
+```bash
+doppler run --project examdump-pro --config prd -- npm run migrate -w @examdump/api
+# or, from a checkout with env vars set:
+npm run migrate -w @examdump/api
+```
+
+Add a new entry to the `migrations` array (id, description, `up(db)`) and test it
+against a scratch database first. Most schema changes are additive and applied
+automatically by Mongoose; use migrations for data backfills or destructive
+changes.
