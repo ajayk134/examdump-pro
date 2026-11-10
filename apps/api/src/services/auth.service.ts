@@ -319,8 +319,7 @@ export async function resendVerification(env: Env, email: string, meta: RequestM
   await recordAudit({
     actorId: user._id,
     actorEmail: user.email,
-    action: 'user.password_reset_requested',
-    metadata: { kind: 'resend_verification' },
+    action: 'user.verification_resent',
     ip: meta.ip,
     userAgent: meta.userAgent,
   });

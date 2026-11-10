@@ -79,7 +79,10 @@ Open `http://<vm-ip>/` to confirm the site loads.
 ## 4. Enable HTTPS
 
 ```bash
-# Issue a certificate using the HTTP webroot already mounted into nginx
+# The compose file bind-mounts the host path /var/www/certbot into nginx.
+sudo mkdir -p /var/www/certbot
+
+# Issue a certificate using that webroot
 sudo certbot certonly --webroot -w /var/www/certbot \
   -d examdump.example.com --email admin@example.com --agree-tos --no-eff-email
 
