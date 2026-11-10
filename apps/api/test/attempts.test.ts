@@ -11,7 +11,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await ctx.cleanup();
+  if (ctx) await ctx.cleanup();
 });
 
 interface StartBody {

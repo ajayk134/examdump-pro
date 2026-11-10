@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { DatasetClient } from '@examdump/data-client';
 import type { FastifyInstance } from 'fastify';
@@ -166,6 +167,11 @@ export async function createTestContext(): Promise<TestContext> {
     cleanup: async () => {
       await app.close();
       setDatasetClientForTests(null);
+      try {
+        await mongoose.connection.dropDatabase();
+      } catch {
+        /* best effort */
+      }
       await disconnectDB();
       if (memory) await memory.stop();
     },
