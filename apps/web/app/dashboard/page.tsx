@@ -132,7 +132,7 @@ export default function DashboardPage() {
           ) : (
             <ul className="flex flex-col divide-y divide-surface-border">
               {recentAttempts.map((attempt) => (
-                <li key={attempt._id} className="flex items-center justify-between gap-3 py-2.5">
+                <li key={attempt.id} className="flex items-center justify-between gap-3 py-2.5">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{attempt.examCode || 'Exam'}</p>
                     <p className="text-xs text-content-muted">{attempt.mode} · {relativeTime(attempt.createdAt)}</p>

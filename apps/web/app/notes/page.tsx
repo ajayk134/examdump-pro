@@ -24,8 +24,8 @@ export default function NotesPage() {
 
   const remove = async (note: Note) => {
     try {
-      await del(`/notes/${note._id}`);
-      setItems((prev) => (prev ? prev.filter((n) => n._id !== note._id) : prev));
+      await del(`/notes/${note.id}`);
+      setItems((prev) => (prev ? prev.filter((n) => n.id !== note.id) : prev));
       toast('Note deleted', 'info');
     } catch (err) {
       toast((err as Error).message, 'error');
@@ -49,7 +49,7 @@ export default function NotesPage() {
       ) : (
         <ul className="flex flex-col gap-3">
           {items.map((note) => (
-            <li key={note._id} className="card p-4">
+            <li key={note.id} className="card p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-semibold">{note.questionId}</p>

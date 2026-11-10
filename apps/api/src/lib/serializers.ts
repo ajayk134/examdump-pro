@@ -1,4 +1,5 @@
-import type { UserDoc } from '../db/models/index.js';
+import type { Plan } from '@examdump/shared';
+import type { User } from '../db/schema/index.js';
 import { isPremiumActive } from '../services/entitlement.service.js';
 
 export interface PublicUser {
@@ -6,22 +7,22 @@ export interface PublicUser {
   email: string;
   name: string;
   role: 'user' | 'admin';
-  plan: 'free' | 'premium';
+  plan: Plan;
   premiumActive: boolean;
   premiumUntil: string | null;
   emailVerified: boolean;
   avatarUrl: string;
   bio: string;
   timezone: string;
-  preferences: UserDoc['preferences'];
+  preferences: User['preferences'];
   referralCode: string;
   suspended: boolean;
   createdAt: string;
 }
 
-export function serializeUser(user: UserDoc): PublicUser {
+export function serializeUser(user: User): PublicUser {
   return {
-    id: user._id.toString(),
+    id: user.id,
     email: user.email,
     name: user.name,
     role: user.role,

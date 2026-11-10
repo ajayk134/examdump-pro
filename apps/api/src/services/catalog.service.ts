@@ -1,6 +1,7 @@
-import type { FilterQuery } from 'mongoose';
-import type { CatalogExamDoc, CatalogProviderDoc } from '../db/models/index.js';
-import { CatalogExam, CatalogProvider } from '../db/models/index.js';
+import { and, asc, count, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
+import { getDb } from '../db/client.js';
+import { catalogExams, catalogProviders, type CatalogExam, type CatalogProvider } from '../db/schema/index.js';
 import { parsePage, paginate } from '../lib/pagination.js';
 
 export interface SearchExamsParams {
@@ -11,77 +12,93 @@ export interface SearchExamsParams {
   pageSize?: number;
 }
 
-const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-export async function listProviders(): Promise<CatalogProviderDoc[]> {
-  return CatalogProvider.find().sort({ title: 1 }).lean<CatalogProviderDoc[]>();
+export async function listProviders(): Promise<CatalogProvider[]> {
+  const db = getDb();
+  return db.select().from(catalogProviders).orderBy(asc(catalogProviders.title));
 }
 
-export async function getProviderById(id: string): Promise<CatalogProviderDoc | null> {
-  return CatalogProvider.findOne({ $or: [{ providerId: id }, { slug: id }] }).lean<CatalogProviderDoc>();
+export async function getProviderById(id: string): Promise<CatalogProvider | null> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(catalogProviders)
+    .where(or(eq(catalogProviders.providerId, id), eq(catalogProviders.slug, id)))
+    .limit(1);
+  return row ?? null;
 }
 
 export async function searchExams(params: SearchExamsParams) {
+  const db = getDb();
   const page = parsePage(params.page, params.pageSize);
-  const filter: FilterQuery<CatalogExamDoc> = {};
+  const conditions: SQL[] = [];
 
   if (params.provider) {
-    filter.$or = [{ providerId: params.provider }, { providerSlug: params.provider }];
+    conditions.push(
+      or(eq(catalogExams.providerId, params.provider), eq(catalogExams.providerSlug, params.provider))!,
+    );
   }
   if (params.q && params.q.trim()) {
-    const rx = new RegExp(escapeRegex(params.q.trim()), 'i');
-    const searchOr = [{ title: rx }, { code: rx }, { providerTitle: rx }];
-    if (filter.$or) {
-      filter.$and = [{ $or: filter.$or }, { $or: searchOr }];
-      delete filter.$or;
-    } else {
-      filter.$or = searchOr;
-    }
+    const term = `%${params.q.trim()}%`;
+    conditions.push(
+      or(
+        ilike(catalogExams.title, term),
+        ilike(catalogExams.code, term),
+        ilike(catalogExams.providerTitle, term),
+      )!,
+    );
   }
+  const where = conditions.length ? and(...conditions) : undefined;
 
-  const sortMap: Record<string, Record<string, 1 | -1>> = {
-    popular: { questionCount: -1 },
-    title: { title: 1 },
-    questions: { questionCount: -1 },
-    newest: { syncedAt: -1 },
-  };
+  const orderBy =
+    params.sort === 'title'
+      ? asc(catalogExams.title)
+      : params.sort === 'newest'
+        ? desc(catalogExams.syncedAt)
+        : desc(catalogExams.questionCount);
 
-  const [items, total] = await Promise.all([
-    CatalogExam.find(filter)
-      .sort(sortMap[params.sort ?? 'popular'])
-      .skip(page.skip)
-      .limit(page.limit)
-      .lean<CatalogExamDoc[]>(),
-    CatalogExam.countDocuments(filter),
+  const [items, [totalRow]] = await Promise.all([
+    db.select().from(catalogExams).where(where).orderBy(orderBy).offset(page.skip).limit(page.limit),
+    db.select({ value: count() }).from(catalogExams).where(where),
   ]);
 
-  return paginate(items, total, page);
+  return paginate(items, Number(totalRow?.value ?? 0), page);
 }
 
-export async function getProviderExamsFromCatalog(providerId: string) {
-  return CatalogExam.find({
-    $or: [{ providerId }, { providerSlug: providerId }],
-  })
-    .sort({ title: 1 })
-    .lean<CatalogExamDoc[]>();
+export async function getProviderExamsFromCatalog(providerId: string): Promise<CatalogExam[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(catalogExams)
+    .where(or(eq(catalogExams.providerId, providerId), eq(catalogExams.providerSlug, providerId)))
+    .orderBy(asc(catalogExams.title));
 }
 
-export async function getCatalogExam(providerId: string, examKey: string): Promise<CatalogExamDoc | null> {
-  return CatalogExam.findOne({
-    $or: [
-      { providerId, $or: [{ key: examKey }, { code: examKey }] },
-      { providerSlug: providerId, $or: [{ key: examKey }, { code: examKey }] },
-    ],
-  }).lean<CatalogExamDoc>();
+export async function getCatalogExam(providerId: string, examKey: string): Promise<CatalogExam | null> {
+  const db = getDb();
+  const keyMatch = or(eq(catalogExams.key, examKey), eq(catalogExams.code, examKey))!;
+  const [row] = await db
+    .select()
+    .from(catalogExams)
+    .where(
+      and(
+        or(eq(catalogExams.providerId, providerId), eq(catalogExams.providerSlug, providerId)),
+        keyMatch,
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }
 
 export async function catalogCounts() {
-  const [providers, exams, totalQuestions] = await Promise.all([
-    CatalogProvider.countDocuments(),
-    CatalogExam.countDocuments(),
-    CatalogExam.aggregate<{ total: number }>([
-      { $group: { _id: null, total: { $sum: '$questionCount' } } },
-    ]),
+  const db = getDb();
+  const [[providers], [exams], [totals]] = await Promise.all([
+    db.select({ value: count() }).from(catalogProviders),
+    db.select({ value: count() }).from(catalogExams),
+    db.select({ value: sql<number>`coalesce(sum(${catalogExams.questionCount}), 0)` }).from(catalogExams),
   ]);
-  return { providers, exams, totalQuestions: totalQuestions[0]?.total ?? 0 };
+  return {
+    providers: Number(providers?.value ?? 0),
+    exams: Number(exams?.value ?? 0),
+    totalQuestions: Number(totals?.value ?? 0),
+  };
 }

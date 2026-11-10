@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: { index: 'src/index.ts', migrate: 'src/scripts/migrate.ts' },
   format: ['esm'],
   target: 'node20',
   platform: 'node',
@@ -11,5 +11,5 @@ export default defineConfig({
   // Bundle workspace packages so the runtime Docker image stays small and
   // self-contained, but keep node_modules for native/optional resolution.
   noExternal: ['@examdump/shared', '@examdump/data-client'],
-  external: ['mongoose', 'fastify', 'bcryptjs', 'jose', 'google-auth-library', 'nodemailer', 'node-cron'],
+  external: ['fastify', 'bcryptjs', 'jose', 'google-auth-library', 'nodemailer', 'node-cron', 'postgres', 'drizzle-orm'],
 });

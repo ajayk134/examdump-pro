@@ -1,129 +1,82 @@
-# Database & data model
+# Database
 
-MongoDB (Atlas) stores **only application data**. Exam questions live in a
-private GitHub repository and are fetched at request time.
+ExamDump Pro stores **all application data in PostgreSQL** using
+[Drizzle ORM](https://orm.drizzle.team). Exam **questions** are **never** stored
+in the database — they are fetched from the private GitHub dataset at request
+time. Only searchable catalogue *metadata* (providers/exams) is mirrored into
+PostgreSQL for fast discovery.
 
-Database name is controlled by `MONGODB_DB` (default `examdump`).
+## Connection
 
-## Collections
-
-### `users`
-| Field | Notes |
+| Variable | Purpose |
 | --- | --- |
-| `email` (unique), `name` | lowercased email |
-| `passwordHash` | bcrypt + pepper, `select: false` |
-| `googleId` | partial unique index (only when a string) |
-| `role` | `user` \| `admin` |
-| `plan` | `free` \| `premium` |
-| `premiumUntil` | source of truth for effective premium |
-| `emailVerified`, `suspended`, `deletedAt` | lifecycle flags |
-| `referralCode` (unique), `referredBy` | referral graph |
-| `preferences` | theme + notification toggles |
-| `lastLoginAt`, `passwordChangedAt` | security metadata |
+| `DATABASE_URL` | `postgres://user:pass@host:5432/db` (primary connection). |
+| `DATABASE_SSL` | `true` to require TLS (managed databases). |
+| `DATABASE_POOL_MAX` | Maximum pooled connections (default `20`). |
+| `DATABASE_APP_NAME` | `application_name` reported to Postgres. |
+| `DATABASE_URL_TEST` | Isolated database used by the test suite. |
 
-Indexes: `email`, `role`, `plan`, `emailVerified`, `suspended`, `createdAt`,
-`googleId` (partial unique), `referralCode` (unique).
+The client lives in `apps/api/src/db/client.ts` and uses `postgres.js`.
 
-### `sessions`
-Refresh sessions. `refreshTokenHash` unique; `expiresAt` has a TTL index;
-`revokedAt` supports immediate logout. Indexed by `userId + revokedAt`.
+## Schema
 
-### `authtokens`
-Email-verification and password-reset tokens. `tokenHash` unique; `expiresAt`
-TTL; `usedAt` prevents replay.
+The schema is defined as TypeScript in `apps/api/src/db/schema/` and split by
+domain:
 
-### `loginattempts`
-Brute-force tracking (`email`, `ip`, `success`) with a 30-day TTL.
+| Module | Tables |
+| --- | --- |
+| `identity.ts` | `users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `sessions`, `auth_tokens`, `login_attempts`, `audit_logs` |
+| `learning.ts` | `attempts`, `question_results`, `exam_progress`, `user_stats`, `bookmarks`, `notes`, `daily_usage`, `goals` |
+| `catalog.ts` | `catalog_providers`, `catalog_exams` |
+| `billing.ts` | `plans`, `subscriptions`, `access_grants`, `payments`, `refunds`, `coupons`, `coupon_redemptions`, `referrals` |
+| `platform.ts` | `notifications`, `settings`, `feature_flags`, `email_templates` |
 
-### `attempts`
-One document per practice/mock/timed session: provider, exam key/code, mode,
-status, `questionIds`, graded `answers`, counts, score, timing. Indexed by
-`userId + createdAt`, `userId + examKey`, `userId + status`.
+### Billing & entitlements
 
-### `questionresults`
-Per-user, per-question aggregate (`attempts`, `correct`, `lastCorrect`, `topic`).
-Unique on `userId + examKey + questionId`; indexed by `userId + topic` for weak
-topic analysis.
-
-### `examprogress`
-Per-user, per-exam progress (`questionsSeen`, `correct`, `wrong`, `bestScore`,
-`lastStudiedAt`). Unique on `userId + examKey`.
-
-### `userstats`
-Global totals, streaks and study time. Unique on `userId`.
-
-### `bookmarks`, `notes`
-User annotations. Unique on `userId + examKey + questionId`; recent-first
-indexes for listing.
-
-### `dailyusage`
-Daily counters (`questionsViewed`, `mockExams`, `randomQuestions`,
-`aiExplanations`) enforcing quotas. Unique on `userId + date`.
-
-### `plans`, `subscriptions`, `payments`
-Plan catalogue, subscription lifecycle (`active|trialing|past_due|canceled|expired`)
-and payment history (currently `provider: mock`). Subscriptions indexed by
-`userId + status` and `currentPeriodEnd`.
-
-### `coupons`, `couponredemptions`
-Coupon catalogue and per-user redemption (unique `couponId + userId`) to prevent
-reuse.
-
-### `referrals`
-Referrer → referee graph, completed on email verification, with reward days.
-
-### `notifications`
-In-app notifications, indexed by `userId + read + createdAt`.
-
-### `auditlogs`
-Security and admin events (`action`, actor, target, IP, user-agent, metadata).
-Indexed by `createdAt` and `action + createdAt`.
-
-### `settings`
-Singleton document (`key: "global"`) with entitlement limits, registration and
-maintenance toggles, and an announcement string.
-
-### `catalogproviders`, `catalogsexams` (`catalog_exams`)
-Metadata index synced from GitHub: provider title/file/slug, exam key/code/title,
-question counts. **No question bodies.** Text + compound indexes power discovery
-and search. Unique on `providerId + key`.
-
-## Why questions are not stored
-
-The dataset is large (~70 MB, thousands of files) and is the project's protected
-asset. Keeping it in GitHub with server-side access means:
-
-- the raw data is never duplicated into application backups;
-- the token and repository stay private;
-- updates are picked up without migrations;
-- per-plan gating happens in a single place (the API).
-
-## Indexes & TTLs
-
-Indexes are declared on the schemas and created automatically (`autoIndex`).
-In production you may disable `autoIndex` and run index creation during deploy.
-TTL indexes exist on `sessions.expiresAt`, `authtokens.expiresAt` and
-`loginattempts.createdAt`.
-
-## Backup & restore
-
-Use `deploy/backup.sh` (cron-friendly) and `deploy/restore.sh`. Backups are
-`mongodump` archives compressed with gzip and pruned by age. Test restores
-periodically against a scratch database.
+- **Plans** carry `scope` (`single` | `all`), `durationDays`, `earlyAccess` and
+  `priceMinor` (₹ paise). Prices are never accepted from the client.
+- **Subscriptions** link a user to a plan. Single-exam subscriptions store the
+  exact `examKey`/`providerId`.
+- **Access grants** let admins grant or revoke `single`/`all` access directly
+  (with optional expiry), independently of a subscription.
+- **Entitlements** are resolved server-side (`entitlement.service.ts`) from
+  active subscriptions + grants only. `users.plan`/`premium_until` are a
+  denormalised cache for listing/sorting.
 
 ## Migrations
 
-Migrations are declared in `apps/api/src/scripts/migrate.ts` and recorded in a
-`migrations` collection so each runs exactly once. Run them before deploying
-schema-affecting changes:
+Migrations are generated with drizzle-kit from the schema and applied with the
+bundled runner:
 
 ```bash
-doppler run --project examdump-pro --config prd -- npm run migrate -w @examdump/api
-# or, from a checkout with env vars set:
+# generate after a schema change
+npm run db:generate -w @examdump/api
+
+# apply (dev)
 npm run migrate -w @examdump/api
 ```
 
-Add a new entry to the `migrations` array (id, description, `up(db)`) and test it
-against a scratch database first. Most schema changes are additive and applied
-automatically by Mongoose; use migrations for data backfills or destructive
-changes.
+The API container runs `node dist/migrate.js` automatically on boot before
+starting the server. Migration SQL lives in `apps/api/src/db/migrations/`.
+
+## Seeding
+
+```bash
+npm run seed -w @examdump/api
+```
+
+Seeds the built-in roles/permissions, the four INR plans, settings, feature
+flags, email templates, a `WELCOME20` coupon, the admin account, and (in
+non-production) a demo learner. Set `ENABLE_DATASET_SYNC=true` to also sync the
+GitHub catalogue.
+
+## Backup & restore
+
+`deploy/backup.sh` produces a custom-format `pg_dump` and `deploy/restore.sh`
+restores it. Both run `postgres:16-alpine` via podman/docker.
+
+```bash
+export DATABASE_URL="$(doppler secrets get DATABASE_URL --plain --project examdump-pro --config prd)"
+./deploy/backup.sh
+./deploy/restore.sh ./backups/examdump_20260101T020000Z.pgdump
+```

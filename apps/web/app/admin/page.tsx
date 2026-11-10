@@ -5,7 +5,7 @@ import { useAuth, useToast } from '@/components/providers';
 import { get, patch, post, del } from '@/lib/api';
 import type { Paginated, Plan, User } from '@/lib/types';
 import { Alert, EmptyState, Spinner, StatCard, Tabs } from '@/components/ui';
-import { formatDate, formatNumber } from '@/lib/format';
+import { formatDate, formatMoneyMinor, formatNumber } from '@/lib/format';
 import { IconShield, IconTrophy } from '@/components/icons';
 
 type Tab = 'overview' | 'users' | 'coupons' | 'plans' | 'settings' | 'audit' | 'dataset';
@@ -13,14 +13,14 @@ type Tab = 'overview' | 'users' | 'coupons' | 'plans' | 'settings' | 'audit' | '
 interface AdminStats {
   users: { total: number; premium: number; verified: number; suspended: number };
   attempts: { total: number; completed: number };
-  revenue: { total: number; currency: string; mock: boolean };
+  revenue: { grossMinor: number; refundedMinor: number; netMinor: number; currency: string; mock: boolean };
   subscriptions: { active: number };
   catalog: { providers: number; exams: number; totalQuestions: number };
   signups: Array<{ date: string; count: number }>;
 }
 
 interface Coupon {
-  _id: string;
+  id: string;
   code: string;
   description: string;
   percentOff: number;
@@ -41,7 +41,7 @@ interface Settings {
 }
 
 interface AuditRow {
-  _id: string;
+  id: string;
   action: string;
   actorEmail?: string | null;
   targetType?: string | null;
@@ -111,7 +111,7 @@ function Overview() {
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Total users" value={formatNumber(stats.users.total)} hint={`${stats.users.premium} premium · ${stats.users.verified} verified`} />
-        <StatCard label="Mock revenue" value={`$${formatNumber(stats.revenue.total)}`} hint={stats.revenue.mock ? 'Simulated (no processor)' : 'Live'} tone="success" />
+        <StatCard label={stats.revenue.mock ? 'Mock revenue' : 'Revenue'} value={formatMoneyMinor(stats.revenue.netMinor, stats.revenue.currency)} hint={stats.revenue.mock ? 'Simulated (no processor)' : 'Net of refunds'} tone="success" />
         <StatCard label="Active subscriptions" value={formatNumber(stats.subscriptions.active)} hint="Premium members" tone="brand" />
         <StatCard label="Attempts" value={formatNumber(stats.attempts.total)} hint={`${stats.attempts.completed} completed`} />
       </div>
@@ -249,12 +249,12 @@ function CouponsPanel() {
             <thead className="border-b border-surface-border text-xs uppercase tracking-wide text-content-muted"><tr><th className="px-4 py-3">Code</th><th className="px-4 py-3">Off</th><th className="px-4 py-3">Used</th><th className="px-4 py-3">Status</th><th className="px-4 py-3"></th></tr></thead>
             <tbody className="divide-y divide-surface-border">
               {coupons.map((coupon) => (
-                <tr key={coupon._id}>
+                <tr key={coupon.id}>
                   <td className="px-4 py-3 font-mono font-semibold">{coupon.code}</td>
                   <td className="px-4 py-3">{coupon.percentOff}%</td>
                   <td className="px-4 py-3">{coupon.redemptionCount}{coupon.maxRedemptions ? ` / ${coupon.maxRedemptions}` : ''}</td>
                   <td className="px-4 py-3">{coupon.active ? <span className="badge text-emerald-500">Active</span> : <span className="badge">Inactive</span>}</td>
-                  <td className="px-4 py-3 text-right">{coupon.active ? <button onClick={() => deactivate(coupon._id)} className="btn-ghost text-xs text-rose-500">Deactivate</button> : null}</td>
+                  <td className="px-4 py-3 text-right">{coupon.active ? <button onClick={() => deactivate(coupon.id)} className="btn-ghost text-xs text-rose-500">Deactivate</button> : null}</td>
                 </tr>
               ))}
             </tbody>
@@ -268,16 +268,25 @@ function CouponsPanel() {
 function PlansPanel() {
   const { toast } = useToast();
   const [plans, setPlans] = useState<Plan[] | null>(null);
-  const [form, setForm] = useState({ id: '', name: '', monthlyPrice: 0, yearlyPrice: 0, description: '' });
+  const [form, setForm] = useState({
+    id: '',
+    name: '',
+    description: '',
+    scope: 'single' as 'single' | 'all',
+    durationDays: 30,
+    earlyAccess: false,
+    priceMinor: 50_000,
+    sortOrder: 10,
+  });
 
   const load = () => get<{ plans: Plan[] }>('/admin/plans').then((d) => setPlans(d.plans)).catch(() => setPlans([]));
   useEffect(() => { void load(); }, []);
 
   const create = async () => {
     try {
-      await post('/admin/plans', { ...form, currency: 'USD', features: [], active: true, sortOrder: 10 });
+      await post('/admin/plans', { ...form, currency: 'INR', features: [], active: true });
       toast('Plan created', 'success');
-      setForm({ id: '', name: '', monthlyPrice: 0, yearlyPrice: 0, description: '' });
+      setForm({ id: '', name: '', description: '', scope: 'single', durationDays: 30, earlyAccess: false, priceMinor: 50_000, sortOrder: 10 });
       await load();
     } catch (err) {
       toast((err as Error).message, 'error');
@@ -286,19 +295,30 @@ function PlansPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="card grid gap-3 p-5 sm:grid-cols-5">
-        <div><label className="label">Plan id</label><input className="input" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="team-monthly" /></div>
+      <div className="card grid gap-3 p-5 sm:grid-cols-3">
+        <div><label className="label">Plan id</label><input className="input" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="team-30" /></div>
         <div><label className="label">Name</label><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-        <div><label className="label">Monthly</label><input type="number" className="input" value={form.monthlyPrice} onChange={(e) => setForm({ ...form, monthlyPrice: Number(e.target.value) })} /></div>
-        <div><label className="label">Yearly</label><input type="number" className="input" value={form.yearlyPrice} onChange={(e) => setForm({ ...form, yearlyPrice: Number(e.target.value) })} /></div>
+        <div>
+          <label className="label">Scope</label>
+          <select className="input" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value as 'single' | 'all' })}>
+            <option value="single">Single exam</option>
+            <option value="all">All exams</option>
+          </select>
+        </div>
+        <div><label className="label">Duration (days)</label><input type="number" className="input" value={form.durationDays} onChange={(e) => setForm({ ...form, durationDays: Number(e.target.value) })} /></div>
+        <div><label className="label">Price (₹)</label><input type="number" className="input" value={form.priceMinor / 100} onChange={(e) => setForm({ ...form, priceMinor: Math.round(Number(e.target.value) * 100) })} /></div>
+        <label className="flex items-end gap-2 text-sm"><input type="checkbox" checked={form.earlyAccess} onChange={(e) => setForm({ ...form, earlyAccess: e.target.checked })} /> Early access</label>
         <div className="flex items-end"><button className="btn-primary w-full" onClick={create} disabled={!form.id || !form.name}>Create plan</button></div>
       </div>
       {!plans ? <Spinner /> : (
         <div className="grid gap-3 sm:grid-cols-2">
           {plans.map((plan) => (
-            <div key={plan._id} className="card p-4">
+            <div key={plan.id} className="card p-4">
               <div className="flex items-center justify-between"><p className="font-semibold">{plan.name}</p><span className="badge">{plan.active ? 'active' : 'inactive'}</span></div>
-              <p className="mt-1 text-xs text-content-muted">{plan.planId} · ${plan.monthlyPrice}/mo · ${plan.yearlyPrice}/yr</p>
+              <p className="mt-1 text-xs text-content-muted">
+                {plan.id} · {plan.scope === 'all' ? 'All exams' : 'Single exam'} · {plan.durationDays}d · {formatMoneyMinor(plan.priceMinor, plan.currency)}
+                {plan.earlyAccess ? ' · early access' : ''}
+              </p>
               <p className="mt-2 text-sm text-content-secondary">{plan.description}</p>
             </div>
           ))}
@@ -355,7 +375,7 @@ function AuditPanel() {
         <thead className="border-b border-surface-border text-xs uppercase tracking-wide text-content-muted"><tr><th className="px-4 py-3">Action</th><th className="px-4 py-3">Actor</th><th className="px-4 py-3">Target</th><th className="px-4 py-3">IP</th><th className="px-4 py-3">When</th></tr></thead>
         <tbody className="divide-y divide-surface-border">
           {data.items.map((row) => (
-            <tr key={row._id}>
+            <tr key={row.id}>
               <td className="px-4 py-3 font-mono text-xs">{row.action}</td>
               <td className="px-4 py-3">{row.actorEmail ?? '—'}</td>
               <td className="px-4 py-3 text-content-muted">{row.targetType}:{row.targetId?.slice(-6) ?? '—'}</td>
@@ -401,7 +421,7 @@ function DatasetPanel() {
         <div><p className="text-2xl font-bold">{status.branch}</p><p className="text-xs text-content-muted">Branch</p></div>
         <div><p className="text-sm font-bold">{status.lastSyncedAt ? formatDate(status.lastSyncedAt) : 'Never'}</p><p className="text-xs text-content-muted">Last synced</p></div>
       </div>
-      <p className="text-xs text-content-muted">Questions are fetched from GitHub at request time and never stored in MongoDB. Only catalogue metadata is indexed.</p>
+      <p className="text-xs text-content-muted">Questions are fetched from GitHub at request time and never stored in the database. Only catalogue metadata is indexed in PostgreSQL.</p>
       <button className="btn-primary self-start" onClick={sync} disabled={syncing}>{syncing ? 'Syncing…' : 'Sync catalogue now'}</button>
     </div>
   );

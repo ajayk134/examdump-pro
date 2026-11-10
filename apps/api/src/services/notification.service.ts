@@ -1,17 +1,19 @@
-import type { Types } from 'mongoose';
+import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import type { NotificationType } from '@examdump/shared';
-import { Notification } from '../db/models/index.js';
+import { getDb } from '../db/client.js';
+import { notifications } from '../db/schema/index.js';
 
 export interface CreateNotificationInput {
-  userId: Types.ObjectId | string;
+  userId: string;
   type?: NotificationType;
   title: string;
   body?: string;
-  link?: string;
+  link?: string | null;
 }
 
 export async function createNotification(input: CreateNotificationInput): Promise<void> {
-  await Notification.create({
+  const db = getDb();
+  await db.insert(notifications).values({
     userId: input.userId,
     type: input.type ?? 'system',
     title: input.title,
@@ -21,18 +23,30 @@ export async function createNotification(input: CreateNotificationInput): Promis
 }
 
 export async function listNotifications(userId: string, limit = 30, unreadOnly = false) {
-  const query: Record<string, unknown> = { userId };
-  if (unreadOnly) query.read = false;
-  const [items, unread] = await Promise.all([
-    Notification.find(query).sort({ createdAt: -1 }).limit(limit).lean(),
-    Notification.countDocuments({ userId, read: false }),
-  ]);
-  return { items, unread };
+  const db = getDb();
+  const items = await db
+    .select()
+    .from(notifications)
+    .where(unreadOnly ? and(eq(notifications.userId, userId), eq(notifications.read, false)) : eq(notifications.userId, userId))
+    .orderBy(desc(notifications.createdAt))
+    .limit(limit);
+  const unreadRows = await db
+    .select({ value: count() })
+    .from(notifications)
+    .where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
+  return { items, unread: Number(unreadRows[0]?.value ?? 0) };
 }
 
 export async function markNotificationsRead(userId: string, ids?: string[]): Promise<number> {
-  const query: Record<string, unknown> = { userId, read: false };
-  if (ids && ids.length > 0) query._id = { $in: ids };
-  const result = await Notification.updateMany(query, { $set: { read: true, readAt: new Date() } });
-  return result.modifiedCount;
+  const db = getDb();
+  const where =
+    ids && ids.length > 0
+      ? and(eq(notifications.userId, userId), eq(notifications.read, false), inArray(notifications.id, ids))
+      : and(eq(notifications.userId, userId), eq(notifications.read, false));
+  const updated = await db
+    .update(notifications)
+    .set({ read: true, readAt: new Date() })
+    .where(where)
+    .returning({ id: notifications.id });
+  return updated.length;
 }

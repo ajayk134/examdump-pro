@@ -14,7 +14,7 @@
                                                  │
                         ┌────────────────────────┼─────────────────────┐
                         │                        ▼                     │
-                        │   MongoDB Atlas      GitHub (private)        │
+                        │   PostgreSQL      GitHub (private)        │
                         │   application data   exam question dataset   │
                         └──────────────────────────────────────────────┘
 ```
@@ -32,17 +32,22 @@ Layered structure:
 - `routes/` — HTTP boundary: auth guards, Zod validation, response shaping.
 - `services/` — business logic: auth, entitlements, usage quotas, subscriptions,
   analytics, dataset sync, notifications, auditing.
-- `db/models/` — Mongoose schemas, indexes and TTL policies.
+- `db/schema/` — Drizzle ORM table/enum definitions and indexes; `db/client.ts`
+  owns the connection pool and migrations.
 - `lib/` — cross-cutting helpers (JWT, cookies, errors, email, pagination).
 - `plugins/` — Fastify plugins (cookie, CORS, Helmet, rate limit).
 
 Key design rules:
 
-1. **Authorization happens in the route handler.** Every protected route calls
-   `requireAuth`, `requireVerified` or `requireAdmin`.
-2. **Entitlements are computed server-side** from the user document + settings
-   and applied to every question response.
-3. **The dataset token never leaves the server.** The browser only ever talks to
+1. **Authorization happens in the route handler.** Protected routes call
+   `requireAuth`, `requireVerified`, `requireAdmin` or the granular
+   `requirePermission(request, env, 'permission')` (RBAC: roles ↔ permissions).
+2. **Entitlements are computed server-side** from active **subscriptions** and
+   **access grants** only (never client input), scoped per exam, and applied to
+   every question/attempt response. `users.plan` is a denormalised cache.
+3. **Pricing is server-authoritative.** Amounts come from the `plans` table in
+   minor INR units; the client can only select a plan + exam and apply a coupon.
+4. **The dataset token never leaves the server.** The browser only ever talks to
    `/api/*`.
 
 ### `apps/web` (Next.js)
@@ -71,7 +76,7 @@ Server-only GitHub client:
 - Supports both dataset branches:
   - `main`: human-readable provider/exam keys.
   - `masked_main`: hashed provider directories and `code__hash` exam keys.
-- TTL + LRU in-memory cache. **No questions are written to MongoDB or disk.**
+- TTL + LRU in-memory cache. **No questions are written to PostgreSQL or disk.**
 
 ## Question flow
 
@@ -104,7 +109,7 @@ server. A free user can never retrieve question `N+1` even by guessing IDs.
 
 ## Subscriptions
 
-- Plans and coupons live in MongoDB.
+- Plans and coupons live in PostgreSQL.
 - `createMockSubscription` is the payment seam. It validates the plan/coupon,
   supersedes the previous active subscription, records a `Payment`, applies the
   period to `user.premiumUntil` and writes an audit event.
@@ -117,7 +122,7 @@ server. A free user can never retrieve question `N+1` even by guessing IDs.
 
 - `DatasetClient` TTL/LRU cache (default 300s) avoids repeated GitHub reads.
 - Settings are cached for 30s and invalidated on admin writes.
-- MongoDB indexes cover every hot query path (see `DATABASE.md`).
+- PostgreSQL indexes cover every hot query path (see `DATABASE.md`).
 - Next.js pages are statically rendered where possible; authenticated screens
   fetch client-side through the API.
 
@@ -126,7 +131,7 @@ server. A free user can never retrieve question `N+1` even by guessing IDs.
 | Failure | Behaviour |
 | --- | --- |
 | GitHub dataset unreachable | API returns `502 DATASET_*`; catalogue metadata (last sync) still serves discovery |
-| MongoDB unavailable | Readiness probe fails; API returns 503 on DB operations |
+| PostgreSQL unavailable | Readiness probe fails; API returns 503 on DB operations |
 | Email provider absent | Emails are logged; dev verification/reset links are returned outside production |
 | AI provider unavailable | AI route returns `503`; the rest of the app is unaffected |
 | Payment provider disabled | Checkout returns a clear `503` (or runs in mock mode if enabled) |
@@ -137,4 +142,4 @@ server. A free user can never retrieve question `N+1` even by guessing IDs.
 - Move the in-memory dataset cache to Redis if multiple API replicas cause
   repeated GitHub reads.
 - Add a CDN in front of nginx for static assets.
-- MongoDB Atlas scales vertically/horizontally independently.
+- PostgreSQL scales vertically/horizontally independently.

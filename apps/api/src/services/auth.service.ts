@@ -1,26 +1,28 @@
-import type { HydratedDocument, Types } from 'mongoose';
 import { randomUUID } from 'node:crypto';
+import { and, count, desc, eq, gt, isNull } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
 import type { LoginInput, RegisterInput } from '@examdump/shared';
 import type { Env } from '../config/env.js';
+import { getDb } from '../db/client.js';
 import {
-  AuthToken,
-  LoginAttempt,
-  Referral,
-  Session,
-  User,
-  UserStats,
-  type UserDoc,
-} from '../db/models/index.js';
+  accessGrants,
+  authTokens,
+  loginAttempts,
+  referrals,
+  sessions,
+  userStats,
+  users,
+  type User,
+} from '../db/schema/index.js';
 import { conflict, serviceUnavailable, tooManyRequests, unauthorized } from '../lib/errors.js';
 import { signAccessToken } from '../lib/jwt.js';
 import { hashPassword, verifyPassword } from '../lib/passwords.js';
 import { hashToken, randomReferralCode, randomToken } from '../lib/tokens.js';
 import { buildActionEmail, sendEmail } from '../lib/email.js';
-import { isPremiumActive } from './entitlement.service.js';
 import { getSettings } from './settings.service.js';
 import { createNotification } from './notification.service.js';
 import { recordAudit } from './audit.service.js';
+import { recomputeUserPlan } from './subscription.service.js';
 
 export interface RequestMeta {
   ip?: string;
@@ -28,7 +30,7 @@ export interface RequestMeta {
 }
 
 export interface AuthResult {
-  user: UserDoc;
+  user: User;
   accessToken: string;
   refreshToken: string;
 }
@@ -38,23 +40,26 @@ const FAILED_WINDOW_MS = 15 * 60 * 1000;
 const REFERRER_REWARD_DAYS = 7;
 const REFEREE_REWARD_DAYS = 3;
 
-function effectivePlan(user: UserDoc): 'free' | 'premium' {
-  return isPremiumActive(user) ? 'premium' : 'free';
-}
-
-async function issueSession(user: UserDoc, env: Env, meta: RequestMeta): Promise<AuthResult> {
+async function issueSession(user: User, env: Env, meta: RequestMeta): Promise<AuthResult> {
+  const db = getDb();
   const refreshToken = randomToken(48);
   const expiresAt = new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
-  const session = await Session.create({
-    userId: user._id,
-    refreshTokenHash: hashToken(refreshToken),
-    userAgent: meta.userAgent ?? '',
-    ip: meta.ip ?? '',
-    expiresAt,
-    lastUsedAt: new Date(),
-  });
+
+  const [session] = await db
+    .insert(sessions)
+    .values({
+      userId: user.id,
+      refreshTokenHash: hashToken(refreshToken),
+      userAgent: meta.userAgent ?? '',
+      ip: meta.ip ?? '',
+      expiresAt,
+      lastUsedAt: new Date(),
+    })
+    .returning();
+  if (!session) throw new Error('Session insert failed');
+
   const accessToken = await signAccessToken(
-    { sub: user._id.toString(), role: user.role, plan: effectivePlan(user), sid: session._id.toString() },
+    { sub: user.id, role: user.role, plan: user.plan, sid: session.id },
     env.JWT_ACCESS_SECRET,
     env.ACCESS_TOKEN_TTL,
   );
@@ -65,35 +70,40 @@ export async function register(
   env: Env,
   input: RegisterInput,
   meta: RequestMeta,
-): Promise<{ user: UserDoc; devVerificationUrl?: string }> {
+): Promise<{ user: User; devVerificationUrl?: string }> {
+  const db = getDb();
   const settings = await getSettings(env);
-  if (!settings.registrationsOpen) {
-    throw conflict('New registrations are temporarily closed.');
-  }
+  if (!settings.registrationsOpen) throw conflict('New registrations are temporarily closed.');
 
-  const existing = await User.findOne({ email: input.email });
-  if (existing) {
-    throw conflict('An account with this email already exists.');
-  }
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, input.email)).limit(1);
+  if (existing) throw conflict('An account with this email already exists.');
 
-  let referredBy: Types.ObjectId | null = null;
+  let referredBy: string | null = null;
   if (input.referralCode) {
-    const referrer = await User.findOne({ referralCode: input.referralCode.toUpperCase() });
-    if (referrer) referredBy = referrer._id;
+    const [referrer] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.referralCode, input.referralCode.toUpperCase()))
+      .limit(1);
+    if (referrer) referredBy = referrer.id;
   }
 
-  const user = await User.create({
-    email: input.email,
-    name: input.name,
-    passwordHash: await hashPassword(input.password, env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS),
-    referralCode: randomReferralCode(),
-    referredBy,
-    emailVerified: false,
-  });
+  const [user] = await db
+    .insert(users)
+    .values({
+      email: input.email,
+      name: input.name,
+      passwordHash: await hashPassword(input.password, env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS),
+      referralCode: randomReferralCode(),
+      referredBy,
+      emailVerified: false,
+    })
+    .returning();
+  if (!user) throw new Error('User insert failed');
 
-  await UserStats.create({ userId: user._id });
+  await db.insert(userStats).values({ userId: user.id }).onConflictDoNothing();
   await createNotification({
-    userId: user._id,
+    userId: user.id,
     type: 'system',
     title: 'Welcome to ExamDump Pro',
     body: 'Verify your email to unlock your personalised dashboard.',
@@ -101,8 +111,8 @@ export async function register(
   });
 
   const token = randomToken(32);
-  await AuthToken.create({
-    userId: user._id,
+  await db.insert(authTokens).values({
+    userId: user.id,
     type: 'email_verify',
     tokenHash: hashToken(token),
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -122,11 +132,11 @@ export async function register(
   );
 
   await recordAudit({
-    actorId: user._id,
+    actorId: user.id,
     actorEmail: user.email,
     action: 'user.register',
     targetType: 'user',
-    targetId: user._id.toString(),
+    targetId: user.id,
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
@@ -138,21 +148,28 @@ export async function register(
 }
 
 async function assertNotLockedOut(email: string): Promise<void> {
+  const db = getDb();
   const since = new Date(Date.now() - FAILED_WINDOW_MS);
-  const failures = await LoginAttempt.countDocuments({ email, success: false, createdAt: { $gte: since } });
-  if (failures >= MAX_FAILED_ATTEMPTS) {
+  const [row] = await db
+    .select({ value: count() })
+    .from(loginAttempts)
+    .where(
+      and(eq(loginAttempts.email, email), eq(loginAttempts.success, false), gt(loginAttempts.createdAt, since)),
+    );
+  if (Number(row?.value ?? 0) >= MAX_FAILED_ATTEMPTS) {
     throw tooManyRequests('Too many failed sign-in attempts. Please try again in 15 minutes.');
   }
 }
 
 export async function login(env: Env, input: LoginInput, meta: RequestMeta): Promise<AuthResult> {
+  const db = getDb();
   await assertNotLockedOut(input.email);
 
-  const user = await User.findOne({ email: input.email }).select('+passwordHash');
+  const [user] = await db.select().from(users).where(eq(users.email, input.email)).limit(1);
   const passwordOk = user ? await verifyPassword(input.password, user.passwordHash, env.PASSWORD_PEPPER) : false;
 
   if (!user || !passwordOk || user.suspended || user.deletedAt) {
-    await LoginAttempt.create({ email: input.email, ip: meta.ip ?? '', success: false });
+    await db.insert(loginAttempts).values({ email: input.email, ip: meta.ip ?? '', success: false });
     await recordAudit({
       actorEmail: input.email,
       action: 'user.login_failed',
@@ -162,12 +179,11 @@ export async function login(env: Env, input: LoginInput, meta: RequestMeta): Pro
     throw unauthorized('Invalid email or password.');
   }
 
-  await LoginAttempt.create({ email: input.email, ip: meta.ip ?? '', success: true });
-  user.lastLoginAt = new Date();
-  await user.save();
+  await db.insert(loginAttempts).values({ email: input.email, ip: meta.ip ?? '', success: true });
+  await db.update(users).set({ lastLoginAt: new Date(), updatedAt: new Date() }).where(eq(users.id, user.id));
 
   await recordAudit({
-    actorId: user._id,
+    actorId: user.id,
     actorEmail: user.email,
     action: 'user.login',
     ip: meta.ip,
@@ -177,32 +193,36 @@ export async function login(env: Env, input: LoginInput, meta: RequestMeta): Pro
   return issueSession(user, env, meta);
 }
 
-export async function refreshSession(
-  env: Env,
-  refreshToken: string,
-  meta: RequestMeta,
-): Promise<AuthResult> {
-  const session = await Session.findOne({ refreshTokenHash: hashToken(refreshToken) });
+export async function refreshSession(env: Env, refreshToken: string, meta: RequestMeta): Promise<AuthResult> {
+  const db = getDb();
+  const [session] = await db
+    .select()
+    .from(sessions)
+    .where(eq(sessions.refreshTokenHash, hashToken(refreshToken)))
+    .limit(1);
   if (!session || session.revokedAt || session.expiresAt.getTime() <= Date.now()) {
     throw unauthorized('Your session has expired. Please sign in again.');
   }
 
-  const user = await User.findById(session.userId);
+  const [user] = await db.select().from(users).where(eq(users.id, session.userId)).limit(1);
   if (!user || user.suspended || user.deletedAt) {
     throw unauthorized('This account is no longer available.');
   }
 
-  // Rotate the opaque refresh token on every use.
   const newRefreshToken = randomToken(48);
-  session.refreshTokenHash = hashToken(newRefreshToken);
-  session.lastUsedAt = new Date();
-  session.expiresAt = new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
-  session.userAgent = meta.userAgent ?? session.userAgent;
-  session.ip = meta.ip ?? session.ip;
-  await session.save();
+  await db
+    .update(sessions)
+    .set({
+      refreshTokenHash: hashToken(newRefreshToken),
+      lastUsedAt: new Date(),
+      expiresAt: new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000),
+      userAgent: meta.userAgent ?? session.userAgent,
+      ip: meta.ip ?? session.ip,
+    })
+    .where(eq(sessions.id, session.id));
 
   const accessToken = await signAccessToken(
-    { sub: user._id.toString(), role: user.role, plan: effectivePlan(user), sid: session._id.toString() },
+    { sub: user.id, role: user.role, plan: user.plan, sid: session.id },
     env.JWT_ACCESS_SECRET,
     env.ACCESS_TOKEN_TTL,
   );
@@ -211,64 +231,88 @@ export async function refreshSession(
 }
 
 export async function logout(refreshToken: string | undefined, sessionId?: string): Promise<void> {
+  const db = getDb();
   if (refreshToken) {
-    await Session.updateOne(
-      { refreshTokenHash: hashToken(refreshToken), revokedAt: null },
-      { $set: { revokedAt: new Date() } },
-    );
+    await db
+      .update(sessions)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(sessions.refreshTokenHash, hashToken(refreshToken)), isNull(sessions.revokedAt)));
   } else if (sessionId) {
-    await Session.updateOne({ _id: sessionId, revokedAt: null }, { $set: { revokedAt: new Date() } });
+    await db
+      .update(sessions)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(sessions.id, sessionId), isNull(sessions.revokedAt)));
   }
 }
 
 export async function revokeAllSessions(userId: string): Promise<void> {
-  await Session.updateMany({ userId, revokedAt: null }, { $set: { revokedAt: new Date() } });
+  const db = getDb();
+  await db
+    .update(sessions)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
 }
 
-export async function verifyEmail(env: Env, token: string, meta: RequestMeta): Promise<UserDoc> {
-  const record = await AuthToken.findOne({
-    tokenHash: hashToken(token),
-    type: 'email_verify',
-    usedAt: null,
-    expiresAt: { $gt: new Date() },
+export async function grantPremiumDays(userId: string, days: number, source: 'referral' | 'admin' | 'promo' = 'referral') {
+  const db = getDb();
+  await db.insert(accessGrants).values({
+    userId,
+    scope: 'all',
+    source,
+    note: `Granted ${days} days of full access`,
+    expiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000),
   });
+  await recomputeUserPlan(userId);
+}
+
+export async function verifyEmail(env: Env, token: string, meta: RequestMeta): Promise<User> {
+  const db = getDb();
+  const [record] = await db
+    .select()
+    .from(authTokens)
+    .where(
+      and(
+        eq(authTokens.tokenHash, hashToken(token)),
+        eq(authTokens.type, 'email_verify'),
+        isNull(authTokens.usedAt),
+        gt(authTokens.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
   if (!record) throw unauthorized('This verification link is invalid or has expired.');
 
-  const user = await User.findById(record.userId);
+  const [user] = await db.select().from(users).where(eq(users.id, record.userId)).limit(1);
   if (!user) throw unauthorized('Account not found.');
 
-  user.emailVerified = true;
-  await user.save();
-  record.usedAt = new Date();
-  await record.save();
+  await db.update(users).set({ emailVerified: true, updatedAt: new Date() }).where(eq(users.id, user.id));
+  await db.update(authTokens).set({ usedAt: new Date() }).where(eq(authTokens.id, record.id));
 
-  // Complete referral rewards exactly once, on verified signup.
   if (user.referredBy) {
-    const existing = await Referral.findOne({ refereeId: user._id });
-    if (!existing) {
-      const referrer = await User.findById(user.referredBy);
+    const [existingRef] = await db.select({ id: referrals.id }).from(referrals).where(eq(referrals.refereeId, user.id)).limit(1);
+    if (!existingRef) {
+      const [referrer] = await db.select().from(users).where(eq(users.id, user.referredBy)).limit(1);
       if (referrer) {
-        await Referral.create({
-          referrerId: referrer._id,
-          refereeId: user._id,
+        await db.insert(referrals).values({
+          referrerId: referrer.id,
+          refereeId: user.id,
           code: referrer.referralCode,
           status: 'completed',
           rewardDays: REFERRER_REWARD_DAYS,
         });
-        await grantPremiumDays(referrer, REFERRER_REWARD_DAYS);
-        await grantPremiumDays(user, REFEREE_REWARD_DAYS);
+        await grantPremiumDays(referrer.id, REFERRER_REWARD_DAYS, 'referral');
+        await grantPremiumDays(user.id, REFEREE_REWARD_DAYS, 'referral');
         await createNotification({
-          userId: referrer._id,
+          userId: referrer.id,
           type: 'achievement',
           title: 'Referral reward unlocked',
-          body: `${user.name} joined with your code. You earned ${REFERRER_REWARD_DAYS} days of Premium.`,
+          body: `${user.name} joined with your code. You earned ${REFERRER_REWARD_DAYS} days of full access.`,
         });
       }
     }
   }
 
   await createNotification({
-    userId: user._id,
+    userId: user.id,
     type: 'system',
     title: 'Email verified',
     body: 'Your account is fully activated. Start practising now!',
@@ -276,34 +320,25 @@ export async function verifyEmail(env: Env, token: string, meta: RequestMeta): P
   });
 
   await recordAudit({
-    actorId: user._id,
+    actorId: user.id,
     actorEmail: user.email,
     action: 'user.email_verified',
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
 
-  return user;
-}
-
-export async function grantPremiumDays(user: HydratedDocument<UserDoc>, days: number): Promise<void> {
-  const base =
-    user.premiumUntil && user.premiumUntil.getTime() > Date.now() ? user.premiumUntil : new Date();
-  const next = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
-  user.plan = 'premium';
-  user.premiumUntil = next;
-  await user.save();
+  const [fresh] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+  return fresh!;
 }
 
 export async function resendVerification(env: Env, email: string, meta: RequestMeta): Promise<{ devVerificationUrl?: string }> {
-  const user = await User.findOne({ email });
-  if (!user || user.emailVerified) {
-    // Do not reveal whether an account exists.
-    return {};
-  }
+  const db = getDb();
+  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (!user || user.emailVerified) return {};
+
   const token = randomToken(32);
-  await AuthToken.create({
-    userId: user._id,
+  await db.insert(authTokens).values({
+    userId: user.id,
     type: 'email_verify',
     tokenHash: hashToken(token),
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -317,7 +352,7 @@ export async function resendVerification(env: Env, email: string, meta: RequestM
   });
   const delivery = await sendEmail(env, { to: user.email, subject: 'Verify your ExamDump Pro email', ...emailBody });
   await recordAudit({
-    actorId: user._id,
+    actorId: user.id,
     actorEmail: user.email,
     action: 'user.verification_resent',
     ip: meta.ip,
@@ -327,13 +362,16 @@ export async function resendVerification(env: Env, email: string, meta: RequestM
 }
 
 export async function forgotPassword(env: Env, email: string, meta: RequestMeta): Promise<{ devResetUrl?: string }> {
-  const user = await User.findOne({ email });
+  const db = getDb();
+  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
   if (!user || user.deletedAt) return {};
 
-  await AuthToken.deleteMany({ userId: user._id, type: 'password_reset', usedAt: null });
+  await db
+    .delete(authTokens)
+    .where(and(eq(authTokens.userId, user.id), eq(authTokens.type, 'password_reset'), isNull(authTokens.usedAt)));
   const token = randomToken(32);
-  await AuthToken.create({
-    userId: user._id,
+  await db.insert(authTokens).values({
+    userId: user.id,
     type: 'password_reset',
     tokenHash: hashToken(token),
     expiresAt: new Date(Date.now() + 60 * 60 * 1000),
@@ -349,7 +387,7 @@ export async function forgotPassword(env: Env, email: string, meta: RequestMeta)
   const delivery = await sendEmail(env, { to: user.email, subject: 'Reset your ExamDump Pro password', ...emailBody });
 
   await recordAudit({
-    actorId: user._id,
+    actorId: user.id,
     actorEmail: user.email,
     action: 'user.password_reset_requested',
     ip: meta.ip,
@@ -360,27 +398,37 @@ export async function forgotPassword(env: Env, email: string, meta: RequestMeta)
 }
 
 export async function resetPassword(env: Env, token: string, newPassword: string, meta: RequestMeta): Promise<void> {
-  const record = await AuthToken.findOne({
-    tokenHash: hashToken(token),
-    type: 'password_reset',
-    usedAt: null,
-    expiresAt: { $gt: new Date() },
-  });
+  const db = getDb();
+  const [record] = await db
+    .select()
+    .from(authTokens)
+    .where(
+      and(
+        eq(authTokens.tokenHash, hashToken(token)),
+        eq(authTokens.type, 'password_reset'),
+        isNull(authTokens.usedAt),
+        gt(authTokens.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
   if (!record) throw unauthorized('This reset link is invalid or has expired.');
 
-  const user = await User.findById(record.userId);
+  const [user] = await db.select().from(users).where(eq(users.id, record.userId)).limit(1);
   if (!user) throw unauthorized('Account not found.');
 
-  user.passwordHash = await hashPassword(newPassword, env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS);
-  user.passwordChangedAt = new Date();
-  await user.save();
-
-  record.usedAt = new Date();
-  await record.save();
-  await revokeAllSessions(user._id.toString());
+  await db
+    .update(users)
+    .set({
+      passwordHash: await hashPassword(newPassword, env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS),
+      passwordChangedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, user.id));
+  await db.update(authTokens).set({ usedAt: new Date() }).where(eq(authTokens.id, record.id));
+  await revokeAllSessions(user.id);
 
   await recordAudit({
-    actorId: user._id,
+    actorId: user.id,
     actorEmail: user.email,
     action: 'user.password_reset',
     ip: meta.ip,
@@ -395,18 +443,24 @@ export async function changePassword(
   newPassword: string,
   meta: RequestMeta,
 ): Promise<void> {
-  const user = await User.findById(userId).select('+passwordHash');
+  const db = getDb();
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) throw unauthorized('Account not found.');
   const ok = await verifyPassword(currentPassword, user.passwordHash, env.PASSWORD_PEPPER);
   if (!ok) throw unauthorized('Your current password is incorrect.');
 
-  user.passwordHash = await hashPassword(newPassword, env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS);
-  user.passwordChangedAt = new Date();
-  await user.save();
+  await db
+    .update(users)
+    .set({
+      passwordHash: await hashPassword(newPassword, env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS),
+      passwordChangedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
   await revokeAllSessions(userId);
 
   await recordAudit({
-    actorId: user._id,
+    actorId: user.id,
     actorEmail: user.email,
     action: 'user.password_reset',
     metadata: { kind: 'change_password' },
@@ -417,14 +471,9 @@ export async function changePassword(
 
 const googleClient = new OAuth2Client();
 
-export async function googleLogin(
-  env: Env,
-  idToken: string,
-  meta: RequestMeta,
-): Promise<AuthResult> {
-  if (!env.GOOGLE_CLIENT_ID) {
-    throw serviceUnavailable('Google sign-in is not configured on this server.');
-  }
+export async function googleLogin(env: Env, idToken: string, meta: RequestMeta): Promise<AuthResult> {
+  if (!env.GOOGLE_CLIENT_ID) throw serviceUnavailable('Google sign-in is not configured on this server.');
+  const db = getDb();
 
   let payload;
   try {
@@ -440,19 +489,25 @@ export async function googleLogin(
     throw unauthorized('Your Google account email is not verified.');
   }
 
-  let user = await User.findOne({ $or: [{ googleId }, { email }] });
+  let [user] = await db.select().from(users).where(eq(users.googleId, googleId)).limit(1);
+  if (!user) [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+
   if (!user) {
-    user = await User.create({
-      email,
-      name: payload.name || email.split('@')[0],
-      googleId,
-      emailVerified: true,
-      avatarUrl: payload.picture ?? '',
-      referralCode: randomReferralCode(),
-    });
-    await UserStats.create({ userId: user._id });
+    const [created] = await db
+      .insert(users)
+      .values({
+        email,
+        name: payload.name || email.split('@')[0]!,
+        googleId,
+        emailVerified: true,
+        avatarUrl: payload.picture ?? '',
+        referralCode: randomReferralCode(),
+      })
+      .returning();
+    user = created!;
+    await db.insert(userStats).values({ userId: user.id }).onConflictDoNothing();
     await createNotification({
-      userId: user._id,
+      userId: user.id,
       type: 'system',
       title: 'Welcome to ExamDump Pro',
       body: 'Your Google account is connected and ready.',
@@ -460,15 +515,22 @@ export async function googleLogin(
     });
   } else {
     if (user.suspended) throw unauthorized('This account is suspended.');
-    if (!user.googleId) user.googleId = googleId;
-    if (!user.emailVerified) user.emailVerified = true;
-    if (!user.avatarUrl && payload.picture) user.avatarUrl = payload.picture;
-    user.lastLoginAt = new Date();
-    await user.save();
+    await db
+      .update(users)
+      .set({
+        googleId: user.googleId ?? googleId,
+        emailVerified: true,
+        avatarUrl: user.avatarUrl || payload.picture || '',
+        lastLoginAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, user.id));
+    const [fresh] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+    user = fresh!;
   }
 
   await recordAudit({
-    actorId: user._id,
+    actorId: user.id,
     actorEmail: user.email,
     action: 'user.login',
     metadata: { provider: 'google' },
@@ -480,14 +542,17 @@ export async function googleLogin(
 }
 
 export async function listSessions(userId: string, currentSessionId?: string) {
-  const sessions = await Session.find({ userId, revokedAt: null, expiresAt: { $gt: new Date() } })
-    .sort({ lastUsedAt: -1 })
-    .lean();
-  return sessions.map((s) => ({
-    id: s._id.toString(),
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(sessions)
+    .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt), gt(sessions.expiresAt, new Date())))
+    .orderBy(desc(sessions.lastUsedAt));
+  return rows.map((s) => ({
+    id: s.id,
     userAgent: s.userAgent ?? '',
     ip: s.ip ?? '',
-    current: s._id.toString() === currentSessionId,
+    current: s.id === currentSessionId,
     createdAt: s.createdAt,
     lastUsedAt: s.lastUsedAt,
     expiresAt: s.expiresAt,
@@ -495,10 +560,11 @@ export async function listSessions(userId: string, currentSessionId?: string) {
 }
 
 export async function revokeSession(userId: string, sessionId: string): Promise<void> {
-  await Session.updateOne(
-    { _id: sessionId, userId },
-    { $set: { revokedAt: new Date() } },
-  );
+  const db = getDb();
+  await db
+    .update(sessions)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId)));
 }
 
 export function newCorrelationId(): string {

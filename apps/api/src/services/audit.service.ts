@@ -1,8 +1,8 @@
-import type { Types } from 'mongoose';
-import { AuditLog } from '../db/models/index.js';
+import { getDb } from '../db/client.js';
+import { auditLogs } from '../db/schema/index.js';
 
 export interface AuditInput {
-  actorId?: Types.ObjectId | string | null;
+  actorId?: string | null;
   actorEmail?: string | null;
   action: string;
   targetType?: string | null;
@@ -14,7 +14,8 @@ export interface AuditInput {
 
 export async function recordAudit(input: AuditInput): Promise<void> {
   try {
-    await AuditLog.create({
+    const db = getDb();
+    await db.insert(auditLogs).values({
       actorId: input.actorId ?? null,
       actorEmail: input.actorEmail ?? null,
       action: input.action,

@@ -1,17 +1,19 @@
-import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { resolve } from 'node:path';
 import { DatasetClient } from '@examdump/data-client';
-import type { FastifyInstance } from 'fastify';
-import type { LightMyRequestResponse } from 'fastify';
+import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { loadEnv, type Env } from '../src/config/env.js';
-import { connectDB, disconnectDB } from '../src/db/connect.js';
+import { connectDB, disconnectDB, getDb, getSql } from '../src/db/client.js';
 import { buildApp } from '../src/app.js';
 import { setDatasetClientForTests } from '../src/services/dataset.service.js';
 import { ensureDefaultPlans } from '../src/services/subscription.service.js';
+import { ensureRbac } from '../src/services/rbac.service.js';
 import { getSettings } from '../src/services/settings.service.js';
-import { CatalogExam, CatalogProvider, User, UserStats } from '../src/db/models/index.js';
+import { catalogExams, catalogProviders, userStats, users } from '../src/db/schema/index.js';
 import { hashPassword } from '../src/lib/passwords.js';
 import { randomReferralCode } from '../src/lib/tokens.js';
+
+const DEFAULT_DATABASE_URL_TEST = 'postgres://postgres:postgres@127.0.0.1:5433/examdump_test';
 
 const question = (n: number) => ({
   Title: `Exam topic ${Math.ceil(n / 2)} question ${n} discussion - ExamTopics`,
@@ -73,19 +75,12 @@ export interface TestContext {
 }
 
 export async function createTestContext(): Promise<TestContext> {
-  let memory: MongoMemoryServer | null = null;
-  let uri = process.env.MONGODB_URI_TEST;
-  if (!uri) {
-    memory = await MongoMemoryServer.create();
-    uri = memory.getUri();
-  }
-  const dbName = `examdump_test_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+  const url = process.env.DATABASE_URL_TEST ?? DEFAULT_DATABASE_URL_TEST;
 
   const env = loadEnv({
     ...process.env,
     NODE_ENV: 'test',
-    MONGODB_URI: uri,
-    MONGODB_DB: dbName,
+    DATABASE_URL: url,
     JWT_ACCESS_SECRET: 'test-access-secret-0123456789abcdef',
     JWT_REFRESH_SECRET: 'test-refresh-secret-0123456789abcdef',
     PASSWORD_PEPPER: 'test-pepper',
@@ -102,22 +97,33 @@ export async function createTestContext(): Promise<TestContext> {
     GITHUB_TOKEN: '',
   });
 
-  await connectDB({ uri, dbName, autoIndex: true });
+  await connectDB({ url, applicationName: 'examdump-api-test' });
+  const sql = getSql();
+  await sql`drop schema if exists public cascade`;
+  await sql`drop schema if exists drizzle cascade`;
+  await sql`create schema public`;
+  await migrate(getDb(), { migrationsFolder: resolve(process.cwd(), 'src/db/migrations') });
+
+  await ensureRbac();
   await ensureDefaultPlans();
   await getSettings(env, true);
 
-  const admin = await User.create({
-    email: env.ADMIN_EMAIL,
-    name: 'Test Admin',
-    passwordHash: await hashPassword(env.ADMIN_PASSWORD!, env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS),
-    role: 'admin',
-    plan: 'premium',
-    emailVerified: true,
-    referralCode: randomReferralCode(),
-  });
-  await UserStats.create({ userId: admin._id });
+  const db = getDb();
+  const [admin] = await db
+    .insert(users)
+    .values({
+      email: env.ADMIN_EMAIL!,
+      name: 'Test Admin',
+      passwordHash: await hashPassword(env.ADMIN_PASSWORD!, env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS),
+      role: 'admin',
+      plan: 'premium',
+      emailVerified: true,
+      referralCode: randomReferralCode(),
+    })
+    .returning();
+  await db.insert(userStats).values({ userId: admin!.id }).onConflictDoNothing();
 
-  await CatalogProvider.create({
+  await db.insert(catalogProviders).values({
     providerId: 'cisco',
     file: 'cisco',
     title: 'Cisco',
@@ -125,7 +131,7 @@ export async function createTestContext(): Promise<TestContext> {
     examCount: 2,
     totalQuestions: 12,
   });
-  await CatalogExam.create([
+  await db.insert(catalogExams).values([
     {
       providerId: 'cisco',
       providerTitle: 'Cisco',
@@ -167,13 +173,7 @@ export async function createTestContext(): Promise<TestContext> {
     cleanup: async () => {
       await app.close();
       setDatasetClientForTests(null);
-      try {
-        await mongoose.connection.dropDatabase();
-      } catch {
-        /* best effort */
-      }
       await disconnectDB();
-      if (memory) await memory.stop();
     },
   };
 }
@@ -239,4 +239,20 @@ export async function loginAdmin(app: FastifyInstance): Promise<string> {
   });
   if (response.statusCode !== 200) throw new Error(`admin login failed: ${response.body}`);
   return extractCookies(response);
+}
+
+/** Subscribe a user to a plan via the API (mock payments). */
+export async function subscribeUser(
+  app: FastifyInstance,
+  cookie: string,
+  planId: string,
+  examKey?: string,
+): Promise<void> {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/subscriptions',
+    headers: { cookie },
+    payload: { planId, ...(examKey ? { examKey } : {}) },
+  });
+  if (response.statusCode !== 201) throw new Error(`subscribe failed: ${response.body}`);
 }

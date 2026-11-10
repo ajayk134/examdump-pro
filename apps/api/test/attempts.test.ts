@@ -129,7 +129,7 @@ describe('attempts, grading and analytics', () => {
       method: 'POST',
       url: '/api/subscriptions',
       headers: { cookie: user.cookie },
-      payload: { planId: 'premium-monthly', billingCycle: 'monthly' },
+      payload: { planId: 'all-30' },
     });
     for (let i = 0; i < 2; i += 1) {
       const response = await app.inject({

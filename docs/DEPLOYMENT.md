@@ -1,7 +1,7 @@
 # Deployment runbook — Oracle Cloud VM
 
 This describes a single-VM deployment with Docker/Podman Compose, nginx, Doppler
-and MongoDB Atlas. Nothing here overwrites existing services; choose free ports
+and PostgreSQL. Nothing here overwrites existing services; choose free ports
 and a dedicated directory.
 
 ## 0. Prerequisites
@@ -9,7 +9,7 @@ and a dedicated directory.
 - A VM with at least 2 vCPU / 4 GB RAM (Oracle Ampere or AMD is fine).
 - A domain or subdomain (e.g. `examdump.example.com`) with a DNS **A record** to
   the VM's public IP.
-- A MongoDB Atlas cluster and database user. In Atlas → *Network Access*, allow
+- A PostgreSQL cluster and database user. In Atlas → *Network Access*, allow
   the VM's public IP.
 - A **read-only** GitHub fine-grained token for the private `exam-data` repo
   (Contents: Read).
@@ -40,7 +40,7 @@ At minimum:
 
 ```bash
 doppler secrets set \
-  MONGODB_URI='...' MONGODB_DB='examdump' \
+  DATABASE_URL='postgres://examdump:pass@host:5432/examdump' \
   JWT_ACCESS_SECRET="$(openssl rand -hex 48)" \
   JWT_REFRESH_SECRET="$(openssl rand -hex 48)" \
   PASSWORD_PEPPER="$(openssl rand -hex 32)" \
@@ -132,12 +132,12 @@ podman compose restart api
 
 ### Backups
 
-`deploy/backup.sh` uses `mongodump` via a disposable `mongo:7` container and keeps
+`deploy/backup.sh` uses `pg_dump` via a disposable `postgres:16-alpine` container and keeps
 `BACKUP_RETENTION_DAYS` days:
 
 ```bash
 cd /opt/examdump/deploy
-export MONGODB_URI="$(doppler secrets get MONGODB_URI --plain --project examdump-pro --config prd)"
+export DATABASE_URL="$(doppler secrets get DATABASE_URL --plain --project examdump-pro --config prd)"
 ./backup.sh
 # cron: 30 2 * * * root /opt/examdump/deploy/backup.sh >> /var/log/examdump-backup.log 2>&1
 ```
@@ -183,7 +183,7 @@ podman compose logs --tail=100 api
 curl -fsS http://127.0.0.1/api/health/ready
 ```
 
-- `503` readiness → MongoDB URI/credentials or Atlas IP allowlist.
+- `503` readiness → PostgreSQL URI/credentials or Atlas IP allowlist.
 - `502 DATASET_*` → invalid/expired `GITHUB_TOKEN`, wrong owner/repo/branch.
 - Emails not arriving → configure `SMTP_*`; until then dev links only appear
   outside production.

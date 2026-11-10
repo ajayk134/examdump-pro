@@ -41,8 +41,13 @@ export function formatNumber(value: number | null | undefined): string {
   return new Intl.NumberFormat().format(value ?? 0);
 }
 
-export function formatCurrency(amount: number, currency = 'USD'): string {
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
+export function formatCurrency(amount: number, currency = 'INR'): string {
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 2 }).format(amount);
+}
+
+/** Format a price stored in minor units (paise for INR, cents for USD). */
+export function formatMoneyMinor(minor: number, currency = 'INR'): string {
+  return formatCurrency((minor ?? 0) / 100, currency);
 }
 
 export function initials(name: string): string {

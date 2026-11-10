@@ -177,7 +177,7 @@ export function Navbar() {
                       ) : (
                         notifications.map((n) => (
                           <Link
-                            key={n._id}
+                            key={n.id}
                             href={n.link || '/dashboard'}
                             className={cn('block border-b border-surface-border/60 px-4 py-3 last:border-0 hover:bg-surface-overlay', !n.read && 'bg-brand-500/5')}
                           >

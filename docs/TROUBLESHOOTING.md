@@ -3,15 +3,16 @@
 ## API fails to start with "Invalid environment configuration"
 
 A required variable is missing or malformed. The error lists each problem. The
-API requires `MONGODB_URI`, `JWT_ACCESS_SECRET` (≥16 chars) and
+API requires `DATABASE_URL`, `JWT_ACCESS_SECRET` (≥16 chars) and
 `JWT_REFRESH_SECRET` (≥16 chars). In production always inject via Doppler.
 
-## `MongoServerSelectionError` / readiness 503
+## Database connection errors / readiness 503
 
-- Verify `MONGODB_URI`.
-- In Atlas → Network Access, allow the host/VM public IP.
-- Confirm the database user can read/write the `MONGODB_DB` database.
-- Check `MONGODB_DB` is set (the URI may not include a database).
+- Verify `DATABASE_URL` points at a reachable PostgreSQL instance.
+- For the bundled compose service, confirm the `postgres` container is healthy
+  (`pg_isready`) and `POSTGRES_PASSWORD` matches `DATABASE_URL`.
+- For managed databases, allow the VM public IP and set `DATABASE_SSL=true`.
+- Ensure migrations have run (`node dist/migrate.js`, or `npm run migrate`).
 
 ## Dataset 404 / `DATASET_NOT_FOUND`
 
@@ -70,9 +71,9 @@ run the standalone server (`node apps/web/server.js`) as the Docker image does.
 
 ## API tests very slow
 
-Integration tests hit your configured MongoDB. On a remote Atlas cluster each
-write can take ~1 s. Run a local MongoDB (`docker run -p 27017:27017 mongo:7`) and
-set `MONGODB_URI_TEST` for fast runs. CI uses a local MongoDB service.
+Integration tests hit your configured PostgreSQL. On a remote Atlas cluster each
+write can take ~1 s. Run a local PostgreSQL (`docker run -p 27017:27017 postgres:16-alpine`) and
+set `DATABASE_URL_TEST` for fast runs. CI uses a local PostgreSQL service.
 
 ## `npm install` warnings about install scripts (esbuild, mongodb-memory-server)
 
@@ -90,4 +91,4 @@ rebuild the image.
 
 ## Prisma/other? 
 
-This project does not use an ORM other than Mongoose.
+This project does not use an ORM other than Drizzle ORM.

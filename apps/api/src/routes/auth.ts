@@ -101,7 +101,7 @@ export async function authRoutes(app: FastifyInstance, env: Env): Promise<void> 
   app.post('/change-password', async (request, reply) => {
     const { user } = await requireAuth(request, env);
     const { currentPassword, newPassword } = parseOrThrow(changePasswordSchema, request.body);
-    await authService.changePassword(env, user._id.toString(), currentPassword, newPassword, meta(request));
+    await authService.changePassword(env, user.id, currentPassword, newPassword, meta(request));
     clearAuthCookies(reply, env);
     return reply.send({ success: true });
   });
@@ -115,15 +115,15 @@ export async function authRoutes(app: FastifyInstance, env: Env): Promise<void> 
   app.delete('/sessions/:id', async (request, reply) => {
     const { user } = await requireAuth(request, env);
     const { id } = request.params as { id: string };
-    await authService.revokeSession(user._id.toString(), id);
+    await authService.revokeSession(user.id, id);
     return reply.send({ success: true });
   });
 
   app.post('/logout-all', async (request, reply) => {
     const { user } = await requireAuth(request, env);
-    await authService.revokeAllSessions(user._id.toString());
+    await authService.revokeAllSessions(user.id);
     await recordAudit({
-      actorId: user._id,
+      actorId: user.id,
       actorEmail: user.email,
       action: 'user.logout',
       metadata: { all: true },

@@ -5,7 +5,8 @@ import { requireAuth } from '../lib/guards.js';
 import { parseOrThrow } from '../lib/validation.js';
 import { forbidden, serviceUnavailable } from '../lib/errors.js';
 import { getDatasetClient } from '../services/dataset.service.js';
-import { isPremiumActive } from '../services/entitlement.service.js';
+import { canAccessExam, resolveEntitlements } from '../services/entitlement.service.js';
+import { getSettings } from '../services/settings.service.js';
 import { incrementUsage } from '../services/usage.service.js';
 
 const DAILY_AI_LIMIT_PREMIUM = 200;
@@ -18,8 +19,10 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
     if (!env.AI_API_KEY) {
       throw serviceUnavailable('AI assistance is not configured on this server.');
     }
-    if (!isPremiumActive(user)) {
-      throw forbidden('AI explanations are a Premium feature. Upgrade to unlock them.');
+    const settings = await getSettings(env);
+    const entitlements = await resolveEntitlements(user, settings);
+    if (!canAccessExam(entitlements, input.exam, input.provider)) {
+      throw forbidden('AI explanations require full access to this exam. Upgrade to unlock them.');
     }
 
     const { question, exam } = await getDatasetClient(env).getQuestion(
@@ -78,7 +81,7 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
 
     if (!explanation) throw serviceUnavailable('The AI provider returned an empty response.');
 
-    await incrementUsage(user._id, 'aiExplanations', 1);
+    await incrementUsage(user.id, 'aiExplanations', 1);
     return reply.send({
       explanation,
       model: env.AI_MODEL,

@@ -24,8 +24,8 @@ export default function BookmarksPage() {
 
   const remove = async (bookmark: Bookmark) => {
     try {
-      await del(`/bookmarks/${bookmark._id}`);
-      setItems((prev) => (prev ? prev.filter((b) => b._id !== bookmark._id) : prev));
+      await del(`/bookmarks/${bookmark.id}`);
+      setItems((prev) => (prev ? prev.filter((b) => b.id !== bookmark.id) : prev));
       toast('Bookmark removed', 'info');
     } catch (err) {
       toast((err as Error).message, 'error');
@@ -49,7 +49,7 @@ export default function BookmarksPage() {
       ) : (
         <ul className="flex flex-col gap-2">
           {items.map((bookmark) => (
-            <li key={bookmark._id} className="card flex flex-wrap items-center justify-between gap-3 p-4">
+            <li key={bookmark.id} className="card flex flex-wrap items-center justify-between gap-3 p-4">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{bookmark.questionId}</p>
                 <p className="truncate text-xs text-content-muted">{bookmark.examKey} · saved {relativeTime(bookmark.createdAt)}</p>

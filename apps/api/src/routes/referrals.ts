@@ -6,7 +6,7 @@ import { getReferralStats } from '../services/subscription.service.js';
 export async function referralRoutes(app: FastifyInstance, env: Env): Promise<void> {
   app.get('/me', async (request, reply) => {
     const { user } = await requireAuth(request, env);
-    const stats = await getReferralStats(user._id);
+    const stats = await getReferralStats(user.id);
     return reply.send({
       ...stats,
       shareUrl: `${env.PUBLIC_WEB_URL}/register?ref=${encodeURIComponent(stats.code)}`,

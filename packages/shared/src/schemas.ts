@@ -1,5 +1,14 @@
 import { z } from 'zod';
-import { NOTIFICATION_TYPES, PLANS, QUESTION_MODES, ROLES } from './constants.js';
+import {
+  ACCESS_SCOPES,
+  GOAL_METRICS,
+  GOAL_PERIODS,
+  NOTIFICATION_TYPES,
+  PERMISSIONS,
+  PLANS,
+  QUESTION_MODES,
+  ROLES,
+} from './constants.js';
 
 export const emailSchema = z.string().trim().toLowerCase().email('Enter a valid email address').max(254);
 
@@ -69,6 +78,57 @@ export const updateUserAdminSchema = z.object({
   plan: z.enum(PLANS).optional(),
   suspended: z.boolean().optional(),
   name: z.string().trim().min(2).max(80).optional(),
+  emailVerified: z.boolean().optional(),
+});
+
+export const grantAccessSchema = z.object({
+  scope: z.enum(ACCESS_SCOPES),
+  examKey: z.string().trim().min(1).max(240).optional(),
+  providerId: z.string().trim().min(1).max(160).optional(),
+  note: z.string().max(300).optional(),
+  expiresAt: z.coerce.date().optional(),
+});
+
+export const refundSchema = z.object({
+  amountMinor: z.number().int().min(1).optional(),
+  reason: z.string().max(300).optional(),
+});
+
+export const createRoleSchema = z.object({
+  id: z.string().trim().min(2).max(64).regex(/^[a-z0-9_-]+$/),
+  name: z.string().trim().min(2).max(80),
+  description: z.string().max(300).default(''),
+  permissions: z.array(z.enum(PERMISSIONS)).max(PERMISSIONS.length).default([]),
+});
+
+export const updateRolePermissionsSchema = z.object({
+  permissions: z.array(z.enum(PERMISSIONS)).max(PERMISSIONS.length),
+});
+
+export const assignRoleSchema = z.object({
+  roleIds: z.array(z.string().min(1).max(64)).max(20),
+});
+
+export const featureFlagSchema = z.object({
+  key: z.string().trim().min(2).max(64).regex(/^[a-z0-9_.-]+$/),
+  enabled: z.boolean(),
+  description: z.string().max(300).default(''),
+  rolloutPercent: z.number().int().min(0).max(100).default(100),
+});
+
+export const emailTemplateSchema = z.object({
+  key: z.string().trim().min(2).max(64).regex(/^[a-z0-9_-]+$/),
+  subject: z.string().trim().min(1).max(200),
+  body: z.string().min(1).max(20_000),
+  description: z.string().max(300).default(''),
+});
+
+export const goalSchema = z.object({
+  title: z.string().trim().max(80).default(''),
+  metric: z.enum(GOAL_METRICS).default('questions'),
+  period: z.enum(GOAL_PERIODS).default('daily'),
+  target: z.number().int().min(1).max(100_000),
+  active: z.boolean().default(true),
 });
 
 export const draftAnswerSchema = z.object({
@@ -122,7 +182,15 @@ export const examSearchQuerySchema = z.object({
 
 export const createSubscriptionSchema = z.object({
   planId: z.string().min(1).max(64),
-  billingCycle: z.enum(['monthly', 'yearly']).default('monthly'),
+  examKey: z.string().trim().min(1).max(240).optional(),
+  providerId: z.string().trim().min(1).max(160).optional(),
+  couponCode: z.string().trim().max(64).optional(),
+});
+
+export const changePlanSchema = z.object({
+  planId: z.string().min(1).max(64),
+  examKey: z.string().trim().min(1).max(240).optional(),
+  providerId: z.string().trim().min(1).max(160).optional(),
   couponCode: z.string().trim().max(64).optional(),
 });
 
@@ -144,9 +212,11 @@ export const createPlanAdminSchema = z.object({
   id: z.string().trim().min(2).max(64).regex(/^[a-z0-9_-]+$/),
   name: z.string().trim().min(2).max(80),
   description: z.string().max(300).default(''),
-  monthlyPrice: z.number().min(0).max(100000),
-  yearlyPrice: z.number().min(0).max(100000),
-  currency: z.string().length(3).default('USD'),
+  scope: z.enum(ACCESS_SCOPES).default('single'),
+  durationDays: z.number().int().min(1).max(3650),
+  earlyAccess: z.boolean().default(false),
+  priceMinor: z.number().int().min(0).max(100_000_000),
+  currency: z.literal('INR').default('INR'),
   features: z.array(z.string().max(120)).max(30).default([]),
   active: z.boolean().default(true),
   sortOrder: z.number().int().default(0),
@@ -160,6 +230,8 @@ export const updateSettingsAdminSchema = z.object({
   maintenanceMode: z.boolean().optional(),
   registrationsOpen: z.boolean().optional(),
   announcement: z.string().max(500).optional(),
+  supportEmail: z.string().email().max(200).optional(),
+  siteName: z.string().min(1).max(80).optional(),
 });
 
 export const notificationReadSchema = z.object({
@@ -169,8 +241,9 @@ export const notificationReadSchema = z.object({
 
 export const adminUserListQuerySchema = z.object({
   q: z.string().trim().max(120).optional(),
-  role: z.enum(ROLES).optional(),
+  role: z.string().trim().max(64).optional(),
   plan: z.enum(PLANS).optional(),
+  suspended: z.coerce.boolean().optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -189,3 +262,4 @@ export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type StartAttemptInput = z.infer<typeof startAttemptSchema>;
 export type CompleteAttemptInput = z.infer<typeof completeAttemptSchema>;
 export type ListQuestionsQuery = z.infer<typeof listQuestionsQuerySchema>;
+export type CreateSubscriptionInput = z.infer<typeof createSubscriptionSchema>;

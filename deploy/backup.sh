@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# MongoDB backup for ExamDump Pro.
+# PostgreSQL backup for ExamDump Pro.
 #
 # Usage:
-#   export MONGODB_URI="$(doppler secrets get MONGODB_URI --plain --project examdump-pro --config prd)"
-#   export MONGODB_DB=examdump
+#   export DATABASE_URL="$(doppler secrets get DATABASE_URL --plain --project examdump-pro --config prd)"
 #   ./backup.sh
 #
 # Env:
@@ -11,15 +10,14 @@
 #   BACKUP_RETENTION_DAYS (default 14)
 set -euo pipefail
 
-: "${MONGODB_URI:?MONGODB_URI is required}"
-export MONGODB_DB="${MONGODB_DB:-examdump}"
+: "${DATABASE_URL:?DATABASE_URL is required}"
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 RETENTION="${BACKUP_RETENTION_DAYS:-14}"
 
 mkdir -p "$BACKUP_DIR"
 BACKUP_DIR_ABS="$(cd "$BACKUP_DIR" && pwd)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-BASE="${MONGODB_DB}_${STAMP}.archive.gz"
+BASE="examdump_${STAMP}.pgdump"
 
 RUNTIME="$(command -v podman || command -v docker || true)"
 if [ -z "$RUNTIME" ]; then
@@ -27,13 +25,13 @@ if [ -z "$RUNTIME" ]; then
   exit 1
 fi
 
-echo "Backing up database '$MONGODB_DB' to $BACKUP_DIR_ABS/$BASE"
+echo "Backing up database to $BACKUP_DIR_ABS/$BASE"
+# Custom-format dump supports selective restore and parallel restore.
 "$RUNTIME" run --rm \
-  -e MONGODB_URI \
-  -e MONGODB_DB \
+  -e DATABASE_URL \
   -v "$BACKUP_DIR_ABS:/backup" \
-  mongo:7 \
-  sh -c 'mongodump --uri="$MONGODB_URI" --db="$MONGODB_DB" --archive="/backup/'"$BASE"'" --gzip'
+  docker.io/library/postgres:16-alpine \
+  sh -c 'pg_dump --no-owner --no-privileges --format=custom --file="/backup/'"$BASE"'" "$DATABASE_URL"'
 
-find "$BACKUP_DIR_ABS" -name "${MONGODB_DB}_*.archive.gz" -mtime +"$RETENTION" -delete
+find "$BACKUP_DIR_ABS" -name 'examdump_*.pgdump' -mtime +"$RETENTION" -delete
 echo "Backup complete. Retaining $RETENTION days in $BACKUP_DIR_ABS"

@@ -13,9 +13,11 @@ const envSchema = z.object({
   PUBLIC_WEB_URL: z.string().default('http://localhost:3000'),
   PUBLIC_API_URL: z.string().default('http://localhost:4000'),
 
-  MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
-  MONGODB_DB: z.string().default('examdump'),
-  MONGODB_URI_TEST: z.string().optional(),
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  DATABASE_URL_TEST: z.string().optional(),
+  DATABASE_SSL: booleanString,
+  DATABASE_POOL_MAX: z.coerce.number().int().positive().default(20),
+  DATABASE_APP_NAME: z.string().default('examdump-api'),
 
   JWT_ACCESS_SECRET: z.string().min(16, 'JWT_ACCESS_SECRET must be at least 16 chars'),
   JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be at least 16 chars'),
@@ -66,7 +68,11 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === undefined || v === 'true' || v === '1'),
-  DEFAULT_CURRENCY: z.string().length(3).default('USD'),
+  PAYMENT_PROVIDER: z.enum(['mock', 'razorpay', 'stripe', 'manual', 'none']).default('mock'),
+  RAZORPAY_KEY_ID: z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  DEFAULT_CURRENCY: z.string().length(3).default('INR'),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -95,8 +95,7 @@ export interface QuestionsResponse {
 }
 
 export interface AttemptSummary {
-  _id: string;
-  id?: string;
+  id: string;
   mode: string;
   status: string;
   providerId: string;
@@ -156,13 +155,17 @@ export interface DashboardData {
   recommendations: Array<{ reason: string; exam: Exam }>;
 }
 
+export type AccessScope = 'single' | 'all';
+
 export interface Plan {
-  _id: string;
-  planId: string;
+  id: string;
   name: string;
   description: string;
-  monthlyPrice: number;
-  yearlyPrice: number;
+  scope: AccessScope;
+  durationDays: number;
+  earlyAccess: boolean;
+  /** Price in minor units (paise for INR). */
+  priceMinor: number;
   currency: string;
   features: string[];
   active: boolean;
@@ -170,32 +173,60 @@ export interface Plan {
 }
 
 export interface Subscription {
-  _id: string;
+  id: string;
   planId: string;
-  billingCycle: 'monthly' | 'yearly';
+  scope: AccessScope;
   status: string;
-  price: number;
+  examKey: string | null;
+  providerId: string | null;
+  examTitle: string | null;
+  priceMinor: number;
   currency: string;
+  discountMinor: number;
+  earlyAccess: boolean;
   startedAt: string;
   currentPeriodEnd: string;
   cancelAtPeriodEnd: boolean;
-  mock: boolean;
+  provider: string;
+  createdAt: string;
 }
 
 export interface Payment {
-  _id: string;
-  amount: number;
-  discount: number;
+  id: string;
+  amountMinor: number;
+  discountMinor: number;
+  refundedMinor: number;
   currency: string;
   status: string;
   provider: string;
-  reference: string;
+  providerRef: string;
   description: string;
   createdAt: string;
 }
 
+export interface AccessGrant {
+  id: string;
+  scope: AccessScope;
+  examKey: string | null;
+  providerId: string | null;
+  source: string;
+  note: string;
+  grantedAt: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface Entitlements {
+  plan: 'free' | 'premium';
+  scope: AccessScope | 'none';
+  allAccess: boolean;
+  examKeys: string[];
+  earlyAccess: boolean;
+  expiresAt: string | null;
+}
+
 export interface Notification {
-  _id: string;
+  id: string;
   type: string;
   title: string;
   body: string;
@@ -221,7 +252,7 @@ export interface Paginated<T> {
 }
 
 export interface Bookmark {
-  _id: string;
+  id: string;
   providerId: string;
   examKey: string;
   questionId: string;
@@ -229,7 +260,7 @@ export interface Bookmark {
 }
 
 export interface Note {
-  _id: string;
+  id: string;
   providerId: string;
   examKey: string;
   questionId: string;

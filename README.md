@@ -4,7 +4,7 @@ A production-ready, premium certification exam-preparation SaaS. Practice with
 real exam questions, sit timed mock exams, get AI explanations and track every
 weak topic across 160+ certification providers.
 
-> **Exam questions live exclusively in GitHub.** MongoDB stores application data
+> **Exam questions live exclusively in GitHub.** PostgreSQL stores application data
 > only (users, sessions, subscriptions, progress, analytics, etc.). Secrets are
 > injected by [Doppler](https://doppler.com) and never committed.
 
@@ -31,8 +31,8 @@ weak topic across 160+ certification providers.
 | Layer | Technology |
 | --- | --- |
 | Web | Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS |
-| API | Fastify 5, TypeScript, Zod, Mongoose |
-| Data | MongoDB Atlas (application data) |
+| API | Fastify 5, TypeScript, Zod, Drizzle ORM |
+| Data | PostgreSQL (application data) |
 | Dataset | Private GitHub repo (`exam-data`) read server-side with a token |
 | Auth | JWT access tokens + opaque rotating refresh tokens in HttpOnly cookies, Google OIDC |
 | Secrets | Doppler |
@@ -60,7 +60,7 @@ npm install
 
 # 2. Configure environment (never commit this file)
 cp .env.example .env
-#    Fill MONGODB_URI, GITHUB_TOKEN, JWT secrets, etc.
+#    Fill DATABASE_URL, GITHUB_TOKEN, JWT secrets, etc.
 #    Or inject automatically with Doppler:
 #    doppler run -- npm run dev
 
@@ -104,7 +104,7 @@ For the web app during local development, copy
 
 See [`.env.example`](.env.example) for every variable. The most important ones:
 
-- `MONGODB_URI`, `MONGODB_DB`
+- `DATABASE_URL`
 - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `PASSWORD_PEPPER`
 - `GITHUB_TOKEN` (read-only access to the private dataset)
 - `DATASET_OWNER`, `DATASET_REPO`, `DATASET_BRANCH` (`main` or `masked_main`)
@@ -117,10 +117,10 @@ See [`.env.example`](.env.example) for every variable. The most important ones:
 
 ```bash
 # Use a throwaway database for integration tests
-MONGODB_URI_TEST="mongodb://127.0.0.1:27017/examdump_test" npm test
+DATABASE_URL_TEST="postgres://postgres:postgres@127.0.0.1:5433/examdump_test" npm test
 ```
 
-In CI a MongoDB 7 service is provided automatically. The suite covers the
+In CI a PostgreSQL 7 service is provided automatically. The suite covers the
 content parser, the GitHub data client (including masked branch keys), auth,
 entitlement enforcement, grading, subscriptions/coupons, admin and the audit
 trail.

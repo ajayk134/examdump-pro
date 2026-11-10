@@ -10,7 +10,7 @@ export async function notificationRoutes(app: FastifyInstance, env: Env): Promis
     const { user } = await requireAuth(request, env);
     const { limit, unreadOnly } = request.query as { limit?: string; unreadOnly?: string };
     const result = await listNotifications(
-      user._id.toString(),
+      user.id,
       Math.min(100, Number(limit) || 30),
       unreadOnly === 'true',
     );
@@ -20,7 +20,7 @@ export async function notificationRoutes(app: FastifyInstance, env: Env): Promis
   app.post('/read', async (request, reply) => {
     const { user } = await requireAuth(request, env);
     const input = parseOrThrow(notificationReadSchema, request.body ?? {});
-    const updated = await markNotificationsRead(user._id.toString(), input.all ? undefined : input.ids);
+    const updated = await markNotificationsRead(user.id, input.all ? undefined : input.ids);
     return reply.send({ updated });
   });
 }

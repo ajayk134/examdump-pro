@@ -4,7 +4,7 @@
 
 - Node.js ≥ 20.11 (22 recommended)
 - npm 10+
-- A MongoDB database (local, Docker, or Atlas)
+- A PostgreSQL database (local, Docker, or Atlas)
 - Doppler CLI (recommended) or a local `.env`
 - Optional: a read-only GitHub token for the private dataset
 
@@ -42,7 +42,7 @@ doppler run --project agent-keys --config dev_personal -- npm run dev
 
 ## Adding an API feature
 
-1. **Schema** — add the Mongoose model/index in `apps/api/src/db/models/`.
+1. **Schema** — add the Drizzle ORM model/index in `apps/api/src/db/models/`.
 2. **Validation** — add a Zod schema in `packages/shared/src/schemas.ts`.
 3. **Service** — put business logic in `apps/api/src/services/` (testable,
    no Fastify imports).
@@ -84,7 +84,7 @@ DATASET_BRANCH=masked_main npm run sync:dataset -w @examdump/api
 - Keep workers/services free of Fastify types where possible.
 - Use the existing error helpers (`badRequest`, `forbidden`, `notFound`,
   `quotaExceeded`, …) for consistent error envelopes.
-- Prefer server-side filtering in MongoDB over in-memory processing for lists.
+- Prefer server-side filtering in PostgreSQL over in-memory processing for lists.
 - Add indexes for every new query pattern.
 
 ## Debugging

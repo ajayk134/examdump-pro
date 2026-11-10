@@ -53,7 +53,7 @@ export default function HistoryPage() {
               </thead>
               <tbody className="divide-y divide-surface-border">
                 {data.items.map((attempt) => (
-                  <tr key={attempt._id} className="hover:bg-surface-overlay/60">
+                  <tr key={attempt.id} className="hover:bg-surface-overlay/60">
                     <td className="px-4 py-3 font-medium">{attempt.examCode || attempt.examKey}</td>
                     <td className="px-4 py-3 capitalize text-content-muted">{attempt.mode}</td>
                     <td className="px-4 py-3">

@@ -7,8 +7,8 @@ npm install
 npm run build -w @examdump/shared
 npm run build -w @examdump/data-client
 
-# Integration tests need a throwaway MongoDB database
-MONGODB_URI_TEST="mongodb://127.0.0.1:27017/examdump_test" npm test
+# Integration tests need a throwaway PostgreSQL database
+DATABASE_URL_TEST="postgres://postgres:postgres@127.0.0.1:5433/examdump_test" npm test
 ```
 
 `npm test` runs:
@@ -17,8 +17,16 @@ MONGODB_URI_TEST="mongodb://127.0.0.1:27017/examdump_test" npm test
 2. `@examdump/data-client` — GitHub client, caching, both branch formats.
 3. `@examdump/api` — full HTTP integration suite via `app.inject()`.
 
-If `MONGODB_URI_TEST` is unset, the API tests fall back to
-`mongodb-memory-server` (downloads a MongoDB binary on first use).
+If `DATABASE_URL_TEST` is unset, the API tests fall back to
+`postgres://postgres:postgres@127.0.0.1:5433/examdump_test`. Start one with:
+
+```bash
+podman run -d --name examdump-pg-test -p 5433:5432 \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=examdump_test postgres:16-alpine
+```
+
+Each test context drops and recreates the `public`/`drizzle` schemas and replays
+the Drizzle migrations, so suites are isolated.
 
 ## API test coverage
 
@@ -27,12 +35,12 @@ If `MONGODB_URI_TEST` is unset, the API tests fall back to
 | `auth.test.ts` | register, verify, login, duplicate/weak input, refresh rotation, password reset, logout, admin authorization |
 | `exams.test.ts` | providers, search, provider detail, free limit, offset/random bypass resistance, locked question 403, premium unlock, assessment hides answers, 404s |
 | `attempts.test.ts` | start attempt, locked-question refusal, server-side grading, stats/streak, free mock quota, premium unlimited mocks |
-| `subscriptions.test.ts` | plans, coupon validation, coupon discount + payment, cancel, coupon reuse prevention |
+| `subscriptions.test.ts` | INR plans, single-exam requirement, coupon discount + payment, cancel, refund revocation, coupon reuse prevention |
 | `admin.test.ts` | stats, user list/update/suspend, settings affecting entitlements immediately, audit log, dataset sync |
 
 The test helper injects a deterministic `DatasetClient` (no network) and seeds a
 known catalogue, so tests are fast and hermetic. The dataset is **not** written
-to MongoDB in any test.
+to PostgreSQL in any test.
 
 ## Content parser tests
 
@@ -69,7 +77,7 @@ NEXT_TELEMETRY_DISABLED=1 npm run build -w @examdump/web
 
 `.github/workflows/ci.yml` runs on every push/PR:
 
-- install, build shared packages, typecheck, unit + integration tests (MongoDB 7
+- install, build shared packages, typecheck, unit + integration tests (PostgreSQL 16
   service), production builds of both apps, Docker image builds, and a gitleaks
   secret scan.
 

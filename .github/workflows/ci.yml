@@ -15,18 +15,22 @@ jobs:
     name: Typecheck, test & build
     runs-on: ubuntu-latest
     services:
-      mongo:
-        image: mongo:7
+      postgres:
+        image: postgres:16-alpine
         ports:
-          - 27017:27017
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: examdump_test
         options: >-
-          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     env:
-      MONGODB_URI_TEST: mongodb://127.0.0.1:27017/examdump_test
-      MONGODB_URI: mongodb://127.0.0.1:27017/examdump_test
+      DATABASE_URL_TEST: postgres://postgres:postgres@127.0.0.1:5432/examdump_test
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/examdump_test
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4

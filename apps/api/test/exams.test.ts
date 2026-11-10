@@ -81,13 +81,13 @@ describe('exam catalogue and entitlement enforcement', () => {
     expect((response.json() as { error: { code: string } }).error.code).toBe('QUOTA_EXCEEDED');
   });
 
-  it('unlocks the full question set for premium users', async () => {
+  it('unlocks the full question set for all-exam plans', async () => {
     const user = await registerVerifiedUser(app);
     const subscribe = await app.inject({
       method: 'POST',
       url: '/api/subscriptions',
       headers: { cookie: user.cookie },
-      payload: { planId: 'premium-monthly', billingCycle: 'monthly' },
+      payload: { planId: 'all-30' },
     });
     expect(subscribe.statusCode).toBe(201);
 
@@ -101,6 +101,34 @@ describe('exam catalogue and entitlement enforcement', () => {
     expect(body.entitlement.isLimited).toBe(false);
     expect(body.questions).toHaveLength(10);
     expect(body.entitlement.lockedQuestions).toBe(0);
+  });
+
+  it('scopes a single-exam plan to only that exam', async () => {
+    const user = await registerVerifiedUser(app);
+    const subscribe = await app.inject({
+      method: 'POST',
+      url: '/api/subscriptions',
+      headers: { cookie: user.cookie },
+      payload: { planId: 'single-30', examKey: '100-890' },
+    });
+    expect(subscribe.statusCode).toBe(201);
+
+    const owned = await app.inject({
+      method: 'GET',
+      url: '/api/exams/cisco/100-890/questions?limit=50',
+      headers: { cookie: user.cookie },
+    });
+    expect((owned.json() as QuestionsBody).entitlement.isLimited).toBe(false);
+
+    const other = await app.inject({
+      method: 'GET',
+      url: '/api/exams/cisco/200-301/questions?limit=50',
+      headers: { cookie: user.cookie },
+    });
+    const otherBody = other.json() as QuestionsBody;
+    expect(otherBody.entitlement.plan).toBe('free');
+    expect(otherBody.entitlement.isLimited).toBe(true);
+    expect(otherBody.questions).toHaveLength(5);
   });
 
   it('hides answers for assessment modes', async () => {

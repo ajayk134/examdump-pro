@@ -1,65 +1,115 @@
+import { eq } from 'drizzle-orm';
 import { getEnv } from '../config/env.js';
-import { connectDB, disconnectDB } from './connect.js';
-import { Coupon, Plan, Settings, User, UserStats } from './models/index.js';
+import { connectDB, disconnectDB, getDb } from './client.js';
+import {
+  coupons,
+  emailTemplates,
+  featureFlags,
+  settings,
+  userStats,
+  users,
+} from './schema/index.js';
 import { hashPassword } from '../lib/passwords.js';
 import { randomReferralCode } from '../lib/tokens.js';
 import { ensureDefaultPlans } from '../services/subscription.service.js';
+import { ensureRbac } from '../services/rbac.service.js';
 import { syncDatasetCatalog } from '../services/dataset.service.js';
-import { isPremiumActive } from '../services/entitlement.service.js';
+
+const FEATURE_FLAGS = [
+  { key: 'ai_explanations', enabled: true, description: 'AI question explanations for premium users.' },
+  { key: 'leaderboard', enabled: true, description: 'Public leaderboard.' },
+  { key: 'referrals', enabled: true, description: 'Referral rewards programme.' },
+  { key: 'mock_exams', enabled: true, description: 'Timed mock exams.' },
+  { key: 'early_access', enabled: true, description: 'Early-access content for eligible plans.' },
+];
+
+const EMAIL_TEMPLATES = [
+  {
+    key: 'verify_email',
+    subject: 'Verify your ExamDump Pro email',
+    body: 'Hi {{name}}, confirm your email address to activate your account: {{url}}',
+    description: 'Sent on registration.',
+  },
+  {
+    key: 'password_reset',
+    subject: 'Reset your ExamDump Pro password',
+    body: 'We received a request to reset your password. This link expires in 1 hour: {{url}}',
+    description: 'Sent on password reset request.',
+  },
+  {
+    key: 'welcome',
+    subject: 'Welcome to ExamDump Pro',
+    body: 'Welcome aboard, {{name}}! Start practising at {{url}}.',
+    description: 'Optional welcome email.',
+  },
+];
 
 async function seed(): Promise<void> {
   const env = getEnv();
-  await connectDB({ uri: env.MONGODB_URI, dbName: env.MONGODB_DB });
-  console.log(`Connected to MongoDB database "${env.MONGODB_DB}"`);
+  await connectDB({ url: env.DATABASE_URL, ssl: env.DATABASE_SSL, max: 5 });
+  const db = getDb();
+  console.log('Connected to PostgreSQL');
+
+  await ensureRbac();
+  console.log('Roles and permissions ready');
 
   await ensureDefaultPlans();
-  console.log('Default plans ready');
+  console.log('Default INR plans ready');
 
-  await Settings.findOneAndUpdate(
-    { key: 'global' },
-    {
-      $setOnInsert: {
-        key: 'global',
-        freeQuestionsPerExam: env.FREE_QUESTIONS_PER_EXAM,
-        freeMockExamsPerDay: 1,
-        freeRandomQuestionsPerDay: 20,
-        premiumDailyQuestionLimit: env.PREMIUM_DAILY_QUESTION_LIMIT,
-      },
-    },
-    { upsert: true },
-  );
+  await db
+    .insert(settings)
+    .values({
+      key: 'global',
+      freeQuestionsPerExam: env.FREE_QUESTIONS_PER_EXAM,
+      freeMockExamsPerDay: 1,
+      freeRandomQuestionsPerDay: 20,
+      premiumDailyQuestionLimit: env.PREMIUM_DAILY_QUESTION_LIMIT,
+      supportEmail: 'support@examdump.pro',
+      siteName: 'ExamDump Pro',
+    })
+    .onConflictDoNothing();
   console.log('Settings ready');
 
-  await Coupon.findOneAndUpdate(
-    { code: 'WELCOME20' },
-    {
-      $setOnInsert: {
-        code: 'WELCOME20',
-        description: '20% off your first Premium subscription',
-        percentOff: 20,
-        maxRedemptions: 0,
-        active: true,
-      },
-    },
-    { upsert: true },
-  );
+  for (const flag of FEATURE_FLAGS) {
+    await db.insert(featureFlags).values(flag).onConflictDoNothing();
+  }
+  console.log('Feature flags ready');
+
+  for (const template of EMAIL_TEMPLATES) {
+    await db.insert(emailTemplates).values(template).onConflictDoNothing();
+  }
+  console.log('Email templates ready');
+
+  await db
+    .insert(coupons)
+    .values({
+      code: 'WELCOME20',
+      description: '20% off your first subscription',
+      percentOff: 20,
+      maxRedemptions: 0,
+      active: true,
+    })
+    .onConflictDoNothing();
   console.log('Demo coupon WELCOME20 ready');
 
   if (env.ADMIN_EMAIL && env.ADMIN_PASSWORD) {
     const email = env.ADMIN_EMAIL.toLowerCase();
-    let admin = await User.findOne({ email });
+    const [admin] = await db.select().from(users).where(eq(users.email, email)).limit(1);
     if (!admin) {
-      admin = await User.create({
-        email,
-        name: 'Administrator',
-        passwordHash: await hashPassword(env.ADMIN_PASSWORD, env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS),
-        role: 'admin',
-        plan: 'premium',
-        premiumUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-        emailVerified: true,
-        referralCode: randomReferralCode(),
-      });
-      await UserStats.create({ userId: admin._id });
+      const [created] = await db
+        .insert(users)
+        .values({
+          email,
+          name: 'Administrator',
+          passwordHash: await hashPassword(env.ADMIN_PASSWORD, env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS),
+          role: 'admin',
+          plan: 'premium',
+          premiumUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+          emailVerified: true,
+          referralCode: randomReferralCode(),
+        })
+        .returning();
+      if (created) await db.insert(userStats).values({ userId: created.id }).onConflictDoNothing();
       console.log(`Admin account created for ${email}`);
     } else {
       console.log('Admin account already exists');
@@ -68,18 +118,21 @@ async function seed(): Promise<void> {
 
   if (env.NODE_ENV !== 'production') {
     const demoEmail = 'demo@examdump.pro';
-    const existing = await User.findOne({ email: demoEmail });
+    const [existing] = await db.select().from(users).where(eq(users.email, demoEmail)).limit(1);
     if (!existing) {
-      const demo = await User.create({
-        email: demoEmail,
-        name: 'Demo Learner',
-        passwordHash: await hashPassword('DemoPass123', env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS),
-        role: 'user',
-        plan: 'free',
-        emailVerified: true,
-        referralCode: randomReferralCode(),
-      });
-      await UserStats.create({ userId: demo._id });
+      const [demo] = await db
+        .insert(users)
+        .values({
+          email: demoEmail,
+          name: 'Demo Learner',
+          passwordHash: await hashPassword('DemoPass123', env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS),
+          role: 'user',
+          plan: 'free',
+          emailVerified: true,
+          referralCode: randomReferralCode(),
+        })
+        .returning();
+      if (demo) await db.insert(userStats).values({ userId: demo.id }).onConflictDoNothing();
       console.log('Demo user created: demo@examdump.pro / DemoPass123');
     }
   }
@@ -97,9 +150,7 @@ async function seed(): Promise<void> {
     }
   }
 
-  const planCount = await Plan.countDocuments();
-  const premiumDemo = await User.findOne({ email: 'demo@examdump.pro' }).lean();
-  console.log(`Seed complete. Plans: ${planCount}. Demo premium: ${isPremiumActive(premiumDemo as never)}`);
+  console.log('Seed complete.');
   await disconnectDB();
 }
 

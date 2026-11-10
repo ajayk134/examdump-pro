@@ -1,43 +1,57 @@
 import cron from 'node-cron';
+import { eq } from 'drizzle-orm';
 import { buildApp } from './app.js';
 import { getEnv, isProduction } from './config/env.js';
-import { connectDB, disconnectDB } from './db/connect.js';
-import { User, UserStats } from './db/models/index.js';
+import { connectDB, disconnectDB, getDb } from './db/client.js';
+import { userStats, users } from './db/schema/index.js';
 import { hashPassword } from './lib/passwords.js';
 import { randomReferralCode } from './lib/tokens.js';
 import { ensureDefaultPlans, expireSubscriptions } from './services/subscription.service.js';
 import { syncDatasetCatalog } from './services/dataset.service.js';
 import { getSettings } from './services/settings.service.js';
-import { CatalogProvider } from './db/models/index.js';
+import { ensureRbac } from './services/rbac.service.js';
+import { catalogCounts } from './services/catalog.service.js';
 
 async function bootstrapAdmin(env: ReturnType<typeof getEnv>): Promise<void> {
   if (!env.ADMIN_EMAIL || !env.ADMIN_PASSWORD) return;
-  const existing = await User.findOne({ email: env.ADMIN_EMAIL.toLowerCase() });
+  const db = getDb();
+  const [existing] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, env.ADMIN_EMAIL.toLowerCase()))
+    .limit(1);
   if (existing) {
     if (existing.role !== 'admin') {
-      existing.role = 'admin';
-      existing.emailVerified = true;
-      await existing.save();
+      await db.update(users).set({ role: 'admin', emailVerified: true, updatedAt: new Date() }).where(eq(users.id, existing.id));
     }
     return;
   }
-  const user = await User.create({
-    email: env.ADMIN_EMAIL.toLowerCase(),
-    name: 'Administrator',
-    passwordHash: await hashPassword(env.ADMIN_PASSWORD, env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS),
-    role: 'admin',
-    plan: 'premium',
-    premiumUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-    emailVerified: true,
-    referralCode: randomReferralCode(),
-  });
-  await UserStats.create({ userId: user._id });
+  const [user] = await db
+    .insert(users)
+    .values({
+      email: env.ADMIN_EMAIL.toLowerCase(),
+      name: 'Administrator',
+      passwordHash: await hashPassword(env.ADMIN_PASSWORD, env.PASSWORD_PEPPER, env.BCRYPT_ROUNDS),
+      role: 'admin',
+      plan: 'premium',
+      premiumUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      emailVerified: true,
+      referralCode: randomReferralCode(),
+    })
+    .returning();
+  if (user) await db.insert(userStats).values({ userId: user.id }).onConflictDoNothing();
 }
 
 async function main(): Promise<void> {
   const env = getEnv();
 
-  await connectDB({ uri: env.MONGODB_URI, dbName: env.MONGODB_DB });
+  await connectDB({
+    url: env.DATABASE_URL,
+    ssl: env.DATABASE_SSL,
+    max: env.DATABASE_POOL_MAX,
+    applicationName: env.DATABASE_APP_NAME,
+  });
+  await ensureRbac();
   await ensureDefaultPlans();
   await getSettings(env);
   await bootstrapAdmin(env);
@@ -60,9 +74,7 @@ async function main(): Promise<void> {
     cron.schedule('15 2 * * *', async () => {
       try {
         const result = await expireSubscriptions();
-        if (result.expired || result.downgraded) {
-          app.log.info(result, 'subscriptions.expired');
-        }
+        if (result.expired || result.downgraded) app.log.info(result, 'subscriptions.expired');
       } catch (err) {
         app.log.error({ err }, 'subscriptions.expire_failed');
       }
@@ -75,12 +87,11 @@ async function main(): Promise<void> {
     'examdump.api.started',
   );
 
-  // First boot: populate the searchable catalogue automatically so the product
-  // is useful immediately (does not block startup).
   if (env.ENABLE_DATASET_SYNC) {
     void (async () => {
       try {
-        if ((await CatalogProvider.countDocuments()) === 0) {
+        const counts = await catalogCounts();
+        if (counts.providers === 0) {
           app.log.info('catalogue empty - running initial dataset sync');
           await syncDatasetCatalog(env, app.log);
         }

@@ -11,7 +11,11 @@ import {
   listProviders,
   searchExams,
 } from '../services/catalog.service.js';
-import { getEntitlements, type Entitlements } from '../services/entitlement.service.js';
+import {
+  canAccessExam,
+  resolveEntitlements,
+  type Entitlements,
+} from '../services/entitlement.service.js';
 import { getSettings } from '../services/settings.service.js';
 import { incrementUsage } from '../services/usage.service.js';
 
@@ -20,11 +24,27 @@ interface Context {
   userId?: string;
 }
 
+interface ExamAccess {
+  unlimited: boolean;
+  questionsPerExam: number | null;
+  plan: 'free' | 'premium';
+}
+
+/** Access for one specific exam, honouring single-exam and all-exam plans. */
+function examAccess(ent: Entitlements, examKey: string, providerId: string): ExamAccess {
+  const unlimited = canAccessExam(ent, examKey, providerId);
+  return {
+    unlimited,
+    questionsPerExam: unlimited ? null : ent.questionsPerExam,
+    plan: unlimited ? 'premium' : 'free',
+  };
+}
+
 async function resolveContext(request: FastifyRequest, env: Env): Promise<Context> {
   const [auth, settings] = await Promise.all([optionalAuth(request, env), getSettings(env)]);
   return {
-    entitlements: getEntitlements(auth?.user, settings),
-    userId: auth?.user?._id.toString(),
+    entitlements: await resolveEntitlements(auth?.user ?? null, settings),
+    userId: auth?.user?.id,
   };
 }
 
@@ -36,7 +56,7 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
       try {
         const live = await getDatasetClient(env).getProviders();
         providers = live.map((p) => ({
-          _id: p.id as unknown,
+          id: p.id,
           providerId: p.id,
           file: p.file,
           title: p.title,
@@ -44,7 +64,9 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
           examCount: 0,
           totalQuestions: 0,
           syncedAt: new Date(),
-        })) as typeof providers;
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }));
       } catch {
         providers = [];
       }
@@ -75,23 +97,10 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
       examCount: number;
       totalQuestions: number;
     }
-    interface ExamView {
-      providerId: string;
-      providerTitle: string;
-      providerSlug: string;
-      key: string;
-      code: string;
-      title: string;
-      slug: string;
-      questionCount: number;
-      syncedAt: Date;
-    }
 
-    let exams: ExamView[] = await getProviderExamsFromCatalog(providerId);
+    let exams = await getProviderExamsFromCatalog(providerId);
     const providers = await listProviders();
-    const catalogProvider = providers.find(
-      (p) => p.providerId === providerId || p.slug === providerId,
-    );
+    const catalogProvider = providers.find((p) => p.providerId === providerId || p.slug === providerId);
 
     let provider: ProviderView | undefined = catalogProvider
       ? {
@@ -104,7 +113,6 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
       : undefined;
 
     if (!provider) {
-      // Live fallback so the product works before the first catalog sync.
       try {
         const live = await getDatasetClient(env).getProviderExams(providerId);
         provider = {
@@ -115,6 +123,7 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
           totalQuestions: live.exams.reduce((s, e) => s + e.questionCount, 0),
         };
         exams = live.exams.map((e) => ({
+          id: '',
           providerId: live.provider.id,
           providerTitle: live.provider.title,
           providerSlug: live.provider.slug,
@@ -124,6 +133,8 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
           slug: '',
           questionCount: e.questionCount,
           syncedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
         }));
       } catch {
         throw notFound('Provider not found');
@@ -136,13 +147,14 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
   app.get('/:providerId/:examKey', async (request, reply) => {
     const { providerId, examKey } = request.params as { providerId: string; examKey: string };
     const ctx = await resolveContext(request, env);
-
     const catalogExam = await getCatalogExam(providerId, examKey);
+    const access = examAccess(ctx.entitlements, examKey, providerId);
+
     try {
       const { provider, exam, questions } = await getDatasetClient(env).getExamQuestions(providerId, examKey);
-      const accessible = ctx.entitlements.unlimitedQuestions
+      const accessible = access.unlimited
         ? questions.length
-        : Math.min(questions.length, ctx.entitlements.questionsPerExam ?? 0);
+        : Math.min(questions.length, access.questionsPerExam ?? 0);
 
       return reply.send({
         provider: { id: provider.id, title: provider.title, slug: provider.slug },
@@ -156,11 +168,12 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
         },
         catalog: catalogExam,
         entitlement: {
-          plan: ctx.entitlements.plan,
+          plan: access.plan,
+          scope: ctx.entitlements.scope,
           accessibleQuestions: accessible,
           totalQuestions: questions.length,
           lockedQuestions: Math.max(0, questions.length - accessible),
-          isLimited: !ctx.entitlements.unlimitedQuestions,
+          isLimited: !access.unlimited,
         },
       });
     } catch {
@@ -177,13 +190,14 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
           },
           catalog: catalogExam,
           entitlement: {
-            plan: ctx.entitlements.plan,
-            accessibleQuestions: ctx.entitlements.unlimitedQuestions
+            plan: access.plan,
+            scope: ctx.entitlements.scope,
+            accessibleQuestions: access.unlimited
               ? catalogExam.questionCount
-              : Math.min(catalogExam.questionCount, ctx.entitlements.questionsPerExam ?? 0),
+              : Math.min(catalogExam.questionCount, access.questionsPerExam ?? 0),
             totalQuestions: catalogExam.questionCount,
             lockedQuestions: 0,
-            isLimited: !ctx.entitlements.unlimitedQuestions,
+            isLimited: !access.unlimited,
           },
         });
       }
@@ -195,6 +209,7 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
     const { providerId, examKey } = request.params as { providerId: string; examKey: string };
     const query = parseOrThrow(listQuestionsQuerySchema, request.query);
     const ctx = await resolveContext(request, env);
+    const access = examAccess(ctx.entitlements, examKey, providerId);
 
     const { provider, exam, questions } = await getDatasetClient(env).getExamQuestions(providerId, examKey);
 
@@ -203,10 +218,9 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
 
     let accessible = questions;
     let locked = 0;
-    if (!ctx.entitlements.unlimitedQuestions) {
-      const limit = ctx.entitlements.questionsPerExam ?? 0;
-      // Free users can only ever see the first N questions. Offset/random are
-      // ignored to make sure pagination or shuffling cannot bypass the limit.
+    if (!access.unlimited) {
+      const limit = access.questionsPerExam ?? 0;
+      // Free users only ever see the first N questions; offset/random ignored.
       accessible = questions.slice(0, limit);
       locked = Math.max(0, questions.length - accessible.length);
     } else if (query.random) {
@@ -214,10 +228,8 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
     }
 
     const maxPerRequest = env.DATASET_MAX_QUESTIONS_PER_REQUEST;
-    const offset = ctx.entitlements.unlimitedQuestions ? query.offset : 0;
-    const requestedLimit = ctx.entitlements.unlimitedQuestions
-      ? Math.min(query.limit ?? maxPerRequest, maxPerRequest)
-      : accessible.length;
+    const offset = access.unlimited ? query.offset : 0;
+    const requestedLimit = access.unlimited ? Math.min(query.limit ?? maxPerRequest, maxPerRequest) : accessible.length;
 
     const page = accessible.slice(offset, offset + requestedLimit);
     const clientQuestions = page.map((q) => toClientQuestion(q, includeAnswer));
@@ -238,12 +250,14 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
       },
       questions: clientQuestions,
       entitlement: {
-        plan: ctx.entitlements.plan,
+        plan: access.plan,
+        scope: ctx.entitlements.scope,
+        earlyAccess: ctx.entitlements.earlyAccess,
         totalQuestions: questions.length,
         accessibleQuestions: accessible.length,
         returned: clientQuestions.length,
         lockedQuestions: locked,
-        isLimited: !ctx.entitlements.unlimitedQuestions,
+        isLimited: !access.unlimited,
         offset,
         limit: requestedLimit,
       },
@@ -257,16 +271,17 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
       questionId: string;
     };
     const ctx = await resolveContext(request, env);
+    const access = examAccess(ctx.entitlements, examKey, providerId);
     const { provider, exam, questions } = await getDatasetClient(env).getExamQuestions(providerId, examKey);
 
     const index = questions.findIndex((q) => q.id === questionId);
     if (index === -1) throw notFound('Question not found');
 
-    if (!ctx.entitlements.unlimitedQuestions) {
-      const limit = ctx.entitlements.questionsPerExam ?? 0;
+    if (!access.unlimited) {
+      const limit = access.questionsPerExam ?? 0;
       if (index >= limit) {
         throw quotaExceeded(
-          `This question is part of the Premium set. Free accounts can access the first ${limit} questions of each exam.`,
+          `This question is part of the full set. Your current plan grants the first ${limit} questions of each exam.`,
           { limit, total: questions.length },
         );
       }
@@ -279,10 +294,9 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
     });
   });
 
-  // Authenticated helper used by the web app to know current limits.
   app.get('/entitlement/me', async (request, reply) => {
     const { user } = await requireAuth(request, env);
     const settings = await getSettings(env);
-    return reply.send({ entitlements: getEntitlements(user, settings) });
+    return reply.send({ entitlements: await resolveEntitlements(user, settings) });
   });
 }

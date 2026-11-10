@@ -2,7 +2,7 @@
 
 ## Principles
 
-1. **Least privilege** — the dataset token is read-only; MongoDB credentials are
+1. **Least privilege** — the dataset token is read-only; PostgreSQL credentials are
    scoped to one database; containers run as a non-root user.
 2. **Defence in depth** — nginx limits, API rate limits, per-user quotas,
    entitlement checks and audit logging are independent layers.
@@ -17,7 +17,7 @@
   pepper** from Doppler. Passwords are never returned or logged.
 - Access tokens: short-lived HS256 JWTs (default 15 min) stored in an HttpOnly,
   `SameSite=Lax`, `Secure` (in production) cookie.
-- Refresh tokens: opaque 48-byte random values, stored **hashed** in MongoDB,
+- Refresh tokens: opaque 48-byte random values, stored **hashed** in PostgreSQL,
   rotated on every use, revocable per device and automatically expiring.
 - Sessions are checked on every authenticated request, so logout and suspension
   take effect immediately.
@@ -47,7 +47,7 @@
 
 - Every mutating endpoint validates its body with Zod (types, lengths, formats,
   enums, numeric bounds).
-- Mongoose enforces schema-level constraints and safe casting.
+- Drizzle ORM enforces schema-level constraints and safe casting.
 - NoSQL injection is mitigated by schema typing and Zod coercion (query strings
   are parsed into explicit types; user strings are never passed as query
   operators).
@@ -66,7 +66,7 @@
 
 | Secret | Purpose |
 | --- | --- |
-| `MONGODB_URI` | Atlas connection (dedicated DB) |
+| `DATABASE_URL` | Atlas connection (dedicated DB) |
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | token signing |
 | `PASSWORD_PEPPER` | password hashing pepper |
 | `GITHUB_TOKEN` | read-only dataset access |
@@ -103,6 +103,6 @@ reports. Include reproduction steps and impact.
 - [ ] Atlas IP allowlist restricted; database user has least privilege.
 - [ ] GitHub token read-only and scoped to the dataset repo.
 - [ ] SMTP configured (otherwise verification/reset links are console-only).
-- [ ] MongoDB backups scheduled and restore tested.
+- [ ] PostgreSQL backups scheduled and restore tested.
 - [ ] Uptime monitoring on `/api/health/ready`.
 - [ ] `gitleaks` clean in CI.

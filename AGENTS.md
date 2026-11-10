@@ -4,20 +4,20 @@
 
 ExamDump Pro: a premium exam-preparation SaaS.
 
-- `apps/api` — Fastify + Mongoose API (all application data in MongoDB).
+- `apps/api` — Fastify + Drizzle ORM API (all application data in PostgreSQL).
 - `apps/web` — Next.js 15 frontend.
-- `packages/shared` — Zod schemas, types, dataset content parser.
+- `packages/shared` — Zod schemas, types, dataset content parser, plan catalogue.
 - `packages/data-client` — GitHub dataset client (server-only).
 - `deploy` — Dockerfiles, Compose, nginx, backups.
 - `docs` — architecture, API, database, deployment, security, testing.
 
 ## Non-negotiable rules
 
-1. **MongoDB for ALL application data** (users, sessions, subscriptions,
+1. **PostgreSQL for ALL application data** (users, sessions, subscriptions,
    payments, attempts, progress, bookmarks, notes, analytics, logs, settings,
-   admin data).
+   RBAC, admin data). Use the Drizzle schema in `apps/api/src/db/schema`.
 2. **GitHub exclusively for exam question datasets.** Never copy questions into
-   MongoDB, fixtures, docs or committed files.
+   PostgreSQL, fixtures, docs or committed files.
 3. **Doppler for secrets.** Never hardcode, print or commit secrets. `.env*` is
    gitignored except `.env.example`.
 4. **Server-side enforcement.** Free accounts get `freeQuestionsPerExam`;
@@ -34,9 +34,13 @@ npm run build -w @examdump/shared
 npm run build -w @examdump/data-client
 npm run dev                      # api :4000 + web :3000
 npm run typecheck
-MONGODB_URI_TEST="mongodb://127.0.0.1:27017/examdump_test" npm test
-npm run seed
+
+# Start a throwaway PostgreSQL for tests/seeding:
+#   podman run -d --name examdump-pg -e POSTGRES_PASSWORD=postgres -p 5433:5432 postgres:16-alpine
+npm run migrate -w @examdump/api          # apply Drizzle migrations
+npm run seed                              # plans, RBAC, settings, demo data
 npm run sync:dataset -w @examdump/api
+DATABASE_URL_TEST="postgres://postgres:postgres@127.0.0.1:5433/examdump_test" npm test
 ```
 
 Run API commands under Doppler when available:
