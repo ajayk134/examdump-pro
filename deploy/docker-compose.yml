@@ -1,0 +1,114 @@
+# Production stack for the Oracle Cloud VM.
+#
+# Secrets are never written here. Run compose under Doppler so ${VARS} are
+# injected from the environment:
+#
+#   cd deploy
+#   doppler run --project examdump-pro --config prd -- docker compose up -d --build
+#
+# (Or use the existing agent-keys/dev_personal project for a staging box.)
+name: examdump-pro
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_PORT: 4000
+      API_HOST: 0.0.0.0
+      WEB_ORIGIN: ${WEB_ORIGIN}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL}
+      PUBLIC_API_URL: ${PUBLIC_API_URL}
+      MONGODB_URI: ${MONGODB_URI}
+      MONGODB_DB: ${MONGODB_DB:-examdump}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-15m}
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
+      PASSWORD_PEPPER: ${PASSWORD_PEPPER}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+      COOKIE_SECURE: "true"
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-ExamDump Pro <no-reply@examdump.pro>}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      DATASET_OWNER: ${DATASET_OWNER:-ajayk134}
+      DATASET_REPO: ${DATASET_REPO:-exam-data}
+      DATASET_BRANCH: ${DATASET_BRANCH:-main}
+      ENABLE_DATASET_SYNC: "true"
+      DATASET_SYNC_CRON: ${DATASET_SYNC_CRON:-0 3 * * *}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      PAYMENTS_ENABLED: ${PAYMENTS_ENABLED:-false}
+      ALLOW_MOCK_PAYMENTS: ${ALLOW_MOCK_PAYMENTS:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-300}
+    expose:
+      - '4000'
+    networks:
+      - examdump
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ''
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    expose:
+      - '3000'
+    networks:
+      - examdump
+    depends_on:
+      - api
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - certbot-webroot:/var/www/certbot
+    networks:
+      - examdump
+    depends_on:
+      - api
+      - web
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+networks:
+  examdump:
+    driver: bridge
+
+volumes:
+  certbot-webroot:

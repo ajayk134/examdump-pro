@@ -1,0 +1,30 @@
+{
+  "name": "examdump-pro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ExamDump Pro - premium certification exam preparation SaaS",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:api dev:web",
+    "dev:api": "npm run dev -w @examdump/api",
+    "dev:web": "npm run dev -w @examdump/web",
+    "build": "npm run build -w @examdump/shared && npm run build -w @examdump/data-client && npm run build -w @examdump/api && npm run build -w @examdump/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test -w @examdump/shared && npm run test -w @examdump/data-client && npm run test -w @examdump/api",
+    "test:api": "npm run test -w @examdump/api",
+    "seed": "npm run seed -w @examdump/api",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css}\" --ignore-path .gitignore"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5",
+    "prettier": "^3.4.2"
+  }
+}

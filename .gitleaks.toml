@@ -1,0 +1,22 @@
+# Exam dataset sample values (e.g. example API keys inside exam questions) are
+# intentionally present in the upstream data repo but are never copied here.
+# This config only scans application source, tests and docs.
+title = "ExamDump Pro"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known-safe placeholders in docs and tests"
+paths = [
+  '''docs/.*\.md$''',
+  '''README\.md$''',
+  '''\.env\.example$''',
+  '''apps/api/test/.*''',
+]
+
+regexes = [
+  '''change-me''',
+  '''test-access-secret''',
+  '''test-refresh-secret''',
+]

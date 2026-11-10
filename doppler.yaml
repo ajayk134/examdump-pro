@@ -1,0 +1,7 @@
+setup:
+  - project: agent-keys
+    config: dev_personal
+
+# For production, create a dedicated config and reference it instead:
+#   - project: examdump-pro
+#     config: prd
