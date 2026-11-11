@@ -220,12 +220,22 @@ export function AiChat({
   /* ---------------------------------------------------------------- */
 
   const [showJump, setShowJump] = useState(false);
+  /**
+   * Set while we scroll the transcript ourselves.
+   *
+   * Our own scroll fires the same `scroll` event a user gesture does, which
+   * would look like "the reader scrolled away" and switch auto-follow off
+   * mid-answer. Tracking it lets the handler ignore those echoes.
+   */
+  const programmaticScroll = useRef(false);
 
   const onTranscriptScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
+    if (programmaticScroll.current) return;
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const nearBottom = distance < 80;
+    // A little slack: layout can settle a few pixels after we scroll.
+    const nearBottom = distance < 120;
     stickToBottom.current = nearBottom;
     // Only worth offering once the reader is meaningfully far from the end.
     setShowJump(distance > 240);
@@ -234,14 +244,22 @@ export function AiChat({
   const scrollToBottom = useCallback((smooth = true) => {
     const el = scrollRef.current;
     if (!el) return;
+    programmaticScroll.current = true;
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
     stickToBottom.current = true;
     setShowJump(false);
+    // Release once the (possibly animated) scroll has finished.
+    window.setTimeout(() => {
+      programmaticScroll.current = false;
+    }, smooth ? 450 : 60);
   }, []);
 
   useEffect(() => {
     if (!stickToBottom.current) return;
-    scrollToBottom();
+    const stillStreaming = messages.some((m) => m.pending || m.reasoningStreaming);
+    // Never smooth-scroll mid-stream: each token would restart the animation
+    // before it completed and the view would drift far from the newest text.
+    scrollToBottom(!stillStreaming);
     // Markdown reflows after fonts and tables settle, which can leave the last
     // line just below the fold. Re-pin once more on the next frame.
     const raf = requestAnimationFrame(() => {
