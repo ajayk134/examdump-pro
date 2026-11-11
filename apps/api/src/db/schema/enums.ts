@@ -83,5 +83,52 @@ export const mailTemplateEnum = pgEnum('mail_template', [
   'subscription_expiring',
   'subscription_cancelled',
   'refund_processed',
+  'login_alert',
+  'password_changed',
+  'account_notice',
+  'support_received',
+  'announcement',
   'test',
+]);
+
+/* ------------------------- ExamDump Mail (outbound) ------------------------- */
+
+/**
+ * Lifecycle of a queued message.
+ *
+ * queued -> sending -> sent
+ *                    -> failed (retryable, back in queued)
+ *                    -> dead   (exhausted retries; inspectable, re-queueable)
+ * queued -> cancelled            (campaign cancelled before processing)
+ * queued -> suppressed           (consent, suppression list or preferences)
+ */
+export const emailQueueStatusEnum = pgEnum('email_queue_status', [
+  'queued',
+  'sending',
+  'sent',
+  'failed',
+  'dead',
+  'cancelled',
+  'suppressed',
+]);
+
+/** Transactional mail is legally different from marketing: separate policy. */
+export const emailCategoryEnum = pgEnum('email_category', ['transactional', 'marketing']);
+
+export const campaignStatusEnum = pgEnum('campaign_status', [
+  'draft',
+  'scheduled',
+  'sending',
+  'sent',
+  'cancelled',
+  'failed',
+]);
+
+/** Why an address is on the suppression list. */
+export const suppressionReasonEnum = pgEnum('suppression_reason', [
+  'hard_bounce',
+  'complaint',
+  'unsubscribe_marketing',
+  'unsubscribe_all',
+  'manual',
 ]);

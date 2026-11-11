@@ -96,6 +96,13 @@ export async function createTestContext(): Promise<TestContext> {
     RATE_LIMIT_MAX: '100000',
     LOG_LEVEL: 'silent',
     GITHUB_TOKEN: '',
+    // Tests must never send real mail. Empty credentials make `mailConfigured`
+    // false, which also enables the dev-only verification/reset URL fallback the
+    // helper relies on.
+    MAIL_ENABLED: 'false',
+    SMTP_HOST: '',
+    SMTP_USER: '',
+    SMTP_PASS: '',
   });
 
   await connectDB({ url, applicationName: 'examdump-api-test' });

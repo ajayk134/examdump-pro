@@ -10,7 +10,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { users } from './identity';
-import { mailStatusEnum, mailTemplateEnum, notificationTypeEnum } from './enums';
+import { emailCategoryEnum, mailStatusEnum, mailTemplateEnum, notificationTypeEnum } from './enums';
 
 const createdAt = timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 const updatedAt = timestamp('updated_at', { withTimezone: true }).notNull().defaultNow();
@@ -127,11 +127,27 @@ export const featureFlags = pgTable('feature_flags', {
   updatedAt,
 });
 
+/**
+ * Reusable email templates, editable from the Admin Email Center.
+ *
+ * Built-in transactional templates ship in code (`services/mail/templates.ts`);
+ * a row here with the same `key` overrides the built-in body. Only rows marked
+ * system are undeletable, so an admin cannot break verification email.
+ */
 export const emailTemplates = pgTable('email_templates', {
   key: text('key').primaryKey(),
   subject: text('subject').notNull(),
+  /** HTML body. Supports {{placeholder}} tokens. */
   body: text('body').notNull(),
   description: text('description').notNull().default(''),
+  /** Plain-text alternative; generated from the HTML when empty. */
+  textBody: text('text_body').notNull().default(''),
+  category: emailCategoryEnum('category').notNull().default('transactional'),
+  /** Placeholders this template understands, for editor validation. */
+  variables: jsonb('variables').$type<string[]>().notNull().default([]),
+  /** Built-in templates cannot be deleted, only edited. */
+  isSystem: boolean('is_system').notNull().default(false),
+  enabled: boolean('enabled').notNull().default(true),
   updatedAt,
 });
 

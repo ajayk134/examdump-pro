@@ -25,6 +25,8 @@ import { couponRoutes } from './routes/coupons.js';
 import { referralRoutes } from './routes/referrals.js';
 import { adminRoutes } from './routes/admin.js';
 import { adminOpsRoutes } from './routes/admin-ops.js';
+import { adminEmailRoutes } from './routes/admin-email.js';
+import { emailPreferenceRoutes } from './routes/email-preferences.js';
 import { healthRoutes } from './routes/health.js';
 import { supportRoutes } from './routes/support.js';
 
@@ -187,6 +189,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       await api.register(async (r) => referralRoutes(r, env), { prefix: '/referrals' });
       await api.register(async (r) => adminRoutes(r, env), { prefix: '/admin' });
       await api.register(async (r) => adminOpsRoutes(r, env), { prefix: '/admin-ops' });
+      await api.register(async (r) => adminEmailRoutes(r, env), { prefix: '/admin-ops' });
+      await api.register(async (r) => emailPreferenceRoutes(r, env), { prefix: '/email' });
     },
     { prefix: '/api' },
   );

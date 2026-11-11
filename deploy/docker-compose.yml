@@ -77,6 +77,16 @@ services:
       MAIL_RATE_WINDOW_MS: ${MAIL_RATE_WINDOW_MS:-60000}
       MAIL_TIMEOUT_MS: ${MAIL_TIMEOUT_MS:-15000}
       MAIL_TEST_RECIPIENT: ${MAIL_TEST_RECIPIENT:-}
+      # Durable email queue / worker tuning. Listed explicitly because this
+      # compose file forwards variables one by one: anything omitted is silently
+      # dropped and the container falls back to schema defaults.
+      MAIL_QUEUE_ENABLED: ${MAIL_QUEUE_ENABLED:-true}
+      MAIL_BATCH_SIZE: ${MAIL_BATCH_SIZE:-10}
+      MAIL_WORKER_INTERVAL_SECONDS: ${MAIL_WORKER_INTERVAL_SECONDS:-20}
+      MAIL_REMINDER_CRON: ${MAIL_REMINDER_CRON:-0 9 * * *}
+      MAIL_HOURLY_SEND_LIMIT: ${MAIL_HOURLY_SEND_LIMIT:-100}
+      MAIL_CAMPAIGN_BATCH_SIZE: ${MAIL_CAMPAIGN_BATCH_SIZE:-50}
+      MAIL_LOCK_LEASE_SECONDS: ${MAIL_LOCK_LEASE_SECONDS:-300}
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       DATASET_OWNER: ${DATASET_OWNER:-ajayk134}
       DATASET_REPO: ${DATASET_REPO:-exam-data}

@@ -14,6 +14,7 @@ import {
   TicketsPanel,
   WebhooksPanel,
 } from '@/components/admin-ops';
+import { EmailCenterPanel } from '@/components/admin-email';
 
 type Tab =
   | 'overview'
@@ -24,6 +25,7 @@ type Tab =
   | 'plans'
   | 'tickets'
   | 'announcements'
+  | 'email'
   | 'integrations'
   | 'settings'
   | 'audit'
@@ -98,6 +100,7 @@ export default function AdminPage() {
           { id: 'plans', label: 'Plans' },
           { id: 'tickets', label: 'Tickets' },
           { id: 'announcements', label: 'Announcements' },
+          { id: 'email', label: 'Email center' },
           { id: 'integrations', label: 'Integrations' },
           { id: 'settings', label: 'Settings' },
           { id: 'audit', label: 'Audit log' },
@@ -115,6 +118,7 @@ export default function AdminPage() {
       {tab === 'plans' ? <PlansPanel /> : null}
       {tab === 'tickets' ? <TicketsPanel /> : null}
       {tab === 'announcements' ? <AnnouncementsPanel /> : null}
+      {tab === 'email' ? <EmailCenterPanel /> : null}
       {tab === 'integrations' ? <IntegrationsPanel /> : null}
       {tab === 'settings' ? <SettingsPanel /> : null}
       {tab === 'audit' ? <AuditPanel /> : null}

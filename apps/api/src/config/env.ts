@@ -73,6 +73,31 @@ const envSchema = z.object({
    */
   MAIL_TEST_RECIPIENT: z.string().optional(),
 
+  /* ------------------------- durable email queue ------------------------- */
+  /** Background worker drains the queue. Off in tests that do not want it. */
+  MAIL_QUEUE_ENABLED: z
+    .string()
+    .optional()
+    .default('true')
+    .transform((v) => v !== 'false' && v !== '0'),
+  /** Messages claimed per worker tick. */
+  MAIL_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(10),
+  /** How often the worker wakes up, in seconds. */
+  MAIL_WORKER_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(600).default(20),
+  /** Cron expression for subscription reminder scheduling. */
+  MAIL_REMINDER_CRON: z.string().default('0 9 * * *'),
+  /**
+   * Hard ceiling on messages sent per rolling hour.
+   *
+   * A consumer Gmail account allows roughly 100-150 recipients/hour; exceeding
+   * it triggers throttling and can risk the account. Stays comfortably under.
+   */
+  MAIL_HOURLY_SEND_LIMIT: z.coerce.number().int().positive().default(100),
+  /** Bulk campaigns are spread in chunks rather than sent in one burst. */
+  MAIL_CAMPAIGN_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(50),
+  /** Seconds a worker holds a claimed row before it is considered abandoned. */
+  MAIL_LOCK_LEASE_SECONDS: z.coerce.number().int().positive().default(300),
+
   GITHUB_TOKEN: z.string().optional(),
   DATASET_OWNER: z.string().default('ajayk134'),
   DATASET_REPO: z.string().default('exam-data'),

@@ -367,3 +367,126 @@ export async function sendTransactionalMail(env: Env, options: SendMailOptions):
   });
   return { delivered: false, suppressed: false, attempts, error: lastError };
 }
+
+/* -------------------------- raw (queued) delivery -------------------------- */
+
+export interface RawMailInput {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  /** Inbox-visible headers for unsubscribe (marketing only). */
+  headers?: Record<string, string>;
+  userId?: string | null;
+  template: string;
+  referenceId?: string | null;
+  logger?: MailLogger;
+}
+
+export interface RawMailResult {
+  delivered: boolean;
+  suppressed: boolean;
+  retryable: boolean;
+  messageId?: string;
+  error?: string;
+}
+
+/**
+ * Deliver an already-rendered message.
+ *
+ * This is the single send path used by the durable queue. It deliberately keeps
+ * the same transport, per-recipient rate limit and `mail_logs` auditing as
+ * `sendTransactionalMail`, but takes final subject/html/text instead of a
+ * template name, because a queued row must send exactly what was enqueued.
+ *
+ * Errors are classified: `retryable` means the queue should back off and try
+ * again; otherwise the message is dead-lettered for inspection.
+ */
+export async function deliverRaw(env: Env, input: RawMailInput): Promise<RawMailResult> {
+  const recipient = input.to.trim().toLowerCase();
+
+  if (!recipient || !recipient.includes('@')) {
+    await writeLog({
+      userId: input.userId,
+      template: input.template as MailTemplateName,
+      recipient: recipient || '(invalid)',
+      subject: input.subject,
+      status: 'failed',
+      attempts: 0,
+      lastError: 'invalid_recipient',
+      referenceId: input.referenceId,
+    });
+    return { delivered: false, suppressed: false, retryable: false, error: 'invalid_recipient' };
+  }
+
+  if (!mailConfigured(env)) {
+    input.logger?.info({ to: recipient, template: input.template }, 'mail.suppressed_not_configured');
+    await writeLog({
+      userId: input.userId,
+      template: input.template as MailTemplateName,
+      recipient,
+      subject: input.subject,
+      status: 'suppressed',
+      attempts: 0,
+      lastError: 'smtp_not_configured',
+      referenceId: input.referenceId,
+    });
+    return { delivered: false, suppressed: true, retryable: false, error: 'smtp_not_configured' };
+  }
+
+  const limit = checkMailRateLimit(env, recipient);
+  if (!limit.allowed) {
+    // A per-recipient limit is temporary by definition: let the queue retry.
+    return {
+      delivered: false,
+      suppressed: false,
+      retryable: true,
+      error: `rate_limited_${Math.ceil(limit.retryAfterMs / 1000)}s`,
+    };
+  }
+
+  const transporter = getTransporter(env);
+  if (!transporter) {
+    return { delivered: false, suppressed: true, retryable: false, error: 'smtp_not_configured' };
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from: env.MAIL_FROM,
+      to: recipient,
+      replyTo: env.MAIL_REPLY_TO ?? undefined,
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+      headers: input.headers,
+    });
+    const messageId = info.messageId ?? undefined;
+    await writeLog({
+      userId: input.userId,
+      template: input.template as MailTemplateName,
+      recipient,
+      subject: input.subject,
+      status: 'sent',
+      attempts: 1,
+      messageId,
+      referenceId: input.referenceId,
+    });
+    input.logger?.info({ to: recipient, template: input.template, messageId }, 'mail.sent');
+    return { delivered: true, suppressed: false, retryable: false, messageId };
+  } catch (err) {
+    const message = (err as Error).message?.slice(0, 500) || 'unknown_error';
+    const retryable = isRetryableMailError(err);
+    await writeLog({
+      userId: input.userId,
+      template: input.template as MailTemplateName,
+      recipient,
+      subject: input.subject,
+      status: 'failed',
+      attempts: 1,
+      lastError: message,
+      referenceId: input.referenceId,
+    });
+    input.logger?.warn({ to: recipient, template: input.template, retryable, err: message }, 'mail.failed');
+    return { delivered: false, suppressed: false, retryable, error: message };
+  }
+}

@@ -18,6 +18,14 @@ import { conflict, serviceUnavailable, tooManyRequests, unauthorized } from '../
 import { signAccessToken } from '../lib/jwt.js';
 import { hashPassword, verifyPassword } from '../lib/passwords.js';
 import { hashToken, randomReferralCode, randomToken } from '../lib/tokens.js';
+import { mailConfigured } from './mail/mail.service.js';
+import {
+  notifyLoginAlert,
+  notifyPasswordChanged,
+  notifyPasswordReset,
+  notifyVerification,
+  notifyWelcome,
+} from './mail/notify.service.js';
 import { sendTransactionalMail } from './mail/mail.service.js';
 import { getSettings } from './settings.service.js';
 import { createNotification } from './notification.service.js';
@@ -119,12 +127,13 @@ export async function register(
   });
 
   const verifyUrl = `${env.PUBLIC_WEB_URL}/verify-email?token=${encodeURIComponent(token)}`;
-  const delivery = await sendTransactionalMail(env, {
+  // Queued, not sent inline: the row survives a restart and retries on its own,
+  // so a transient SMTP failure cannot silently lose a signup verification.
+  const delivery = await notifyVerification(env, {
     to: user.email,
-    template: 'email_verify',
     userId: user.id,
-    referenceId: user.id,
-    data: { name: user.name, verifyUrl, expiresInHours: 24 },
+    name: user.name,
+    verifyUrl,
   });
 
   await recordAudit({
@@ -145,7 +154,9 @@ export async function register(
   return {
     user,
     session,
-    devVerificationUrl: !delivery.delivered && env.NODE_ENV !== 'production' ? verifyUrl : undefined,
+    // Dev convenience only: surface the link when SMTP is not configured, since
+    // there is no other way to verify. Production never leaks the token.
+    devVerificationUrl: !mailConfigured(env) && env.NODE_ENV !== 'production' ? verifyUrl : undefined,
   };
 }
 
@@ -183,6 +194,17 @@ export async function login(env: Env, input: LoginInput, meta: RequestMeta): Pro
 
   await db.insert(loginAttempts).values({ email: input.email, ip: meta.ip ?? '', success: true });
   await db.update(users).set({ lastLoginAt: new Date(), updatedAt: new Date() }).where(eq(users.id, user.id));
+
+  // Security alert. Fire-and-forget: a mail problem must never block a login,
+  // and it is deduped per hour so repeated logins do not flood the inbox.
+  await notifyLoginAlert(env, {
+    to: user.email,
+    userId: user.id,
+    name: user.name,
+    when: new Date(),
+    ip: meta.ip,
+    device: meta.userAgent?.slice(0, 120),
+  }).catch(() => undefined);
 
   await recordAudit({
     actorId: user.id,
@@ -331,12 +353,11 @@ export async function verifyEmail(env: Env, token: string, meta: RequestMeta): P
 
   // Welcome mail is fire-and-forget: it must never fail verification, which has
   // already been committed above.
-  await sendTransactionalMail(env, {
+  await notifyWelcome(env, {
     to: user.email,
-    template: 'welcome',
     userId: user.id,
-    referenceId: user.id,
-    data: { name: user.name, examsUrl: `${env.PUBLIC_WEB_URL}/exams` },
+    name: user.name,
+    examsUrl: `${env.PUBLIC_WEB_URL}/exams`,
   }).catch(() => undefined);
 
   const [fresh] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
@@ -356,12 +377,13 @@ export async function resendVerification(env: Env, email: string, meta: RequestM
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   });
   const verifyUrl = `${env.PUBLIC_WEB_URL}/verify-email?token=${encodeURIComponent(token)}`;
-  const delivery = await sendTransactionalMail(env, {
+  // Queued, not sent inline: the row survives a restart and retries on its own,
+  // so a transient SMTP failure cannot silently lose a signup verification.
+  const delivery = await notifyVerification(env, {
     to: user.email,
-    template: 'email_verify',
     userId: user.id,
-    referenceId: user.id,
-    data: { name: user.name, verifyUrl, expiresInHours: 24 },
+    name: user.name,
+    verifyUrl,
   });
   await recordAudit({
     actorId: user.id,
@@ -370,7 +392,9 @@ export async function resendVerification(env: Env, email: string, meta: RequestM
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
-  return !delivery.delivered && env.NODE_ENV !== 'production' ? { devVerificationUrl: verifyUrl } : {};
+  // Dev convenience only: surface the link when nothing could be queued
+  // (no SMTP configured). Production never leaks the token.
+  return !mailConfigured(env) && env.NODE_ENV !== 'production' ? { devVerificationUrl: verifyUrl } : {};
 }
 
 export async function forgotPassword(env: Env, email: string, meta: RequestMeta): Promise<{ devResetUrl?: string }> {
@@ -390,12 +414,11 @@ export async function forgotPassword(env: Env, email: string, meta: RequestMeta)
   });
 
   const resetUrl = `${env.PUBLIC_WEB_URL}/reset-password?token=${encodeURIComponent(token)}`;
-  const delivery = await sendTransactionalMail(env, {
+  const delivery = await notifyPasswordReset(env, {
     to: user.email,
-    template: 'password_reset',
     userId: user.id,
-    referenceId: user.id,
-    data: { name: user.name, resetUrl, expiresInMinutes: 60 },
+    name: user.name,
+    resetUrl,
   });
 
   await recordAudit({
@@ -406,7 +429,7 @@ export async function forgotPassword(env: Env, email: string, meta: RequestMeta)
     userAgent: meta.userAgent,
   });
 
-  return !delivery.delivered && env.NODE_ENV !== 'production' ? { devResetUrl: resetUrl } : {};
+  return !mailConfigured(env) && env.NODE_ENV !== 'production' ? { devResetUrl: resetUrl } : {};
 }
 
 export async function resetPassword(env: Env, token: string, newPassword: string, meta: RequestMeta): Promise<void> {
@@ -439,6 +462,13 @@ export async function resetPassword(env: Env, token: string, newPassword: string
   await db.update(authTokens).set({ usedAt: new Date() }).where(eq(authTokens.id, record.id));
   await revokeAllSessions(user.id);
 
+  await notifyPasswordChanged(env, {
+    to: user.email,
+    userId: user.id,
+    name: user.name,
+    when: new Date(),
+  }).catch(() => undefined);
+
   await recordAudit({
     actorId: user.id,
     actorEmail: user.email,
@@ -470,6 +500,13 @@ export async function changePassword(
     })
     .where(eq(users.id, userId));
   await revokeAllSessions(userId);
+
+  await notifyPasswordChanged(env, {
+    to: user.email,
+    userId: user.id,
+    name: user.name,
+    when: new Date(),
+  }).catch(() => undefined);
 
   await recordAudit({
     actorId: user.id,

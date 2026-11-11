@@ -440,3 +440,199 @@ export function testEmail(brand: BrandContext, input: { sentAt: string }): Email
     }),
   };
 }
+
+/* -------------------------- security & account -------------------------- */
+
+/**
+ * New sign-in alert.
+ *
+ * Security mail is deliberately vague about "was this you?" outcomes: it never
+ * includes a link that changes state, only one that leads to the account's
+ * security section, so a phished email cannot be turned into an action.
+ */
+export function loginAlertEmail(
+  brand: BrandContext,
+  input: {
+    name?: string;
+    when: string;
+    ip?: string;
+    device?: string;
+    location?: string;
+    securityUrl: string;
+  },
+): EmailContent {
+  const hi = input.name ? `Hi ${input.name},` : 'Hi,';
+  const rows: Array<[string, string]> = [['Time', input.when]];
+  if (input.device) rows.push(['Device', input.device]);
+  if (input.ip) rows.push(['IP address', input.ip]);
+  if (input.location) rows.push(['Approximate location', input.location]);
+
+  return {
+    subject: 'New sign-in to your ExamDump account',
+    text: lines(
+      hi,
+      '',
+      'Your ExamDump account was just signed in to.',
+      '',
+      ...rows.map(([label, value]) => `${label}: ${value}`),
+      '',
+      'If this was you, no action is needed.',
+      `If it was not, secure your account: ${input.securityUrl}`,
+      '',
+      '— ExamDump',
+    ),
+    html: layout({
+      brand,
+      preheader: `New sign-in detected${input.device ? ` from ${input.device}` : ''}.`,
+      heading: 'New sign-in to your account',
+      blocks: [
+        para(escapeHtml(hi)),
+        para('Your ExamDump account was just signed in to.'),
+        detailRows(rows),
+        para('If this was you, no action is needed.'),
+        button(input.securityUrl, 'Review account security'),
+        para(`<span style="color:${MUTED};font-size:13px;">If you do not recognise this activity, change your password and reply to this email so we can help.</span>`),
+      ].join(''),
+    }),
+  };
+}
+
+/** Sent after a password change, so a silent takeover is noticeable. */
+export function passwordChangedEmail(
+  brand: BrandContext,
+  input: { name?: string; when: string; resetUrl: string },
+): EmailContent {
+  const hi = input.name ? `Hi ${input.name},` : 'Hi,';
+  return {
+    subject: 'Your ExamDump password was changed',
+    text: lines(
+      hi,
+      '',
+      `Your password was changed on ${input.when}.`,
+      '',
+      'If you made this change, no action is needed.',
+      `If you did not, reset your password immediately: ${input.resetUrl}`,
+      '',
+      '— ExamDump',
+    ),
+    html: layout({
+      brand,
+      preheader: 'Your ExamDump password was changed.',
+      heading: 'Your password was changed',
+      blocks: [
+        para(escapeHtml(hi)),
+        para(`Your ExamDump password was changed on <strong>${escapeHtml(input.when)}</strong>.`),
+        para('If you made this change, no action is needed.'),
+        button(input.resetUrl, 'Reset your password'),
+        para(`<span style="color:${MUTED};font-size:13px;">If you did not change it, reset your password now and reply to this email.</span>`),
+      ].join(''),
+    }),
+  };
+}
+
+/** Generic account notification (plan change, suspension, profile event). */
+export function accountNoticeEmail(
+  brand: BrandContext,
+  input: { name?: string; heading: string; body: string; ctaLabel?: string; ctaUrl?: string },
+): EmailContent {
+  const hi = input.name ? `Hi ${input.name},` : 'Hi,';
+  return {
+    subject: input.heading,
+    text: lines(
+      hi,
+      '',
+      input.body,
+      '',
+      ...(input.ctaUrl ? [`${input.ctaLabel ?? 'Open ExamDump'}: ${input.ctaUrl}`] : []),
+      '',
+      '— ExamDump',
+    ),
+    html: layout({
+      brand,
+      preheader: input.body.slice(0, 120),
+      heading: input.heading,
+      blocks: [
+        para(escapeHtml(hi)),
+        para(escapeHtml(input.body)),
+        ...(input.ctaUrl ? [button(input.ctaUrl, input.ctaLabel ?? 'Open ExamDump')] : []),
+      ].join(''),
+    }),
+  };
+}
+
+/** Support enquiry acknowledgement, sent to the person who wrote in. */
+export function supportReceivedEmail(
+  brand: BrandContext,
+  input: { name?: string; reference: string; subject: string; message: string },
+): EmailContent {
+  const hi = input.name ? `Hi ${input.name},` : 'Hi,';
+  return {
+    subject: `We received your message (${input.reference})`,
+    text: lines(
+      hi,
+      '',
+      'Thanks for getting in touch with ExamDump. A member of the team will reply within one business day.',
+      '',
+      `Reference: ${input.reference}`,
+      `Subject: ${input.subject}`,
+      '',
+      'Your message:',
+      input.message,
+      '',
+      '— ExamDump Support',
+    ),
+    html: layout({
+      brand,
+      preheader: `We received your message. Reference ${input.reference}.`,
+      heading: 'We received your message',
+      blocks: [
+        para(escapeHtml(hi)),
+        para('Thanks for getting in touch with ExamDump. A member of the team will reply within one business day.'),
+        detailRows([
+          ['Reference', input.reference],
+          ['Subject', input.subject],
+        ]),
+        para(`<span style="color:${MUTED};font-size:13px;">Your message:</span>`),
+        para(escapeHtml(input.message).replace(/\n/g, '<br>')),
+      ].join(''),
+    }),
+  };
+}
+
+/** Admin broadcast / announcement, delivered as marketing mail. */
+export function announcementEmail(
+  brand: BrandContext,
+  input: { name?: string; title: string; body: string; ctaLabel?: string; ctaUrl?: string; unsubscribeUrl: string },
+): EmailContent {
+  const hi = input.name ? `Hi ${input.name},` : 'Hi,';
+  return {
+    subject: input.title,
+    text: lines(
+      hi,
+      '',
+      input.body,
+      '',
+      ...(input.ctaUrl ? [`${input.ctaLabel ?? 'Open ExamDump'}: ${input.ctaUrl}`] : []),
+      '',
+      '—',
+      `You are receiving this because you opted in to ExamDump product updates.`,
+      `Unsubscribe: ${input.unsubscribeUrl}`,
+      '',
+      '— ExamDump',
+    ),
+    html: layout({
+      brand,
+      preheader: input.body.slice(0, 120),
+      heading: input.title,
+      blocks: [
+        para(escapeHtml(hi)),
+        para(escapeHtml(input.body).replace(/\n/g, '<br>')),
+        ...(input.ctaUrl ? [button(input.ctaUrl, input.ctaLabel ?? 'Open ExamDump')] : []),
+        para(
+          `<span style="color:${MUTED};font-size:13px;">You are receiving this because you opted in to ExamDump product updates. ` +
+            `<a href="${escapeHtml(input.unsubscribeUrl)}" style="color:${MUTED};">Unsubscribe</a>.</span>`,
+        ),
+      ].join(''),
+    }),
+  };
+}

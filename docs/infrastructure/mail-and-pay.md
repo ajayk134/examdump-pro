@@ -192,3 +192,95 @@ Without SMTP credentials the mail service logs each message and writes a
 the verification link is returned in the API response as `devVerificationUrl`
 in non-production. Payments with `PAYMENT_ADAPTER=none` keep every account on
 the free tier.
+
+## ExamDump Mail — durable queue and Email Center
+
+Outbound mail no longer sends inline. Every message is written to a durable
+Postgres queue and delivered by a worker inside the API process.
+
+### Why a database queue
+
+An in-process buffer loses a signup verification email on every deploy. The
+queue survives restarts, claims work with `FOR UPDATE SKIP LOCKED` so two
+workers can never double-send, and recovers rows orphaned by a crashed worker
+once their lock lease expires.
+
+### Lifecycle
+
+```
+queued -> sending -> sent
+                  -> failed  (retryable: back to queued with backoff)
+                  -> dead    (retries exhausted or permanent error)
+queued -> cancelled   (campaign cancelled)
+queued -> suppressed  (consent, suppression list, preferences)
+```
+
+Backoff ladder: 1m, 5m, 15m, 1h, 4h (capped).
+
+### Transactional vs marketing
+
+- **Transactional** (verification, resets, security alerts, receipts, support
+  acknowledgements, subscription notices) is sent regardless of marketing
+  consent. Only `unsubscribe_all` or a hard bounce stops it.
+- **Marketing** (announcements, campaigns) requires explicit opt-in
+  (`email_preferences.marketing_opt_in`) and honours the suppression list.
+
+Suppressions are keyed by lowercased address so they survive account deletion.
+A `scope = 'all'` suppression blocks everything; `marketing` blocks only bulk
+mail. Re-suppressing never downgrades `all`.
+
+### Dedupe
+
+`email_queue.dedupe_key` has a partial unique index. Lifecycle mail uses keys
+like `sub_expiring:<userId>:<expiryDate>` and `login_alert:<userId>:<hour>`, so a
+repeated cron tick or several logins in an hour cannot produce duplicates. Bulk
+campaigns use `campaign:<campaignId>:<userId>` so a retried fan-out is safe.
+
+### Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MAIL_QUEUE_ENABLED` | `true` | Run the worker and schedulers |
+| `MAIL_BATCH_SIZE` | `10` | Messages per tick |
+| `MAIL_WORKER_INTERVAL_SECONDS` | `20` | Poll interval |
+| `MAIL_REMINDER_CRON` | `0 9 * * *` | Reminder + campaign dispatch schedule |
+| `MAIL_HOURLY_SEND_LIMIT` | `100` | Rate ceiling (Gmail consumer is ~100–150/hour) |
+| `MAIL_CAMPAIGN_BATCH_SIZE` | `50` | Recipients per campaign fan-out |
+| `MAIL_LOCK_LEASE_SECONDS` | `300` | Claim lease before a row is considered abandoned |
+
+> `deploy/docker-compose.yml` forwards environment variables one by one. Any new
+> variable must be added there or the container silently uses the schema default.
+
+### Admin Email Center
+
+`/admin-ops/email/*` (admin only, audited):
+
+- `GET /overview` — queue health, worker state, 30-day delivery stats
+- `GET|POST|DELETE /templates`, `GET /templates/:key/preview` — editable templates
+- `POST /preview` — server-side render with sample data
+- `POST /audience` — segment preview and eligible count
+- `GET|POST|PATCH /campaigns`, `POST /campaigns/:id/send|cancel` — bulk mail
+- `GET /queue`, `POST /queue/retry` — dead-letter inspection and requeue
+- `GET|POST /suppressions`, `DELETE /suppressions/:email`
+- `POST /send-one` — single test send
+
+UI lives at **Admin console → Email center**.
+
+### Unsubscribe
+
+Signed HMAC links (`services/mail/unsubscribe.ts`) work without a session.
+Marketing mail also carries `List-Unsubscribe` and
+`List-Unsubscribe-Post: One-Click` headers so mail clients show a native button.
+
+### Delivery semantics
+
+`status = sent` means **the SMTP server accepted the message** (a Message-ID was
+returned). It does not prove inbox placement — spam filtering happens after
+acceptance. Never treat `sent` as "the user has read this".
+
+### Reminder scheduling
+
+The daily cron queues expiry reminders for plans lapsing within 3 days and
+cancellation notices for accounts that lapsed in the last 24 hours. Both are
+dedupe-keyed per user per date, and a cancelled subscription stops matching the
+expiry query immediately.

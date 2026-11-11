@@ -3,6 +3,7 @@ import { isDBConnected } from '../db/client.js';
 import { catalogCounts } from '../services/catalog.service.js';
 import { count } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
+import { queueHealth } from '../services/mail/queue.service.js';
 import { users } from '../db/schema/index.js';
 import type { Env } from '../config/env.js';
 
@@ -26,9 +27,16 @@ export async function healthRoutes(app: FastifyInstance, env: Env): Promise<void
 
   app.get('/health/ready', async (_request, reply) => {
     const ready = await isDBConnected();
+    // Mail queue state is reported but never gates readiness: an outage in
+    // outbound email must not take the whole site down.
+    let mail: { backlog: number; stuck: number; dead: number } | null = null;
+    if (ready) {
+      mail = await queueHealth().catch(() => null);
+    }
     return reply.code(ready ? 200 : 503).send({
       status: ready ? 'ready' : 'not_ready',
       database: ready ? 'connected' : 'disconnected',
+      ...(mail ? { mail: { backlog: mail.backlog, stuck: mail.stuck, dead: mail.dead } } : {}),
     });
   });
 

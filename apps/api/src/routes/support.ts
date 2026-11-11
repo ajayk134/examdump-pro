@@ -15,6 +15,7 @@ import { parseOrThrow } from '../lib/validation.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { getDb } from '../db/client.js';
 import { announcements, supportTickets, ticketMessages } from '../db/schema/index.js';
+import { notifySupportReceived } from '../services/mail/notify.service.js';
 import { createNotification } from '../services/notification.service.js';
 import { recordAudit } from '../services/audit.service.js';
 
@@ -84,6 +85,17 @@ export async function supportRoutes(app: FastifyInstance, env: Env): Promise<voi
         link: '/support',
       });
     }
+
+    // Acknowledgement email. Best-effort: the ticket already exists, so a mail
+    // problem must not turn a successful submission into an error.
+    await notifySupportReceived(env, {
+      to: email,
+      userId: auth?.user.id,
+      name: auth?.user.name,
+      reference: ticket.reference,
+      subject: ticket.subject,
+      message: input.message,
+    }).catch(() => undefined);
     await recordAudit({
       actorId: auth?.user.id ?? null,
       actorEmail: email,

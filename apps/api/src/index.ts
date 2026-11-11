@@ -61,6 +61,46 @@ async function main(): Promise<void> {
   const app = await buildApp({ env });
 
   const tasks: cron.ScheduledTask[] = [];
+
+  /* ------------------------- ExamDump Mail worker ------------------------- */
+  // Outbound mail runs from a durable Postgres queue. The worker is an interval
+  // timer in-process: at this volume a separate service would cost more than it
+  // saves, and because state lives in the table a restart simply resumes.
+  if (env.MAIL_QUEUE_ENABLED) {
+    const { drainQueue, recoverQueue, runScheduledJobs } = await import('./services/mail/worker.js');
+    const { seedSystemTemplates } = await import('./services/mail/template-store.js');
+
+    // Release rows orphaned by whatever killed the previous process.
+    await recoverQueue(env, app.log).catch((err) => app.log.error({ err }, 'mail.recover_failed'));
+    // Make built-in templates visible in the Email Center (idempotent).
+    await seedSystemTemplates().catch((err) => app.log.warn({ err }, 'mail.seed_templates_failed'));
+
+    const intervalMs = env.MAIL_WORKER_INTERVAL_SECONDS * 1000;
+    const timer = setInterval(() => {
+      void drainQueue(env, app.log);
+    }, intervalMs);
+    // Do not hold the process open just to poll an empty queue.
+    timer.unref();
+
+    tasks.push(
+      cron.schedule(env.MAIL_REMINDER_CRON, async () => {
+        try {
+          const result = await runScheduledJobs(env, app.log);
+          app.log.info(result, 'mail.scheduled_jobs');
+        } catch (err) {
+          app.log.error({ err }, 'mail.scheduled_jobs_failed');
+        }
+      }),
+    );
+
+    // Kick the queue once at boot so anything left from before the restart goes
+    // out immediately rather than waiting for the first interval.
+    setImmediate(() => void drainQueue(env, app.log));
+    app.log.info(
+      { intervalSeconds: env.MAIL_WORKER_INTERVAL_SECONDS, batchSize: env.MAIL_BATCH_SIZE },
+      'mail.worker_started',
+    );
+  }
   if (env.ENABLE_DATASET_SYNC) {
     tasks.push(
       cron.schedule(env.DATASET_SYNC_CRON, async () => {

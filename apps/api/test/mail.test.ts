@@ -3,8 +3,8 @@ import { loadEnv, type Env } from '../src/config/env.js';
 import type { TestContext } from './helpers.js';
 import { createTestContext } from './helpers.js';
 import { getDb } from '../src/db/client.js';
-import { mailLogs, users } from '../src/db/schema/index.js';
-import { desc, eq } from 'drizzle-orm';
+import { emailQueue, mailLogs, users } from '../src/db/schema/index.js';
+import { desc, eq, sql } from 'drizzle-orm';
 import {
   brandContext,
   checkMailRateLimit,
@@ -271,8 +271,8 @@ describe('mail delivery logging', () => {
   });
 });
 
-describe('auth flows use the mail service', () => {
-  it('registers and records a verification email attempt', async () => {
+describe('auth flows queue mail', () => {
+  it('registers and queues a verification email', async () => {
     const db = getDb();
     const email = `mailreg_${Date.now()}@test.local`;
     const register = await ctx.app.inject({
@@ -282,16 +282,17 @@ describe('auth flows use the mail service', () => {
     });
     expect(register.statusCode).toBe(201);
 
+    // Mail is now queued rather than sent inline, so the assertion lives on the
+    // queue: the message is durable and will be attempted by the worker.
     const [row] = await db
       .select()
-      .from(mailLogs)
-      .where(eq(mailLogs.recipient, email))
-      .orderBy(desc(mailLogs.createdAt))
+      .from(emailQueue)
+      .where(eq(emailQueue.recipient, email.toLowerCase()))
+      .orderBy(desc(emailQueue.createdAt))
       .limit(1);
     expect(row?.template).toBe('email_verify');
-    // Test env has no SMTP, so it must be logged as suppressed rather than
-    // silently dropped.
-    expect(['suppressed', 'sent', 'failed']).toContain(row?.status);
+    expect(row?.status).toBe('queued');
+    expect(row?.attempts).toBe(0);
   });
 
   it('sends a password reset attempt for an existing user', async () => {
@@ -311,10 +312,10 @@ describe('auth flows use the mail service', () => {
 
     const [row] = await db
       .select()
-      .from(mailLogs)
-      .where(eq(mailLogs.recipient, email))
-      .orderBy(desc(mailLogs.createdAt))
+      .from(emailQueue)
+      .where(sql`${emailQueue.recipient} = ${email.toLowerCase()} and ${emailQueue.template} = 'password_reset'`)
       .limit(1);
     expect(row?.template).toBe('password_reset');
+    expect(row?.status).toBe('queued');
   });
 });

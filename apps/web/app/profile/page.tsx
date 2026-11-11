@@ -159,6 +159,87 @@ function PreferencesForm({
       <Toggle label="Email notifications" description="Important account and subscription emails." checked={prefs.emailNotifications} onChange={(v) => save({ ...prefs, emailNotifications: v })} />
       <Toggle label="Product updates" description="Occasional news about new features." checked={prefs.productUpdates} onChange={(v) => save({ ...prefs, productUpdates: v })} />
       <Toggle label="Weekly progress report" description="A summary of your study progress each week." checked={prefs.weeklyReport} onChange={(v) => save({ ...prefs, weeklyReport: v })} />
+      <EmailPreferenceToggles />
+      {saving ? <p className="text-xs text-content-muted">Saving…</p> : null}
+    </div>
+  );
+}
+
+/**
+ * Email consent controls.
+ *
+ * Separate from the general toggles above because this feed is auditable: the
+ * API records when consent was granted, and essential mail is shown as locked
+ * so nobody expects a password reset to stop arriving after opting out.
+ */
+function EmailPreferenceToggles() {
+  const { toast } = useToast();
+  const [prefs, setPrefs] = useState<{
+    marketingOptIn: boolean;
+    productUpdates: boolean;
+    subscriptionReminders: boolean;
+    weeklyReport: boolean;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    get<{ preferences: typeof prefs }>('/email/preferences')
+      .then((res) => setPrefs(res.preferences))
+      .catch(() => setPrefs(null));
+  }, []);
+
+  async function update(changes: Partial<NonNullable<typeof prefs>>) {
+    if (!prefs) return;
+    setPrefs({ ...prefs, ...changes });
+    setSaving(true);
+    try {
+      await patch('/email/preferences', changes);
+      toast('Email preferences saved', 'success');
+    } catch (err) {
+      toast(`Could not save: ${(err as Error).message}`, 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!prefs) return null;
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-surface-border p-4">
+      <div>
+        <p className="text-sm font-semibold">Email preferences</p>
+        <p className="text-xs text-content-muted">
+          Choose which optional email you receive. Security and account email is always sent.
+        </p>
+      </div>
+      <Toggle
+        label="Announcements and offers"
+        description="Product announcements, promotions and occasional offers."
+        checked={prefs.marketingOptIn}
+        onChange={(v) => void update({ marketingOptIn: v })}
+      />
+      <Toggle
+        label="Product updates"
+        description="News about new features and exams."
+        checked={prefs.productUpdates}
+        onChange={(v) => void update({ productUpdates: v })}
+      />
+      <Toggle
+        label="Subscription reminders"
+        description="Renewal reminders before your plan expires."
+        checked={prefs.subscriptionReminders}
+        onChange={(v) => void update({ subscriptionReminders: v })}
+      />
+      <Toggle
+        label="Weekly progress summary"
+        description="A summary of your study progress each week."
+        checked={prefs.weeklyReport}
+        onChange={(v) => void update({ weeklyReport: v })}
+      />
+      <p className="text-xs text-content-subtle">
+        Verification links, password resets, security alerts and payment receipts are always sent
+        because they are part of your account.
+      </p>
       {saving ? <p className="text-xs text-content-muted">Saving…</p> : null}
     </div>
   );

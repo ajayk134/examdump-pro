@@ -7,9 +7,14 @@
  */
 import type { Env } from '../../config/env.js';
 import {
+  accountNoticeEmail,
+  announcementEmail,
+  loginAlertEmail,
+  passwordChangedEmail,
   paymentReceiptEmail,
   passwordResetEmail,
   refundProcessedEmail,
+  supportReceivedEmail,
   subscriptionNoticeEmail,
   testEmail,
   verificationEmail,
@@ -29,6 +34,11 @@ export type MailTemplateName =
   | 'subscription_expiring'
   | 'subscription_cancelled'
   | 'refund_processed'
+  | 'login_alert'
+  | 'password_changed'
+  | 'account_notice'
+  | 'support_received'
+  | 'announcement'
   | 'test';
 
 export interface TemplateData {
@@ -63,6 +73,24 @@ export interface TemplateData {
 
   /* refund */
   reason?: string;
+
+  /* security alerts */
+  when?: string;
+  ip?: string;
+  device?: string;
+  location?: string;
+  securityUrl?: string;
+
+  /* account notice / announcement */
+  heading?: string;
+  body?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  title?: string;
+  message?: string;
+  /* support enquiry subject */
+  subject?: string;
+  unsubscribeUrl?: string;
 
   /* test */
   sentAt?: string;
@@ -140,6 +168,50 @@ export function renderMail(
         amount: require(data.amount, 'amount', template),
         reference: require(data.reference, 'reference', template),
         reason: data.reason,
+      });
+
+    case 'login_alert':
+      return loginAlertEmail(brand, {
+        name: data.name,
+        when: require(data.when, 'when', template),
+        ip: data.ip,
+        device: data.device,
+        location: data.location,
+        securityUrl: require(data.securityUrl, 'securityUrl', template),
+      });
+
+    case 'password_changed':
+      return passwordChangedEmail(brand, {
+        name: data.name,
+        when: require(data.when, 'when', template),
+        resetUrl: require(data.resetUrl, 'resetUrl', template),
+      });
+
+    case 'account_notice':
+      return accountNoticeEmail(brand, {
+        name: data.name,
+        heading: require(data.heading, 'heading', template),
+        body: require(data.body, 'body', template),
+        ctaLabel: data.ctaLabel,
+        ctaUrl: data.ctaUrl,
+      });
+
+    case 'support_received':
+      return supportReceivedEmail(brand, {
+        name: data.name,
+        reference: require(data.reference, 'reference', template),
+        subject: require(data.subject, 'subject', template),
+        message: require(data.message, 'message', template),
+      });
+
+    case 'announcement':
+      return announcementEmail(brand, {
+        name: data.name,
+        title: require(data.title, 'title', template),
+        body: require(data.body, 'body', template),
+        ctaLabel: data.ctaLabel,
+        ctaUrl: data.ctaUrl,
+        unsubscribeUrl: require(data.unsubscribeUrl, 'unsubscribeUrl', template),
       });
 
     case 'test':
