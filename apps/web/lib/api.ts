@@ -19,18 +19,61 @@ interface RequestOptions {
   headers?: Record<string, string>;
 }
 
+/**
+ * Single-flight refresh.
+ *
+ * The access token lives for 15 minutes. Without a silent refresh every request
+ * started failing with 401 once it expired, even though a 30-day refresh cookie
+ * was still present, and the UI rendered the user as signed out. Concurrent
+ * 401s share one refresh call so we never rotate the refresh token twice.
+ */
+let refreshInFlight: Promise<boolean> | null = null;
+
+export async function refreshSession(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(`${BASE}/api/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      return res.ok;
+    } catch {
+      return false;
+    } finally {
+      // Release after the microtask queue so callers awaiting this run resolve
+      // with the result rather than a cleared promise.
+      setTimeout(() => {
+        refreshInFlight = null;
+      }, 0);
+    }
+  })();
+  return refreshInFlight;
+}
+
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, signal, headers } = options;
-  const response = await fetch(`${BASE}/api${path}`, {
-    method,
-    credentials: 'include',
-    signal,
-    headers: {
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      ...headers,
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const send = () =>
+    fetch(`${BASE}/api${path}`, {
+      method,
+      credentials: 'include',
+      signal,
+      headers: {
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...headers,
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+
+  let response = await send();
+
+  // A 401 on anything other than the auth endpoints themselves means the access
+  // cookie expired. Refresh once and replay the original request.
+  if (response.status === 401 && !path.startsWith('/auth/')) {
+    const refreshed = await refreshSession();
+    if (refreshed) response = await send();
+  }
 
   const text = await response.text();
   let data: unknown = null;
@@ -95,13 +138,23 @@ export async function streamPost(
   handlers: StreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(`${BASE}/api${path}`, {
-    method: 'POST',
-    credentials: 'include',
-    signal,
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify(body),
-  });
+  const send = () =>
+    fetch(`${BASE}/api${path}`, {
+      method: 'POST',
+      credentials: 'include',
+      signal,
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify(body),
+    });
+
+  let response = await send();
+
+  // Streaming endpoints need the same silent refresh as regular calls, or a
+  // hint requested after the access token expired fails with a bare 401.
+  if (response.status === 401) {
+    const refreshed = await refreshSession();
+    if (refreshed) response = await send();
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');

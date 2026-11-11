@@ -136,4 +136,54 @@ describe('authentication', () => {
     const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: user.cookie } });
     expect(me.statusCode).toBe(401);
   });
+
+  // Regression: /register used to return a user but never set the session
+  // cookies, so the browser stayed anonymous and the next navigation bounced
+  // the brand-new account to /login.
+  it('registers with a live session so the dashboard is reachable immediately', async () => {
+    const email = `newsession_${Date.now()}@test.local`;
+    const register = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: { name: 'New Session', email, password: 'Str0ngPass', acceptTerms: true },
+    });
+    expect(register.statusCode).toBe(201);
+
+    const cookie = extractCookies(register);
+    expect(cookie).toContain('ed_access=');
+    expect(cookie).toContain('ed_refresh=');
+
+    const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
+    expect(me.statusCode).toBe(200);
+    expect((me.json() as { user: { email: string } }).user.email).toBe(email);
+  });
+
+  // Regression: the access cookie expires after 15 minutes. A valid refresh
+  // cookie must be able to mint a fresh access token without a password.
+  it('refreshes an expired access cookie using only the refresh cookie', async () => {
+    const user = await registerVerifiedUser(app);
+    const refreshCookie = user.cookie
+      .split('; ')
+      .filter((part) => part.startsWith('ed_refresh='))
+      .join('; ');
+    expect(refreshCookie).toContain('ed_refresh=');
+
+    const refreshed = await app.inject({
+      method: 'POST',
+      url: '/api/auth/refresh',
+      headers: { cookie: refreshCookie },
+    });
+    expect(refreshed.statusCode).toBe(200);
+
+    const newCookie = extractCookies(refreshed);
+    expect(newCookie).toContain('ed_access=');
+
+    const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: newCookie } });
+    expect(me.statusCode).toBe(200);
+  });
+
+  it('rejects a refresh without a refresh cookie', async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/auth/refresh' });
+    expect(response.statusCode).toBe(401);
+  });
 });

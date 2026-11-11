@@ -6,7 +6,7 @@ import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { AuthShell } from '@/components/auth-shell';
 import { GoogleButton } from '@/components/google-button';
 import { Alert } from '@/components/ui';
-import { useToast } from '@/components/providers';
+import { useAuth, useToast } from '@/components/providers';
 import { post } from '@/lib/api';
 import type { User } from '@/lib/types';
 
@@ -14,6 +14,7 @@ function RegisterForm() {
   const router = useRouter();
   const params = useSearchParams();
   const { toast } = useToast();
+  const { user, loading: authLoading, refresh } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', password: '', referralCode: '', acceptTerms: false });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,6 +25,14 @@ function RegisterForm() {
     const ref = params.get('ref');
     if (ref) setForm((prev) => ({ ...prev, referralCode: ref.toUpperCase() }));
   }, [params]);
+
+  // Someone who already has a session has no business on the sign-up form:
+  // submitting it with their own email only produces "account already exists".
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace(params.get('next') || '/dashboard');
+    }
+  }, [authLoading, user, router, params]);
 
   const update = (key: keyof typeof form) => (value: string | boolean) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -43,9 +52,11 @@ function RegisterForm() {
         referralCode: form.referralCode || undefined,
         acceptTerms: true,
       });
+      // Registration signs the account in, so the session is already live.
+      await refresh();
       setDone(true);
       setDevVerify(result.devVerificationUrl ?? '');
-      toast('Account created. Check your email to verify.', 'success');
+      toast('Account created. You are signed in.', 'success');
     } catch (err) {
       setError((err as Error).message || 'Registration failed');
     } finally {
@@ -64,7 +75,9 @@ function RegisterForm() {
               <a className="link break-all" href={devVerify}>Open verification link</a>
             </Alert>
           ) : null}
-          <button onClick={() => router.push('/login')} className="btn-primary w-full py-3">Go to sign in</button>
+          <button onClick={() => router.push('/dashboard')} className="btn-primary w-full py-3">
+            Go to your dashboard
+          </button>
         </div>
       </AuthShell>
     );

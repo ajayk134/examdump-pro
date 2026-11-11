@@ -316,6 +316,11 @@ export async function* streamChat(
   let lastError: unknown;
   for (const model of aiModelCandidates(env)) {
     let emitted = false;
+    // A provider "busy" (429) or gateway blip (503) is often gone a second
+    // later, so give the same model one more chance after a short backoff
+    // before dropping to the next candidate. Only retried while nothing has
+    // been emitted, so the client never receives duplicated text.
+    for (let attempt = 1; ; attempt += 1) {
     try {
       for await (const chunk of streamModel(env, model, options)) {
         emitted = true;
@@ -333,6 +338,11 @@ export async function* streamChat(
       }
       const e = err as { retryable?: boolean; status?: number };
       if (e.status && e.status < 500 && e.status !== 404 && e.status !== 410 && e.status !== 429) break;
+      if (emitted || attempt >= 2) break;
+      const retryableStatus = e.status === 429 || e.status === 503 || e.status === 504 || !e.status;
+      if (!retryableStatus) break;
+      await new Promise((resolve) => setTimeout(resolve, 600 * attempt));
+    }
     }
   }
 

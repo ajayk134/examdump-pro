@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { ApiError, get, post } from '@/lib/api';
+import { ApiError, get, post, refreshSession } from '@/lib/api';
 import type { User } from '@/lib/types';
 
 /* ----------------------------- Theme ----------------------------- */
@@ -155,8 +155,20 @@ function AuthProvider({ children }: { children: ReactNode }) {
       const data = await get<{ user: User }>('/auth/me');
       setUser(data.user);
     } catch (err) {
-      if (!(err instanceof ApiError) || err.status !== 401) {
-        // Network hiccups should not force a logout state visually.
+      // A 401 here usually means the 15-minute access cookie expired while the
+      // refresh cookie is still valid, so try one silent refresh before
+      // deciding the visitor is signed out. `get` already attempts this, but
+      // handling it again keeps the state correct if only /auth/me failed.
+      if (err instanceof ApiError && err.status === 401) {
+        if (await refreshSession()) {
+          try {
+            const retried = await get<{ user: User }>('/auth/me');
+            setUser(retried.user);
+            return;
+          } catch {
+            /* fall through to signed-out */
+          }
+        }
       }
       setUser(null);
     } finally {
@@ -166,6 +178,21 @@ function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+
+  // Re-validate when the tab becomes visible again. Sessions can change while
+  // the page is backgrounded (expiry, sign-out in another tab), and the old
+  // behaviour left a stale user object on screen until a manual reload.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
   }, [refresh]);
 
   const logout = useCallback(async () => {

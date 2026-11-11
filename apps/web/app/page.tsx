@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { LandingStats } from '@/components/landing-stats';
+import { HeroCta } from '@/components/hero-cta';
 import { IconArrowRight, IconBook, IconChart, IconCheckCircle, IconLightning, IconMessage, IconTrophy } from '@/components/icons';
 
 const features = [
@@ -74,9 +75,7 @@ export default function HomePage() {
           </p>
 
           <div className="mt-7 flex flex-col items-stretch justify-center gap-2.5 sm:flex-row sm:items-center">
-            <Link href="/register" className="btn-primary btn-lg">
-              Start free — no card needed
-            </Link>
+            <HeroCta />
             <Link href="/exams" className="btn-secondary btn-lg">
               Browse exams
             </Link>

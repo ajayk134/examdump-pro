@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useState, type FormEvent } from 'react';
+import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { AuthShell } from '@/components/auth-shell';
 import { GoogleButton } from '@/components/google-button';
 import { Alert } from '@/components/ui';
@@ -13,12 +13,20 @@ import type { User } from '@/lib/types';
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const { refresh } = useAuth();
+  const { user, loading: authLoading, refresh } = useAuth();
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Never show the sign-in form to an already authenticated visitor; send them
+  // on to wherever they were headed instead.
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace(params.get('next') || '/dashboard');
+    }
+  }, [authLoading, user, router, params]);
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();

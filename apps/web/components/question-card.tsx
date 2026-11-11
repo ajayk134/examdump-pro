@@ -247,6 +247,17 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
     setHintStreaming(false);
 
     let received = false;
+    // Watchdog: if the stream produces nothing at all, stop showing a spinner
+    // forever and offer a retry instead of hanging silently.
+    const watchdog = window.setTimeout(() => {
+      if (hintAbort.current === controller && !received) {
+        controller.abort();
+        setHintLoading(false);
+        setHintStreaming(false);
+        setHintError('The hint is taking too long. Please try again.');
+      }
+    }, 45000);
+
     try {
       await streamPost(
         '/ai/hint/stream',
@@ -272,9 +283,16 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
     } catch (err) {
       if ((err as Error).name !== 'AbortError') setHintError((err as Error).message);
     } finally {
-      setHintLoading(false);
-      setHintStreaming(false);
-      hintAbort.current = null;
+      window.clearTimeout(watchdog);
+      // Only finalise if this is still the active request. A superseded request
+      // resolving later used to clear the newer request's loading state, which
+      // left the hint panel empty with no spinner - the loading state appeared
+      // to hang and the hint simply never showed.
+      if (hintAbort.current === controller) {
+        setHintLoading(false);
+        setHintStreaming(false);
+        hintAbort.current = null;
+      }
     }
   };
 

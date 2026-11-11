@@ -70,7 +70,7 @@ export async function register(
   env: Env,
   input: RegisterInput,
   meta: RequestMeta,
-): Promise<{ user: User; devVerificationUrl?: string }> {
+): Promise<{ user: User; devVerificationUrl?: string; session: AuthResult }> {
   const db = getDb();
   const settings = await getSettings(env);
   if (!settings.registrationsOpen) throw conflict('New registrations are temporarily closed.');
@@ -141,8 +141,14 @@ export async function register(
     userAgent: meta.userAgent,
   });
 
+  // Registering establishes a session straight away. Without this the account
+  // existed but the browser held no cookies, so every protected route bounced
+  // the new user back to /login until they signed in by hand.
+  const session = await issueSession(user, env, meta);
+
   return {
     user,
+    session,
     devVerificationUrl: !delivery.delivered && env.NODE_ENV !== 'production' ? verifyUrl : undefined,
   };
 }

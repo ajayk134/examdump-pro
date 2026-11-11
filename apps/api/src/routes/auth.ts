@@ -30,8 +30,12 @@ export async function authRoutes(app: FastifyInstance, env: Env): Promise<void> 
   app.post('/register', authRateLimit, async (request, reply) => {
     const input = parseOrThrow(registerSchema, request.body);
     const result = await authService.register(env, input, meta(request));
+    // Sign the new account in immediately: the session cookies are what let the
+    // post-registration redirect reach the dashboard instead of /login.
+    setAuthCookies(reply, env, result.session);
     return reply.code(201).send({
       user: serializeUser(result.user),
+      accessToken: result.session.accessToken,
       devVerificationUrl: result.devVerificationUrl,
     });
   });
