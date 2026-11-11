@@ -47,8 +47,17 @@ const envSchema = z.object({
   MAIL_REPLY_TO: z.string().optional(),
   /** Base URL used to build absolute links inside emails. */
   MAIL_PUBLIC_URL: z.string().optional(),
-  /** Master switch so mail can be paused without removing credentials. */
-  MAIL_ENABLED: booleanString,
+  /**
+   * Master switch so mail can be paused without removing credentials.
+   *
+   * Opt-out, not opt-in: an operator who supplies SMTP credentials expects mail
+   * to work. Defaults to true; set MAIL_ENABLED=false to pause sending (every
+   * message is then logged as `suppressed`, never silently dropped).
+   */
+  MAIL_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v !== 'false' && v !== '0'),
   /** Attempts per message (first try + retries). */
   MAIL_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5).default(3),
   /** Base backoff between retries, in ms (doubles each attempt). */
