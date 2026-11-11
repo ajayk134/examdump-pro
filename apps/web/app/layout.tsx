@@ -50,7 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AnnouncementBanner />
           <main
             id="main"
-            className="has-bottom-nav mx-auto min-h-[calc(100dvh-3.5rem)] w-full max-w-7xl px-3.5 py-5 sm:px-6 sm:py-7 lg:pb-10"
+            className="has-bottom-nav mx-auto flex w-full min-h-0 max-w-7xl flex-1 flex-col px-3.5 py-5 sm:px-6 sm:py-7 lg:pb-10"
           >
             {children}
           </main>

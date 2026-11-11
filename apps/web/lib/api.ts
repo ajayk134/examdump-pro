@@ -68,7 +68,16 @@ export function apiBase(): string {
 /* ------------------------------------------------------------------ */
 
 export interface StreamHandlers {
+  /** User-visible answer text. */
   onDelta: (text: string) => void;
+  /**
+   * Model-authored reasoning summary. Only emitted by providers that publish a
+   * `reasoning_content` channel; it is rendered separately from the answer and
+   * never merged into it.
+   */
+  onReasoning?: (text: string) => void;
+  onReasoningStart?: () => void;
+  onReasoningEnd?: () => void;
   onDone?: (meta: { model?: string; degraded?: boolean }) => void;
   onError?: (message: string) => void;
 }
@@ -123,14 +132,19 @@ export async function streamPost(
       if (!payload) continue;
       try {
         const chunk = JSON.parse(payload) as {
-          type: 'delta' | 'done' | 'error';
+          type: 'delta' | 'done' | 'error' | 'reasoning_start' | 'reasoning_end';
+          channel?: 'answer' | 'reasoning';
           text?: string;
           model?: string;
           degraded?: boolean;
           message?: string;
         };
-        if (chunk.type === 'delta' && chunk.text) handlers.onDelta(chunk.text);
-        else if (chunk.type === 'done') handlers.onDone?.({ model: chunk.model, degraded: chunk.degraded });
+        if (chunk.type === 'reasoning_start') handlers.onReasoningStart?.();
+        else if (chunk.type === 'reasoning_end') handlers.onReasoningEnd?.();
+        else if (chunk.type === 'delta' && chunk.text) {
+          if (chunk.channel === 'reasoning') handlers.onReasoning?.(chunk.text);
+          else handlers.onDelta(chunk.text);
+        } else if (chunk.type === 'done') handlers.onDone?.({ model: chunk.model, degraded: chunk.degraded });
         else if (chunk.type === 'error') handlers.onError?.(chunk.message ?? 'The AI tutor is unavailable.');
       } catch {
         /* ignore malformed frames */

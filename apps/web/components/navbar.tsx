@@ -338,7 +338,7 @@ function BottomNav({ pathname }: { pathname: string }) {
                 href={item.href}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'relative flex h-full flex-col items-center justify-center gap-1 text-[0.625rem] font-semibold transition-colors',
+                  'relative flex h-full flex-col items-center justify-center gap-1 text-[0.6875rem] font-semibold transition-colors',
                   active ? 'text-accent' : 'text-content-muted',
                 )}
               >

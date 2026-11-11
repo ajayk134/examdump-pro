@@ -369,6 +369,15 @@ export interface ChatMessage {
   pending?: boolean;
   /** Client-only: transport or provider failure for this turn. */
   error?: string;
+  /**
+   * Client-only: model-authored reasoning summary streamed on a separate
+   * channel. Rendered in a collapsed panel, never merged into `content`.
+   */
+  reasoning?: string;
+  /** Client-only: reasoning is still arriving. */
+  reasoningStreaming?: boolean;
+  /** Client-only: the reader stopped generation before it finished. */
+  stopped?: boolean;
 }
 
 export interface AiConversation {

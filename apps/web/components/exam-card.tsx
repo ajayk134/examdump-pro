@@ -61,7 +61,7 @@ export function ExamCard({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="mb-1 flex items-center gap-1.5">
-            <span className="badge badge-accent font-mono text-[0.625rem] uppercase tracking-wide">{exam.code}</span>
+            <span className="badge badge-accent font-mono text-[0.6875rem] uppercase tracking-wide">{exam.code}</span>
             {exam.lastScore != null ? (
               <span className={cn('badge', exam.lastScore >= 80 ? 'badge-success' : 'badge-warning')}>
                 {Math.round(exam.lastScore)}%

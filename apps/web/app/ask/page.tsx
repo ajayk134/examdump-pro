@@ -44,13 +44,25 @@ function AskInner() {
 
   if (provider && exam) {
     return (
-      <div className="mx-auto flex h-[calc(100dvh-8rem)] max-w-3xl flex-col">
-        <div className="mb-3 flex items-center gap-2">
-          <Link href="/ask" className="text-sm text-content-muted transition hover:text-content-primary">
+      // Anchor the chat to the viewport instead of the document flow: this is
+      // the only reliable way to keep the composer pinned above the mobile
+      // bottom nav regardless of how tall the transcript grows.
+      <div
+        className="fixed inset-x-0 bottom-0 flex flex-col overflow-hidden"
+        style={{
+          top: 'calc(var(--header-h) + env(safe-area-inset-top, 0px))',
+          paddingBottom: 'calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px))',
+        }}
+      >
+        <div className="mx-auto w-full max-w-3xl shrink-0 px-3 pt-1.5 pb-1 sm:px-0">
+          <Link
+            href="/ask"
+            className="inline-flex min-h-9 items-center gap-1 text-xs text-content-muted transition-colors hover:text-content-primary"
+          >
             ← All conversations
           </Link>
         </div>
-        <div className="surface flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="surface mx-auto flex w-full max-w-3xl min-h-0 flex-1 flex-col overflow-hidden rounded-none md:mb-4 md:rounded-2xl">
           <AiChat
             key={`${provider}:${exam}:${questionId ?? ''}`}
             providerId={provider}
@@ -128,7 +140,7 @@ function AskInner() {
                 <Link
                   key={slug}
                   href={`/exams/${encodeURIComponent(slug)}`}
-                  className="badge transition hover:border-brand-400/60 hover:text-content-primary"
+                  className="inline-flex min-h-9 items-center rounded-full border border-surface-border-strong bg-surface-raised px-3 text-xs font-medium text-content-secondary transition-colors hover:border-accent/50 hover:text-content-primary"
                 >
                   {slug}
                 </Link>

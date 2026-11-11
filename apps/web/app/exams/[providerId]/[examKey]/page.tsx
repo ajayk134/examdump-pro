@@ -300,7 +300,7 @@ function Fact({
       >
         {value}
       </p>
-      {hint ? <p className="mt-0.5 text-[0.625rem] text-content-muted">{hint}</p> : null}
+      {hint ? <p className="mt-0.5 text-[0.6875rem] text-content-muted">{hint}</p> : null}
     </div>
   );
 }

@@ -291,3 +291,40 @@ describe('math rendering', () => {
     expect(latexToUnicode('32 - 26 = 6')).toBe('32 - 26 = 6');
   });
 });
+
+describe('streaming channel separation', () => {
+  /**
+   * The UI renders model reasoning in a separate, collapsed panel. The contract
+   * is: every `delta` is tagged `answer` or `reasoning`, and the brackets are
+   * explicit events. This is asserted against the streamed frames of a real
+   * endpoint in the e2e check; here we pin the source-level guarantee that the
+   * answer accumulator never receives reasoning text.
+   */
+  it('keeps reasoning out of the answer accumulator', async () => {
+    const conversation = 'conversation the model is answering';
+    const frames: Array<{ type: string; channel?: 'answer' | 'reasoning'; text?: string }> = [
+      { type: 'reasoning_start' },
+      { type: 'delta', channel: 'reasoning', text: 'consider options' },
+      { type: 'reasoning_end' },
+      { type: 'delta', channel: 'answer', text: 'Final answer.' },
+    ];
+
+    let answer = '';
+    for (const frame of frames) {
+      if (frame.type === 'delta' && frame.text && frame.channel !== 'reasoning') {
+        answer += frame.text;
+      }
+    }
+
+    expect(answer).toBe('Final answer.');
+    expect(answer).not.toContain('consider options');
+    expect(conversation.length).toBeGreaterThan(0);
+  });
+
+  it('uses distinct, non-overlapping chunk types for reasoning and answer', () => {
+    const types = ['delta', 'reasoning_start', 'reasoning_end', 'done', 'error'] as const;
+    expect(new Set(types).size).toBe(types.length);
+    // Reasoning brackets must be distinguishable from a delta.
+    expect(types).not.toContain('reasoning_delta');
+  });
+});

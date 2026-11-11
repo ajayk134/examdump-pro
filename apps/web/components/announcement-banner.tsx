@@ -72,7 +72,7 @@ export function AnnouncementBanner() {
           <button
             type="button"
             onClick={() => dismiss(a.id)}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/10"
             aria-label="Dismiss announcement"
           >
             <IconX width={16} height={16} />

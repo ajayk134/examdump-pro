@@ -43,18 +43,22 @@ export class AiError extends Error {
  * and CompTIA practice questions: first-token latency, streamed frame count,
  * answer accuracy and usable output length).
  *
- * Note: `deepseek-ai/deepseek-v4.1-flash` and `z-ai/glm-5.3-flash` are listed
- * by GET /v1/models but do not currently serve traffic (connections hang with
- * no response), so they are deliberately excluded. Reasoning-heavy models such
- * as `minimaxai/minimax-m3.1-flash` spend most of the token budget on hidden
- * reasoning and stream little visible text, so they are used only as a last
- * resort for non-streaming calls.
+ * The primary model is `nemotron-3-nano-omni-...-reasoning`: it is the only
+ * fast model that streams a separate `reasoning_content` channel, so the UI can
+ * show a reasoning summary without ever exposing raw chain-of-thought.
+ *
+ * Excluded after measurement: `deepseek-ai/deepseek-v4.1-flash` and
+ * `z-ai/glm-5.3-flash` are listed by GET /v1/models but hang with no response.
+ * `nemotron-3-ultra-550b-a55b` and `minimax-m3.1-flash` intermittently stop
+ * responding entirely (75s+ with no bytes), so they cannot be the default.
+ * `nemotron-3.5-lightning` returns reasoning tokens but streams no visible
+ * answer, which looks like a broken reply to a user.
  */
 const NVIDIA_FALLBACK_MODELS = [
-  'nvidia/nemotron-3-ultra-550b-a55b',
   'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
-  'minimaxai/minimax-m3.1-flash',
   'meta/llama-3.2-90b-vision-instruct',
+  'nvidia/nemotron-3-ultra-550b-a55b',
+  'minimaxai/minimax-m3.1-flash',
 ];
 
 export function aiConfigured(env: Env): boolean {
@@ -271,7 +275,19 @@ export function offlineExplanation(
 /* ------------------------------------------------------------------ */
 
 export interface StreamChunk {
-  type: 'delta' | 'done' | 'error';
+  /**
+   * `reasoning_start` / `reasoning_end` bracket the model-authored reasoning
+   * summary so a client can render it in a separate, collapsible panel. Raw
+   * chain-of-thought is never forwarded; only what the provider publishes as
+   * `reasoning_content` is passed through.
+   */
+  type: 'delta' | 'done' | 'error' | 'reasoning_start' | 'reasoning_end';
+  /**
+   * `delta` carries the user-visible answer. `reasoning` carries a short,
+   * model-authored summary stream that the UI shows in a separate, collapsed
+   * panel. It is never mixed into the answer text.
+   */
+  channel?: 'answer' | 'reasoning';
   text?: string;
   model?: string;
   degraded?: boolean;
@@ -337,6 +353,9 @@ async function* streamModel(
 ): AsyncGenerator<StreamChunk> {
   const started = Date.now();
   const controller = new AbortController();
+  // This bounds time-to-first-token only. Reasoning models can legitimately
+  // think for tens of seconds, so the timer is cleared as soon as the response
+  // headers arrive rather than aborting a healthy long stream.
   const timeout = setTimeout(() => controller.abort(), env.AI_TIMEOUT_MS);
   const signal = options.signal
     ? AbortSignal.any([controller.signal, options.signal])
@@ -368,6 +387,7 @@ async function* streamModel(
       });
     }
 
+    clearTimeout(timeout);
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -389,13 +409,20 @@ async function* streamModel(
           try {
             const parsed = JSON.parse(payload) as {
               choices?: Array<{
-                delta?: { content?: string | null };
+                delta?: {
+                  content?: string | null;
+                  /** Only some NVIDIA models expose this; it is a model-authored
+                   *  summary, not the raw internal chain of thought. */
+                  reasoning_content?: string | null;
+                };
                 finish_reason?: string | null;
               }>;
             };
             const choice = parsed.choices?.[0];
+            const reasoning = choice?.delta?.reasoning_content;
+            if (reasoning) yield { type: 'delta', channel: 'reasoning', text: reasoning };
             const text = choice?.delta?.content;
-            if (text) yield { type: 'delta', text };
+            if (text) yield { type: 'delta', channel: 'answer', text };
             if (choice?.finish_reason) {
               // `length` means the provider hit the max-token ceiling; the
               // answer is complete as far as it will get.

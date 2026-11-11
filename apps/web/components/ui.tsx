@@ -650,7 +650,7 @@ export function SegmentedSort({
           onClick={() => onChange(opt.id)}
           aria-pressed={value === opt.id}
           className={cn(
-            'shrink-0 rounded-[0.4rem] px-2.5 py-1 text-[0.6875rem] font-semibold transition-colors',
+            'inline-flex min-h-9 shrink-0 items-center rounded-[0.4rem] px-2.5 py-1 text-[0.6875rem] font-semibold transition-colors',
             value === opt.id
               ? 'bg-surface-raised text-content-primary shadow-sm'
               : 'text-content-muted hover:text-content-secondary',

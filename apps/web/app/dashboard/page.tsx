@@ -187,7 +187,12 @@ export default function DashboardPage() {
         <div className="surface p-5">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="heading-2">Recent attempts</h2>
-            <Link href="/history" className="text-sm text-brand-500 hover:underline dark:text-brand-300">View all</Link>
+            <Link
+              href="/history"
+              className="inline-flex min-h-9 items-center text-sm text-accent hover:underline"
+            >
+              View all
+            </Link>
           </div>
           {recentAttempts.length === 0 ? (
             <p className="py-6 text-center text-sm text-content-muted">No attempts yet. Pick an exam and start practising!</p>

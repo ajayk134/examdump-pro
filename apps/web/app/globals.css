@@ -35,7 +35,7 @@
   /* Semantic */
   --success: 16 152 106;
   --success-soft: 224 247 239;
-  --warning: 201 124 12;
+  --warning: 146 90 10;
   --warning-soft: 253 243 220;
   --danger: 205 51 74;
   --danger-soft: 253 232 236;
@@ -53,7 +53,16 @@
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
   --bottom-nav-h: 64px;
+  /* Height of the sticky top bar, excluding any notch inset. Matches the
+     navbar's h-14 (mobile) and sm:h-16 (>=640px). */
+  --header-h: 56px;
 }
+@media (min-width: 640px) {
+  :root {
+    --header-h: 64px;
+  }
+}
+
 
 .dark {
   --surface-base: 7 13 24;
@@ -110,7 +119,11 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  min-height: 100vh;
+  /* Column layout lets a full-height page claim exactly the space left between
+     the header and the mobile bottom nav. `min-height` (not `height`) keeps
+     ordinary long pages scrolling normally. */
+  display: flex;
+  flex-direction: column;
   min-height: 100dvh;
   overflow-x: hidden;
 }
@@ -173,7 +186,7 @@ body::before {
   }
 
   .eyebrow {
-    @apply text-[0.68rem] font-bold uppercase tracking-[0.14em] text-content-muted;
+    @apply text-[0.75rem] font-bold uppercase tracking-[0.12em] text-content-muted;
   }
 
   .numeric {

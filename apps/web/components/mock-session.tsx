@@ -252,17 +252,17 @@ export function MockSession({
 
         <div className="grid grid-cols-3 gap-2.5">
           <div className="surface p-3 text-center">
-            <p className="text-[0.625rem] font-bold uppercase tracking-wider text-content-muted">Correct</p>
+            <p className="text-[0.6875rem] font-bold uppercase tracking-wider text-content-muted">Correct</p>
             <p className="numeric mt-1 text-xl font-bold text-positive">{result.attempt.correctCount}</p>
           </div>
           <div className="surface p-3 text-center">
-            <p className="text-[0.625rem] font-bold uppercase tracking-wider text-content-muted">Incorrect</p>
+            <p className="text-[0.6875rem] font-bold uppercase tracking-wider text-content-muted">Incorrect</p>
             <p className="numeric mt-1 text-xl font-bold text-negative">
               {result.attempt.totalQuestions - result.attempt.correctCount}
             </p>
           </div>
           <div className="surface p-3 text-center">
-            <p className="text-[0.625rem] font-bold uppercase tracking-wider text-content-muted">Streak</p>
+            <p className="text-[0.6875rem] font-bold uppercase tracking-wider text-content-muted">Streak</p>
             <p className="numeric mt-1 text-xl font-bold text-accent">{result.stats.currentStreak}d</p>
           </div>
         </div>

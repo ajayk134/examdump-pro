@@ -53,7 +53,7 @@ const envSchema = z.object({
   /* ---------------- AI (NVIDIA NIM by default) ---------------- */
   AI_PROVIDER: z.enum(['nvidia', 'openai', 'openai-compatible']).default('nvidia'),
   AI_API_KEY: z.string().optional(),
-  AI_MODEL: z.string().default('nvidia/nemotron-3-ultra-550b-a55b'),
+  AI_MODEL: z.string().default('nvidia/nemotron-3-nano-omni-30b-a3b-reasoning'),
   AI_BASE_URL: z.string().default('https://integrate.api.nvidia.com/v1'),
   AI_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   AI_MAX_TOKENS: z.coerce.number().int().positive().default(1400),

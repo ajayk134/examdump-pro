@@ -303,6 +303,9 @@ export async function* sendMessage(
   let model: string | null = null;
   let degraded = false;
   let failed = false;
+  // Reasoning is model-authored summary only, streamed on its own channel so
+  // the answer text stays pure and the UI can collapse it separately.
+  let reasoningSeen = false;
 
   for await (const chunk of streamChat(env, {
     messages,
@@ -310,8 +313,21 @@ export async function* sendMessage(
     temperature: 0.35,
   })) {
     if (chunk.type === 'delta' && chunk.text) {
+      if (chunk.channel === 'reasoning') {
+        if (!reasoningSeen) {
+          reasoningSeen = true;
+          yield { type: 'reasoning_start' };
+        }
+        yield { type: 'delta', channel: 'reasoning', text: chunk.text };
+        continue;
+      }
+      // Close the reasoning panel the first time answer text arrives.
+      if (reasoningSeen) {
+        reasoningSeen = false;
+        yield { type: 'reasoning_end' };
+      }
       answer += chunk.text;
-      yield chunk;
+      yield { type: 'delta', channel: 'answer', text: chunk.text };
     } else if (chunk.type === 'done') {
       model = chunk.model ?? null;
       degraded = Boolean(chunk.degraded);
