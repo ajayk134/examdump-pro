@@ -31,12 +31,33 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
 
+  /* ---------------- Email: ExamDump Mail (Gmail SMTP) ---------------- */
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().default(587),
+  /**
+   * STARTTLS on 587 must be `false` here: nodemailer then connects in plain
+   * text and upgrades with STARTTLS. Setting `true` means implicit TLS (465).
+   */
   SMTP_SECURE: booleanString,
   SMTP_USER: z.string().optional(),
+  /** Google App Password. Server-side only; never sent to the frontend. */
   SMTP_PASS: z.string().optional(),
-  MAIL_FROM: z.string().default('ExamDump Pro <no-reply@examdump.pro>'),
+  MAIL_FROM: z.string().default('ExamDump <examdump.official@gmail.com>'),
+  /** Reply-To shown in the mail client. Defaults to the sender address. */
+  MAIL_REPLY_TO: z.string().optional(),
+  /** Base URL used to build absolute links inside emails. */
+  MAIL_PUBLIC_URL: z.string().optional(),
+  /** Master switch so mail can be paused without removing credentials. */
+  MAIL_ENABLED: booleanString,
+  /** Attempts per message (first try + retries). */
+  MAIL_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5).default(3),
+  /** Base backoff between retries, in ms (doubles each attempt). */
+  MAIL_RETRY_BASE_MS: z.coerce.number().int().positive().default(500),
+  /** Per-recipient throttle: max messages per window. */
+  MAIL_RATE_MAX: z.coerce.number().int().positive().default(5),
+  MAIL_RATE_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  /** Connection watchdog for a single SMTP conversation. */
+  MAIL_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
 
   GITHUB_TOKEN: z.string().optional(),
   DATASET_OWNER: z.string().default('ajayk134'),
@@ -100,6 +121,22 @@ const envSchema = z.object({
   PAYMENT_RECONCILE_CRON: z.string().default('*/30 * * * *'),
   /** Timeout for gateway HTTP calls in ms. */
   PAYMENT_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+  /* -------- ExamDump Pay: modular adapters (UPI / card) -------- */
+  /**
+   * Adapter that will handle live payments. 'none' keeps the platform free-tier
+   * only and no checkout is ever offered. No adapter can settle a payment
+   * without a verified gateway callback.
+   */
+  PAYMENT_ADAPTER: z.enum(['none', 'razorpay', 'hyperswitch']).default('none'),
+  /** Methods offered by the checkout UI once an adapter is live. */
+  PAYMENT_METHODS: z.string().default('upi,card'),
+  /** Secret used to sign internal webhook replays / adapter callbacks (HMAC-SHA256). */
+  PAYMENT_WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().positive().default(300),
+  /** Minimum and maximum order value (minor units) accepted from clients. */
+  PAYMENT_MIN_AMOUNT_MINOR: z.coerce.number().int().positive().default(100),
+  PAYMENT_MAX_AMOUNT_MINOR: z.coerce.number().int().positive().default(10_000_000),
+  /** Max refunds per payment before manual review is required. */
+  PAYMENT_MAX_REFUNDS: z.coerce.number().int().positive().default(5),
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),

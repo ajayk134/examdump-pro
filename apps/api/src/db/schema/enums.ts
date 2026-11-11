@@ -62,3 +62,26 @@ export const goalMetricEnum = pgEnum('goal_metric', [
   'mock_tests',
   'study_minutes',
 ]);
+
+/**
+ * Transactional email lifecycle (ExamDump Mail).
+ *
+ * `suppressed` means the message was intentionally not sent: mail is disabled,
+ * SMTP is not configured, or the per-recipient rate limit was hit. It is
+ * distinct from `failed`, which means we tried and the provider rejected or the
+ * connection dropped.
+ */
+export const mailStatusEnum = pgEnum('mail_status', ['queued', 'sent', 'failed', 'suppressed']);
+
+export const mailTemplateEnum = pgEnum('mail_template', [
+  'email_verify',
+  'password_reset',
+  'welcome',
+  'payment_receipt',
+  'subscription_activated',
+  'subscription_renewed',
+  'subscription_expiring',
+  'subscription_cancelled',
+  'refund_processed',
+  'test',
+]);

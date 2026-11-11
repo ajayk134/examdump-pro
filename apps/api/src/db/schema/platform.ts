@@ -10,7 +10,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { users } from './identity';
-import { notificationTypeEnum } from './enums';
+import { mailStatusEnum, mailTemplateEnum, notificationTypeEnum } from './enums';
 
 const createdAt = timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 const updatedAt = timestamp('updated_at', { withTimezone: true }).notNull().defaultNow();
@@ -192,3 +192,44 @@ export const aiMessages = pgTable(
 
 export type AiConversation = typeof aiConversations.$inferSelect;
 export type AiMessageRow = typeof aiMessages.$inferSelect;
+
+/**
+ * Delivery log for ExamDump Mail.
+ *
+ * One row per send attempt. Audit/debug only - nothing here is required to
+ * deliver mail, so a logging failure must never block a user flow. The
+ * recipient address is stored so operators can answer "did the reset email
+ * actually go out?"; message bodies are never persisted.
+ */
+export const mailLogs = pgTable(
+  'mail_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    template: mailTemplateEnum('template').notNull(),
+    /** Lowercased recipient address. */
+    recipient: text('recipient').notNull(),
+    subject: text('subject').notNull().default(''),
+    status: mailStatusEnum('status').notNull().default('queued'),
+    /** Number of SMTP attempts made. */
+    attempts: integer('attempts').notNull().default(0),
+    /** SMTP response id, when the provider returned one. */
+    messageId: text('message_id'),
+    /** Error text for failed/suppressed sends. Never contains credentials. */
+    lastError: text('last_error'),
+    /** Correlation id (payment id, token id) for support. */
+    referenceId: text('reference_id'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdAt,
+    updatedAt,
+  },
+  (t) => [
+    index('mail_logs_created_idx').on(t.createdAt),
+    index('mail_logs_recipient_idx').on(t.recipient, t.createdAt),
+    index('mail_logs_status_idx').on(t.status, t.createdAt),
+  ],
+);
+
+export type MailLog = typeof mailLogs.$inferSelect;
+export type NewMailLog = typeof mailLogs.$inferInsert;

@@ -375,6 +375,8 @@ export interface SettleResult {
   status: 'pending' | 'succeeded' | 'failed' | 'already_settled' | 'ignored';
   subscriptionId?: string;
   reason?: string;
+  /** Present only on a fresh success; consumed by the receipt emailer. */
+  receipt?: ReceiptContext;
 }
 
 interface SettleOptions {
@@ -397,13 +399,20 @@ export async function settlePayment(
   const db = getDb();
   const gatewayStatus = (options.gatewayStatus ?? '').toLowerCase();
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx): Promise<SettleResult> => {
     const [payment] = await tx
       .select()
       .from(payments)
       .where(
         options.providerPaymentId
-          ? or(eq(payments.id, paymentId), eq(payments.providerPaymentId, options.providerPaymentId))
+          ? or(
+              eq(payments.id, paymentId),
+              eq(payments.providerPaymentId, options.providerPaymentId),
+              // Adapters such as Razorpay store the order id at creation time
+              // and only learn the payment id later, so a webhook may address
+              // the payment by either id.
+              eq(payments.providerRef, options.providerPaymentId),
+            )
           : eq(payments.id, paymentId),
       )
       .limit(1)
@@ -624,7 +633,100 @@ export async function settlePayment(
       status: 'succeeded',
       subscriptionId: subscription.id,
       reason: renewal ? 'renewal' : 'new',
+      // Handed back so the receipt can be emailed after commit.
+      receipt: {
+        userId: payment.userId,
+        planName: plan.name,
+        amountMinor: payment.amountMinor,
+        currency: payment.currency,
+        paymentId: payment.id,
+        renewal,
+        periodEnd: subscription.currentPeriodEnd,
+      },
     };
+  });
+
+  // Receipt + subscription notice are sent after the transaction commits and
+  // are best-effort: a mail outage must never undo a paid entitlement.
+  if (result.status === 'succeeded' && result.receipt) {
+    void sendReceiptEmails(result.receipt).catch(() => undefined);
+  }
+  return result;
+}
+
+interface ReceiptContext {
+  userId: string;
+  planName: string;
+  amountMinor: number;
+  currency: string;
+  paymentId: string;
+  renewal: boolean;
+  periodEnd: Date;
+}
+
+/**
+ * Sends the payment receipt and the matching subscription notice.
+ *
+ * Kept outside the transaction and isolated per-message so one failing email
+ * (bad address, SMTP hiccup) does not suppress the other.
+ */
+/** Mirrors the web app's formatter so receipts match the UI exactly. */
+function formatMoneyMinor(minor: number, currency: string): string {
+  const symbol = currency === 'INR' ? '\u20b9' : currency === 'USD' ? '$' : `${currency} `;
+  const major = minor / 100;
+  return `${symbol}${major.toLocaleString('en-IN', {
+    minimumFractionDigits: minor % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+async function sendReceiptEmails(ctx: ReceiptContext): Promise<void> {
+  const { getEnv } = await import('../config/env.js');
+  const { sendTransactionalMail } = await import('./mail/mail.service.js');
+  const env = getEnv();
+  const db = getDb();
+
+  const [user] = await db.select().from(users).where(eq(users.id, ctx.userId)).limit(1);
+  if (!user) return;
+
+  const formatted = formatMoneyMinor(ctx.amountMinor, ctx.currency);
+  const paidAt = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const periodEnd = ctx.periodEnd.toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  await sendTransactionalMail(env, {
+    to: user.email,
+    template: 'payment_receipt',
+    userId: user.id,
+    referenceId: ctx.paymentId,
+    data: {
+      name: user.name,
+      invoiceNumber: ctx.paymentId.slice(0, 8).toUpperCase(),
+      amount: formatted,
+      planName: ctx.planName,
+      paidAt,
+      method: 'Online (ExamDump Pay)',
+      invoiceUrl: `${env.PUBLIC_WEB_URL}/invoices/${ctx.paymentId}`,
+      lines: [{ label: 'Access until', value: periodEnd }],
+      reference: ctx.paymentId,
+    },
+  });
+
+  await sendTransactionalMail(env, {
+    to: user.email,
+    template: ctx.renewal ? 'subscription_renewed' : 'subscription_activated',
+    userId: user.id,
+    referenceId: ctx.paymentId,
+    data: {
+      name: user.name,
+      planName: ctx.planName,
+      dateLabel: 'Access until',
+      dateValue: periodEnd,
+      manageUrl: `${env.PUBLIC_WEB_URL}/profile`,
+    },
   });
 }
 
@@ -1135,6 +1237,33 @@ export async function refundPayment(
       processed = false;
       message = `The gateway rejected the refund: ${(err as Error).message}`;
     }
+  } else if (payment.provider === 'razorpay' && payment.providerRef) {
+    // ExamDump Pay: issue the refund through the configured adapter. The
+    // refund id is our own row id, which the adapter forwards as a receipt.
+    const { resolvePaymentAdapter } = await import('./payments/registry.js');
+    const availability = resolvePaymentAdapter(env);
+    if (!availability.adapter) {
+      processed = false;
+      message = 'Payments are not currently available, so the refund could not be submitted.';
+    } else {
+      try {
+        const result = await availability.adapter.refund(env, {
+          paymentId: payment.providerRef,
+          amountMinor: amount,
+          refundRef: refund.id,
+          reason: reason || 'requested_by_customer',
+        });
+        gatewayRef = result.refundId;
+        processed = result.status !== 'failed';
+        message =
+          result.status === 'succeeded'
+            ? 'Refund processed by the payment provider.'
+            : `Refund submitted (status: ${result.status}).`;
+      } catch (err) {
+        processed = false;
+        message = `The payment provider rejected the refund: ${(err as Error).message}`;
+      }
+    }
   }
 
   await db
@@ -1175,6 +1304,28 @@ export async function refundPayment(
       body: `${payment.currency} ${(amount / 100).toFixed(2)} has been refunded. It can take 5-7 business days to appear.`,
       link: '/billing',
     });
+
+    // Email the customer. Best-effort: the refund is already recorded.
+    try {
+      const { sendTransactionalMail } = await import('./mail/mail.service.js');
+      const [refundUser] = await db.select().from(users).where(eq(users.id, payment.userId)).limit(1);
+      if (refundUser) {
+        await sendTransactionalMail(env, {
+          to: refundUser.email,
+          template: 'refund_processed',
+          userId: refundUser.id,
+          referenceId: paymentId,
+          data: {
+            name: refundUser.name,
+            amount: formatMoneyMinor(amount, payment.currency),
+            reference: paymentId.slice(0, 8).toUpperCase(),
+            reason: reason || undefined,
+          },
+        });
+      }
+    } catch {
+      /* mail is best-effort */
+    }
   }
 
   await recordAudit({

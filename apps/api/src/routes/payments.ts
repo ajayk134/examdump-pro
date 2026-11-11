@@ -37,6 +37,9 @@ import {
   FAILED_STATUSES,
 } from '../services/hyperswitch.client.js';
 import { resolveEntitlements } from '../services/entitlement.service.js';
+import { resolvePaymentAdapter, checkoutAvailable } from '../services/payments/registry.js';
+import { createCheckout, fetchGatewayStatus, refundableFor } from '../services/payments/checkout.service.js';
+import { razorpayAdapter } from '../services/payments/razorpay.adapter.js';
 import { getSettings } from '../services/settings.service.js';
 
 export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<void> {
@@ -58,7 +61,156 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
       // Simulated activation is never advertised in production, whatever the
       // environment flag says.
       mockPaymentsAllowed: env.ALLOW_MOCK_PAYMENTS && env.NODE_ENV !== 'production',
+      // ExamDump Pay: which adapter (if any) can take money right now, and
+      // which methods it supports. `available: false` means free-tier only.
+      pay: (() => {
+        const availability = resolvePaymentAdapter(env);
+        return {
+          available: availability.adapter !== null,
+          adapter: availability.adapterId,
+          methods: availability.methods,
+          reason: availability.reason,
+        };
+      })(),
     });
+  });
+
+  /**
+   * ExamDump Pay checkout.
+   *
+   * Unlike the legacy HyperSwitch path this is adapter-agnostic: the amount is
+   * quoted server-side, duplicate requests reuse the pending order, and no
+   * payment is ever marked successful here.
+   */
+  app.post('/pay/checkout', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const { user } = await requireAuth(request, env);
+    const input = parseOrThrow(checkoutSchema, request.body);
+    if (!user.emailVerified) throw forbidden('Verify your email address before paying.');
+
+    const origin = request.headers.origin ?? env.PUBLIC_WEB_URL;
+    const safeOrigin = /^https?:\/\//.test(origin) ? origin : env.PUBLIC_WEB_URL;
+    const result = await createCheckout(env, user, {
+      planId: input.planId,
+      examKeys: input.examKeys,
+      examKey: input.examKey,
+      couponCode: input.couponCode,
+      returnUrl: `${safeOrigin}/checkout/return?payment=${'{payment_id}'}`,
+    });
+    return reply.code(201).send(result);
+  });
+
+  /** Authoritative status for the return page. Never trusts a query param. */
+  app.get('/pay/:id/status', async (request, reply) => {
+    const { user } = await requireAuth(request, env);
+    const { id } = request.params as { id: string };
+    const [payment] = await db()
+      .select()
+      .from(payments)
+      .where(and(eq(payments.id, id), eq(payments.userId, user.id)))
+      .limit(1);
+    if (!payment) throw notFound('Payment not found.');
+    return reply.send({
+      id: payment.id,
+      status: payment.status,
+      amountMinor: payment.amountMinor,
+      refundedMinor: payment.refundedMinor,
+      currency: payment.currency,
+      provider: payment.provider,
+      paidAt: payment.paidAt,
+    });
+  });
+
+  /**
+   * Razorpay webhook.
+   *
+   * The signature is verified against the raw body with RAZORPAY_WEBHOOK_SECRET.
+   * An unverified payload is rejected outright - it never reaches settlement.
+   * The status is then re-fetched server-to-server so a forged-but-signed
+   * payload still cannot grant access on its own.
+   */
+  app.post(
+    '/webhook/razorpay',
+    { config: { rateLimit: { max: 600, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const raw = (request as unknown as { rawBody?: string }).rawBody ?? JSON.stringify(request.body ?? {});
+      const verified = await razorpayAdapter.verifyWebhook(env, {
+        rawBody: raw,
+        headers: request.headers as Record<string, string | string[] | undefined>,
+        url: `${request.protocol}://${request.hostname}${request.url}`,
+      });
+      if (!verified.verified) {
+        request.log.warn({ ip: request.ip }, 'razorpay.webhook.invalid_signature');
+        return reply
+          .code(401)
+          .send({ error: { code: 'INVALID_SIGNATURE', message: 'Signature verification failed.' } });
+      }
+
+      const gatewayId = verified.paymentId;
+      if (!gatewayId) {
+        // Not a payment event (e.g. order.paid carries an order id we already
+        // track). Acknowledge so the provider stops retrying.
+        return reply.send({ received: true, ignored: true });
+      }
+
+      // Re-read the truth from Razorpay rather than trusting the payload body.
+      let status = verified.status ?? 'unknown';
+      let amountMinor: number | null = verified.amountMinor ?? null;
+      try {
+        const fresh = await razorpayAdapter.fetchPayment(env, gatewayId);
+        status = fresh.status;
+        amountMinor = fresh.amountMinor;
+      } catch (err) {
+        request.log.warn({ err, gatewayId }, 'razorpay.webhook.status_fetch_failed');
+        // Fall back to the signed payload status.
+      }
+
+      // Amount integrity: if the gateway says a different amount than the order
+      // we stored, refuse to settle and flag it for manual review.
+      if (amountMinor !== null) {
+        const [stored] = await db()
+          .select({ amountMinor: payments.amountMinor })
+          .from(payments)
+          .where(eq(payments.providerRef, gatewayId))
+          .limit(1);
+        if (stored && stored.amountMinor !== amountMinor) {
+          request.log.error(
+            { gatewayId, expected: stored.amountMinor, received: amountMinor },
+            'razorpay.webhook.amount_mismatch',
+          );
+          return reply
+            .code(409)
+            .send({ error: { code: 'AMOUNT_MISMATCH', message: 'Amount does not match the order.' } });
+        }
+      }
+
+      const { settlePayment } = await import('../services/subscription.service.js');
+      const outcome = await settlePayment(gatewayId, {
+        gatewayStatus: status === 'succeeded' ? 'succeeded' : status,
+        providerPaymentId: gatewayId,
+        source: 'webhook',
+      }).catch((err) => {
+        request.log.error({ err, gatewayId }, 'razorpay.webhook.settle_failed');
+        return null;
+      });
+
+      if (!outcome) {
+        return reply.code(500).send({ error: { code: 'PROCESSING_FAILED', message: 'Webhook processing failed.' } });
+      }
+      return reply.send({ received: true, outcome });
+    },
+  );
+
+  /** Refund eligibility for the authenticated owner (support/UI helper). */
+  app.get('/pay/:id/refundable', async (request, reply) => {
+    const { user } = await requireAuth(request, env);
+    const { id } = request.params as { id: string };
+    const [payment] = await db()
+      .select()
+      .from(payments)
+      .where(and(eq(payments.id, id), eq(payments.userId, user.id)))
+      .limit(1);
+    if (!payment) throw notFound('Payment not found.');
+    return reply.send(await refundableFor(env, id));
   });
 
   app.post('/quote', async (request, reply) => {

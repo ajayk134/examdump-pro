@@ -29,6 +29,13 @@
       "when": 1794375275368,
       "tag": "0003_ai_tutor_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794421536732,
+      "tag": "0004_mail_logs",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@
  * all permissions) and writes an audit log entry.
  */
 import type { FastifyInstance } from 'fastify';
+import { mailLogs } from '../db/schema/index.js';
 import { and, count, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import {
   announcementsSchema,
@@ -587,6 +588,75 @@ export async function adminOpsRoutes(app: FastifyInstance, env: Env): Promise<vo
         tokenConfigured: Boolean(env.GITHUB_TOKEN),
       },
       flags: await getDb().select().from(featureFlags),
+    });
+  });
+
+  /**
+   * ExamDump Mail + ExamDump Pay diagnostics.
+   *
+   * Reports only whether things are configured - never the credential values.
+   * This is the endpoint an operator needs when "no email arrived" or "the Pay
+   * button is missing".
+   */
+  app.get('/infrastructure', async (request, reply) => {
+    await requirePermission(request, env, 'system.health');
+    const { mailConfigured } = await import('../services/mail/mail.service.js');
+    const { resolvePaymentAdapter } = await import('../services/payments/registry.js');
+    const pay = resolvePaymentAdapter(env);
+
+    const recent = await getDb()
+      .select({
+        status: mailLogs.status,
+        template: mailLogs.template,
+        at: mailLogs.createdAt,
+      })
+      .from(mailLogs)
+      .orderBy(desc(mailLogs.createdAt))
+      .limit(10);
+
+    return reply.send({
+      mail: {
+        enabled: env.MAIL_ENABLED,
+        configured: mailConfigured(env),
+        host: env.SMTP_HOST ?? null,
+        port: env.SMTP_PORT,
+        starttls: !env.SMTP_SECURE,
+        sender: env.MAIL_FROM,
+        replyTo: env.MAIL_REPLY_TO ?? null,
+        maxAttempts: env.MAIL_MAX_ATTEMPTS,
+        rateLimit: `${env.MAIL_RATE_MAX}/${Math.round(env.MAIL_RATE_WINDOW_MS / 1000)}s`,
+      },
+      pay: {
+        paymentsEnabled: env.PAYMENTS_ENABLED,
+        adapter: pay.adapterId,
+        available: pay.adapter !== null,
+        reason: pay.reason,
+        methods: pay.methods,
+        minAmountMinor: env.PAYMENT_MIN_AMOUNT_MINOR,
+        maxAmountMinor: env.PAYMENT_MAX_AMOUNT_MINOR,
+      },
+      recentMail: recent,
+    });
+  });
+
+  /** Send a live test email. Never returns credentials; log row is written. */
+  app.post('/infrastructure/mail-test', async (request, reply) => {
+    const auth = await requirePermission(request, env, 'settings.manage');
+    const { sendTransactionalMail } = await import('../services/mail/mail.service.js');
+    const result = await sendTransactionalMail(env, {
+      to: (request.body as { to?: string } | undefined)?.to ?? auth.user.email,
+      template: 'test',
+      userId: auth.user.id,
+      bypassRateLimit: true,
+      logger: request.log,
+      data: { sentAt: new Date().toISOString() },
+    });
+    return reply.send({
+      delivered: result.delivered,
+      suppressed: result.suppressed,
+      attempts: result.attempts,
+      // Error text only; credentials are never part of it.
+      error: result.error ?? null,
     });
   });
 }

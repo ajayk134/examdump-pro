@@ -18,7 +18,7 @@ import { conflict, serviceUnavailable, tooManyRequests, unauthorized } from '../
 import { signAccessToken } from '../lib/jwt.js';
 import { hashPassword, verifyPassword } from '../lib/passwords.js';
 import { hashToken, randomReferralCode, randomToken } from '../lib/tokens.js';
-import { buildActionEmail, sendEmail } from '../lib/email.js';
+import { sendTransactionalMail } from './mail/mail.service.js';
 import { getSettings } from './settings.service.js';
 import { createNotification } from './notification.service.js';
 import { recordAudit } from './audit.service.js';
@@ -119,17 +119,13 @@ export async function register(
   });
 
   const verifyUrl = `${env.PUBLIC_WEB_URL}/verify-email?token=${encodeURIComponent(token)}`;
-  const email = buildActionEmail(env, {
-    title: 'Verify your email',
-    intro: `Hi ${user.name}, confirm your email address to activate your ExamDump Pro account.`,
-    actionLabel: 'Verify email',
-    actionUrl: verifyUrl,
+  const delivery = await sendTransactionalMail(env, {
+    to: user.email,
+    template: 'email_verify',
+    userId: user.id,
+    referenceId: user.id,
+    data: { name: user.name, verifyUrl, expiresInHours: 24 },
   });
-  const delivery = await sendEmail(
-    env,
-    { to: user.email, subject: 'Verify your ExamDump Pro email', ...email },
-    undefined,
-  );
 
   await recordAudit({
     actorId: user.id,
@@ -333,6 +329,16 @@ export async function verifyEmail(env: Env, token: string, meta: RequestMeta): P
     userAgent: meta.userAgent,
   });
 
+  // Welcome mail is fire-and-forget: it must never fail verification, which has
+  // already been committed above.
+  await sendTransactionalMail(env, {
+    to: user.email,
+    template: 'welcome',
+    userId: user.id,
+    referenceId: user.id,
+    data: { name: user.name, examsUrl: `${env.PUBLIC_WEB_URL}/exams` },
+  }).catch(() => undefined);
+
   const [fresh] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
   return fresh!;
 }
@@ -350,13 +356,13 @@ export async function resendVerification(env: Env, email: string, meta: RequestM
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   });
   const verifyUrl = `${env.PUBLIC_WEB_URL}/verify-email?token=${encodeURIComponent(token)}`;
-  const emailBody = buildActionEmail(env, {
-    title: 'Verify your email',
-    intro: 'Here is a fresh verification link for your ExamDump Pro account.',
-    actionLabel: 'Verify email',
-    actionUrl: verifyUrl,
+  const delivery = await sendTransactionalMail(env, {
+    to: user.email,
+    template: 'email_verify',
+    userId: user.id,
+    referenceId: user.id,
+    data: { name: user.name, verifyUrl, expiresInHours: 24 },
   });
-  const delivery = await sendEmail(env, { to: user.email, subject: 'Verify your ExamDump Pro email', ...emailBody });
   await recordAudit({
     actorId: user.id,
     actorEmail: user.email,
@@ -384,13 +390,13 @@ export async function forgotPassword(env: Env, email: string, meta: RequestMeta)
   });
 
   const resetUrl = `${env.PUBLIC_WEB_URL}/reset-password?token=${encodeURIComponent(token)}`;
-  const emailBody = buildActionEmail(env, {
-    title: 'Reset your password',
-    intro: 'We received a request to reset your ExamDump Pro password. This link expires in 1 hour.',
-    actionLabel: 'Reset password',
-    actionUrl: resetUrl,
+  const delivery = await sendTransactionalMail(env, {
+    to: user.email,
+    template: 'password_reset',
+    userId: user.id,
+    referenceId: user.id,
+    data: { name: user.name, resetUrl, expiresInMinutes: 60 },
   });
-  const delivery = await sendEmail(env, { to: user.email, subject: 'Reset your ExamDump Pro password', ...emailBody });
 
   await recordAudit({
     actorId: user.id,
