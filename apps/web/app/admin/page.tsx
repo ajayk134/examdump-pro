@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth, useToast } from '@/components/providers';
 import { get, patch, post, del } from '@/lib/api';
 import type { Paginated, Plan, User } from '@/lib/types';
-import { Alert, EmptyState, Spinner, StatCard, Tabs } from '@/components/ui';
+import { Alert, EmptyState, Spinner, StatCard, TableScroll, Tabs } from '@/components/ui';
 import { formatDate, formatMoneyMinor, formatNumber } from '@/lib/format';
 import { IconShield, IconTrophy } from '@/components/icons';
 import {
@@ -206,7 +206,7 @@ function UsersPanel() {
         <input className="input max-w-xs" placeholder="Search name or email…" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} />
       </div>
       {!data ? <Spinner /> : (
-        <div className="card overflow-x-auto p-0">
+        <TableScroll>
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="border-b border-surface-border text-xs uppercase tracking-wide text-content-muted">
               <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Plan</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Joined</th><th className="px-4 py-3">Actions</th></tr>
@@ -230,7 +230,7 @@ function UsersPanel() {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
       {data ? (
         <div className="flex items-center justify-between">
@@ -277,7 +277,7 @@ function CouponsPanel() {
         <div className="flex items-end"><button className="btn-primary w-full" onClick={create} disabled={!form.code}>Create coupon</button></div>
       </div>
       {!coupons ? <Spinner /> : (
-        <div className="card overflow-x-auto p-0">
+        <TableScroll>
           <table className="w-full min-w-[560px] text-left text-sm">
             <thead className="border-b border-surface-border text-xs uppercase tracking-wide text-content-muted"><tr><th className="px-4 py-3">Code</th><th className="px-4 py-3">Off</th><th className="px-4 py-3">Used</th><th className="px-4 py-3">Status</th><th className="px-4 py-3"></th></tr></thead>
             <tbody className="divide-y divide-surface-border">
@@ -292,7 +292,7 @@ function CouponsPanel() {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </div>
   );
@@ -403,7 +403,7 @@ function AuditPanel() {
   if (!data) return <Spinner />;
   if (data.items.length === 0) return <EmptyState title="No audit events yet" />;
   return (
-    <div className="card overflow-x-auto p-0">
+    <TableScroll>
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead className="border-b border-surface-border text-xs uppercase tracking-wide text-content-muted"><tr><th className="px-4 py-3">Action</th><th className="px-4 py-3">Actor</th><th className="px-4 py-3">Target</th><th className="px-4 py-3">IP</th><th className="px-4 py-3">When</th></tr></thead>
         <tbody className="divide-y divide-surface-border">
@@ -418,7 +418,7 @@ function AuditPanel() {
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

@@ -17,6 +17,21 @@ export function PageShell({ children, className }: { children: ReactNode; classN
   return <div className={cn('mx-auto w-full max-w-7xl', className)}>{children}</div>;
 }
 
+/**
+ * Horizontal scroll container for wide tables.
+ *
+ * A table with `min-w-[...]` inside a plain `overflow-x-auto` does not scroll on
+ * a narrow screen: the flex parent refuses to shrink below its content, so the
+ * whole page grows instead and the browser zooms out to fit it. The fix is to
+ * give the wrapper an explicit `w-full` together with `min-w-0`, so it can
+ * shrink below the table's min-content width and actually scroll.
+ */
+export function TableScroll({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <div className={cn('surface w-full min-w-0 max-w-full overflow-x-auto p-0', className)}>{children}</div>
+  );
+}
+
 export function PageHeader({
   eyebrow,
   title,

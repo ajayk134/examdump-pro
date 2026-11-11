@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, del, get, patch, post } from '@/lib/api';
 import type { Paginated, Payment } from '@/lib/types';
-import { Alert, EmptyState, Spinner, StatCard } from '@/components/ui';
+import { Alert, EmptyState, Spinner, StatCard, TableScroll } from '@/components/ui';
 import { formatDate, formatDateTime, formatMoneyMinor } from '@/lib/format';
 
 /* ------------------------------------------------------------------ */
@@ -215,7 +215,7 @@ export function PaymentsPanel() {
       ) : !data || data.items.length === 0 ? (
         <EmptyState title="No payments" description="Payments appear here as soon as checkout is live." />
       ) : (
-        <div className="card overflow-x-auto">
+        <TableScroll>
           <table className="w-full min-w-[860px] text-left text-sm">
             <thead className="bg-surface-overlay text-xs uppercase tracking-wide text-content-muted">
               <tr>
@@ -267,7 +267,7 @@ export function PaymentsPanel() {
             totalPages={data.pagination.totalPages}
             onChange={(page) => setQuery({ ...query, page: String(page) })}
           />
-        </div>
+        </TableScroll>
       )}
     </div>
   );
@@ -348,7 +348,7 @@ export function WebhooksPanel() {
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       {recon && recon.runs.length > 0 ? (
-        <div className="card overflow-x-auto">
+        <TableScroll>
           <table className="w-full min-w-[520px] text-left text-sm">
             <thead className="bg-surface-overlay text-xs uppercase tracking-wide text-content-muted">
               <tr>
@@ -371,7 +371,7 @@ export function WebhooksPanel() {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       ) : null}
 
       {loading ? (
@@ -379,7 +379,7 @@ export function WebhooksPanel() {
       ) : !data || data.items.length === 0 ? (
         <EmptyState title="No webhooks received yet" description="Gateway callbacks appear here with signature status." />
       ) : (
-        <div className="card overflow-x-auto">
+        <TableScroll>
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="bg-surface-overlay text-xs uppercase tracking-wide text-content-muted">
               <tr>
@@ -419,7 +419,7 @@ export function WebhooksPanel() {
             totalPages={data.pagination.totalPages}
             onChange={(page) => setQuery({ ...query, page: String(page) })}
           />
-        </div>
+        </TableScroll>
       )}
     </div>
   );
@@ -636,7 +636,7 @@ export function TicketsPanel() {
       ) : !data || data.items.length === 0 ? (
         <EmptyState title="No tickets" description="Requests raised from the support page appear here." />
       ) : (
-        <div className="card overflow-x-auto">
+        <TableScroll>
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="bg-surface-overlay text-xs uppercase tracking-wide text-content-muted">
               <tr>
@@ -683,7 +683,7 @@ export function TicketsPanel() {
             totalPages={data.pagination.totalPages}
             onChange={(page) => setQuery({ ...query, page: String(page) })}
           />
-        </div>
+        </TableScroll>
       )}
     </div>
   );

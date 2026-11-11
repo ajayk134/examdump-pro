@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/providers';
 import { get } from '@/lib/api';
 import type { AttemptSummary, Paginated } from '@/lib/types';
-import { Alert, EmptyState, Spinner } from '@/components/ui';
+import { Alert, EmptyState, Spinner, TableScroll } from '@/components/ui';
 import { IconHistory } from '@/components/icons';
 import { formatDateTime, formatDuration, scoreColor } from '@/lib/format';
 
@@ -27,7 +27,7 @@ export default function HistoryPage() {
   if (!user) return <EmptyState title="Sign in to view your history" action={<Link href="/login" className="btn-primary">Sign in</Link>} />;
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-5">
+    <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-5">
       <header>
         <h1 className="heading-1 flex items-center gap-2"><IconHistory className="text-brand-400" /> Practice history</h1>
         <p className="mt-1 text-content-muted">Every attempt, score and session.</p>
@@ -39,7 +39,7 @@ export default function HistoryPage() {
         <EmptyState title="No attempts yet" description="Start practising to build your history." action={<Link href="/exams" className="btn-primary">Browse exams</Link>} />
       ) : (
         <>
-          <div className="card overflow-x-auto p-0">
+          <TableScroll>
             <table className="w-full min-w-[560px] text-left text-sm">
               <thead className="border-b border-surface-border text-xs uppercase tracking-wide text-content-muted">
                 <tr>
@@ -75,8 +75,8 @@ export default function HistoryPage() {
                 ))}
               </tbody>
             </table>
-          </div>
-          <div className="flex items-center justify-between">
+          </TableScroll>
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <button className="btn-secondary" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={!data.pagination.hasPrev}>Previous</button>
             <span className="text-sm text-content-muted">Page {data.pagination.page} of {data.pagination.totalPages}</span>
             <button className="btn-secondary" onClick={() => setPage((p) => p + 1)} disabled={!data.pagination.hasNext}>Next</button>
