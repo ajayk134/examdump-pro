@@ -67,6 +67,11 @@ const envSchema = z.object({
   MAIL_RATE_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   /** Connection watchdog for a single SMTP conversation. */
   MAIL_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  /**
+   * Explicit address used by the admin mail test. Kept in configuration so a
+   * verification send can never be pointed at an arbitrary third party.
+   */
+  MAIL_TEST_RECIPIENT: z.string().optional(),
 
   GITHUB_TOKEN: z.string().optional(),
   DATASET_OWNER: z.string().default('ajayk134'),

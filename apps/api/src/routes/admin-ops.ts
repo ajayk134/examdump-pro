@@ -643,8 +643,11 @@ export async function adminOpsRoutes(app: FastifyInstance, env: Env): Promise<vo
   app.post('/infrastructure/mail-test', async (request, reply) => {
     const auth = await requirePermission(request, env, 'settings.manage');
     const { sendTransactionalMail } = await import('../services/mail/mail.service.js');
+    // Prefer the configured test recipient so verification is deterministic.
+    const requested = (request.body as { to?: string } | undefined)?.to;
+    const target = env.MAIL_TEST_RECIPIENT ?? requested ?? auth.user.email;
     const result = await sendTransactionalMail(env, {
-      to: (request.body as { to?: string } | undefined)?.to ?? auth.user.email,
+      to: target,
       template: 'test',
       userId: auth.user.id,
       bypassRateLimit: true,
