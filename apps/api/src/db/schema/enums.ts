@@ -44,6 +44,7 @@ export const paymentProviderEnum = pgEnum('payment_provider', [
   'razorpay',
   'stripe',
   'hyperswitch',
+  'upi',
   'none',
 ]);
 export const refundStatusEnum = pgEnum('refund_status', ['pending', 'succeeded', 'failed']);
@@ -131,4 +132,51 @@ export const suppressionReasonEnum = pgEnum('suppression_reason', [
   'unsubscribe_marketing',
   'unsubscribe_all',
   'manual',
+]);
+
+/* -------------------------------- UPI ----------------------------------- */
+
+/**
+ * Order lifecycle. `pending` -> (`settled` | `expired` | `cancelled`).
+ * `under_review` is used when a notification arrived but the risk engine could
+ * not reach its confidence threshold: we do not settle, but we keep the order
+ * open for an operator rather than expiring it silently.
+ */
+export const upiOrderStatusEnum = pgEnum('upi_order_status', [
+  'pending',
+  'under_review',
+  'settled',
+  'expired',
+  'cancelled',
+  'refunded',
+  'partially_refunded',
+]);
+
+/** Where a notification came from. */
+export const upiNotificationSourceEnum = pgEnum('upi_notification_source', [
+  'gmail',
+  'sms',
+  'webhook',
+  'manual',
+]);
+
+/**
+ * `received`  - stored, not yet evaluated
+ * `matched`   - settled exactly one order automatically
+ * `unmatched` - credible credit, but no single order fitted
+ * `rejected`  - failed a safety check (duplicate, wrong amount, stale, spoofed)
+ * `ignored`   - not a credit notification at all
+ */
+export const upiNotificationStatusEnum = pgEnum('upi_notification_status', [
+  'received',
+  'matched',
+  'unmatched',
+  'rejected',
+  'ignored',
+]);
+
+export const upiMatchDecisionEnum = pgEnum('upi_match_decision', [
+  'auto_approved',
+  'manual_approved',
+  'rejected',
 ]);

@@ -180,6 +180,50 @@ const envSchema = z.object({
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
   DEFAULT_CURRENCY: z.string().length(3).default('INR'),
+
+  /* ------------------------------- UPI ---------------------------------- */
+
+  /**
+   * The VPA customers pay. Set this to the collection account's UPI id. Leaving
+   * it empty disables UPI checkout without affecting any other provider.
+   */
+  UPI_PAYEE_VPA: z.string().optional(),
+  /** Payee name shown in the payer's UPI app. */
+  UPI_PAYEE_NAME: z.string().default('ExamDump'),
+  /** How long a customer has to pay before the order expires. */
+  UPI_ORDER_TTL_MINUTES: z.coerce.number().int().min(3).max(120).default(15),
+  /**
+   * Auto-approve a payment from a bank notification. Off by default: turning it
+   * on is a deliberate operational decision because a notification is evidence
+   * of a bank alert, not proof of settlement.
+   */
+  UPI_AUTO_APPROVE: booleanString,
+  /**
+   * Largest single credit we will consider. Anything above is rejected outright
+   * rather than becoming a candidate, which bounds the damage of a spoofed alert.
+   */
+  UPI_NOTIFICATION_MAX_PAISE: z.coerce.number().int().positive().default(50_000_000),
+  /** How often the Gmail observer polls, in seconds. Zero disables it. */
+  UPI_GMAIL_POLL_SECONDS: z.coerce.number().int().min(0).max(3600).default(60),
+  /** Dedicated mailbox that only receives bank alerts. */
+  UPI_GMAIL_USER: z.string().optional(),
+  /** OAuth client for the payment-notification mailbox (least privilege). */
+  UPI_GOOGLE_CLIENT_ID: z.string().optional(),
+  UPI_GOOGLE_CLIENT_SECRET: z.string().optional(),
+  /** Long-lived refresh token for that mailbox, read-only Gmail access. */
+  UPI_GOOGLE_REFRESH_TOKEN: z.string().optional(),
+  /**
+   * Shared secret for the SMS-observer bridge. The bridge signs each forwarded
+   * message with this, so the endpoint is useless to anyone without it.
+   */
+  UPI_SMS_INGEST_SECRET: z.string().optional(),
+  /** Optional label used in IMAP/Gmail search to narrow the mailbox. */
+  UPI_GMAIL_LABEL: z.string().default('INBOX'),
+  /**
+   * Gmail search expression selecting bank alerts. Defaults to unread mail in
+   * the dedicated payment mailbox; narrow it further with `from:` filters.
+   */
+  UPI_GMAIL_QUERY: z.string().default('is:unread'),
 });
 
 export type Env = z.infer<typeof envSchema>;

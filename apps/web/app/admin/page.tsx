@@ -5,6 +5,7 @@ import { useAuth, useToast } from '@/components/providers';
 import { get, patch, post, del } from '@/lib/api';
 import type { Paginated, Plan, User } from '@/lib/types';
 import { Alert, EmptyState, Spinner, StatCard, TableScroll, Tabs } from '@/components/ui';
+import { AdminUpiPanel } from '@/components/admin-upi';
 import { formatDate, formatMoneyMinor, formatNumber } from '@/lib/format';
 import { IconShield, IconTrophy } from '@/components/icons';
 import {
@@ -20,6 +21,7 @@ type Tab =
   | 'overview'
   | 'users'
   | 'payments'
+  | 'upi'
   | 'webhooks'
   | 'coupons'
   | 'plans'
@@ -95,6 +97,7 @@ export default function AdminPage() {
           { id: 'overview', label: 'Overview' },
           { id: 'users', label: 'Users' },
           { id: 'payments', label: 'Payments' },
+          { id: 'upi', label: 'UPI collections' },
           { id: 'webhooks', label: 'Webhooks' },
           { id: 'coupons', label: 'Coupons' },
           { id: 'plans', label: 'Plans' },
@@ -113,6 +116,7 @@ export default function AdminPage() {
       {tab === 'overview' ? <Overview /> : null}
       {tab === 'users' ? <UsersPanel /> : null}
       {tab === 'payments' ? <PaymentsPanel /> : null}
+      {tab === 'upi' ? <AdminUpiPanel /> : null}
       {tab === 'webhooks' ? <WebhooksPanel /> : null}
       {tab === 'coupons' ? <CouponsPanel /> : null}
       {tab === 'plans' ? <PlansPanel /> : null}

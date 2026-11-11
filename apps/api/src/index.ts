@@ -101,6 +101,16 @@ async function main(): Promise<void> {
       'mail.worker_started',
     );
   }
+  /*
+   * UPI observer + expiry sweeper. In-process for the same reason as the mail
+   * worker: the state that matters is in Postgres, so a restart resumes cleanly
+   * and a second instance would only duplicate polls.
+   */
+  if (env.PAYMENTS_ENABLED && env.UPI_PAYEE_VPA) {
+    const { startUpiWorker } = await import('./services/upi/worker.js');
+    startUpiWorker(env);
+  }
+
   if (env.ENABLE_DATASET_SYNC) {
     tasks.push(
       cron.schedule(env.DATASET_SYNC_CRON, async () => {
