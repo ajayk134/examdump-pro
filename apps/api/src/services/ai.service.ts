@@ -251,6 +251,27 @@ export function buildHintMessages(
 }
 
 /**
+ * Deterministic hint used when the model returns no visible answer.
+ *
+ * Reasoning models occasionally consume the whole hint budget internally and
+ * emit an empty answer (finishReason "length"). Rather than show nothing, derive
+ * a nudge from the dataset: point at the topic and the shape of the right answer
+ * without ever naming which option is correct.
+ */
+export function curatedHint(question: NormalizedQuestion): string {
+  const title = (question.title || '').trim();
+  const answerCount = (question.answer || '').length;
+
+  if (title && title.length <= 60) {
+    return `Focus on ${title}. Re-read the scenario for the specific constraint it imposes, then eliminate any option that does not satisfy it.`;
+  }
+  if (answerCount > 1) {
+    return 'This item has more than one correct option. Check each statement independently rather than assuming a single answer.';
+  }
+  return 'Re-read the scenario for its key constraint, then eliminate options that contradict it — the remaining choice is usually the answer.';
+}
+
+/**
  * Deterministic fallback explanation used when the AI provider is unavailable.
  * It is derived purely from the dataset (answer + stored explanation) so the
  * learner still gets useful, truthful guidance.

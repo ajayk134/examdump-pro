@@ -4,6 +4,8 @@ import { createTestContext, registerVerifiedUser, type TestContext } from './hel
 import { getDb } from '../src/db/client.js';
 import { aiConversations, aiMessages, plans, subscriptions, users } from '../src/db/schema/index.js';
 import { eq } from 'drizzle-orm';
+import { curatedHint } from '../src/services/ai.service.js';
+import type { NormalizedQuestion } from '@examdump/shared';
 import {
   buildTutorSystemPrompt,
   suggestedPrompts,
@@ -326,5 +328,44 @@ describe('streaming channel separation', () => {
     expect(new Set(types).size).toBe(types.length);
     // Reasoning brackets must be distinguishable from a delta.
     expect(types).not.toContain('reasoning_delta');
+  });
+});
+
+// Regression: reasoning models can spend their whole hint budget internally and
+// return an empty answer (finishReason "length"), which used to render an empty
+// hint panel. A curated, dataset-derived hint must always be available.
+describe('curated hint fallback', () => {
+  const base = {
+    id: 'q1',
+    number: 1,
+    title: null,
+    type: 'multiple_choice',
+    stem: [],
+    stemText: 'Which protocol ages MAC entries?',
+    stemImages: [],
+    choices: [],
+    answer: 'A',
+    answerRaw: 'A',
+    answerText: 'A',
+    explanation: '',
+    votes: [],
+  } as unknown as NormalizedQuestion;
+
+  it('returns a usable hint when the model produced nothing', () => {
+    const hint = curatedHint(base);
+    expect(hint.trim().length).toBeGreaterThan(20);
+    // Must never leak which option is correct.
+    expect(hint).not.toMatch(/\banswer is\b/i);
+    expect(hint).not.toContain('A.');
+  });
+
+  it('uses the question title as the topic when present', () => {
+    const hint = curatedHint({ ...base, title: 'MAC address aging' } as NormalizedQuestion);
+    expect(hint).toContain('MAC address aging');
+  });
+
+  it('warns about multi-answer items', () => {
+    const hint = curatedHint({ ...base, title: null, answer: 'AC' } as NormalizedQuestion);
+    expect(hint.toLowerCase()).toContain('more than one correct option');
   });
 });

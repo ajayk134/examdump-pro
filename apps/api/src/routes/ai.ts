@@ -12,6 +12,7 @@ import { parseOrThrow } from '../lib/validation.js';
 import { badRequest } from '../lib/errors.js';
 import { getDatasetClient } from '../services/dataset.service.js';
 import { resolveEntitlements } from '../services/entitlement.service.js';
+import { curatedHint } from '../services/ai.service.js';
 import { getSettings, getFeatureFlags } from '../services/settings.service.js';
 import { assertWithinQuota, getDailyUsage, incrementUsage } from '../services/usage.service.js';
 import {
@@ -273,6 +274,12 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
 
       let terminated = false;
       let wroteAny = false;
+      // Reasoning models sometimes spend the entire (deliberately small) hint
+      // budget thinking and emit no answer text at all, finishing with
+      // finishReason "length". The client then saw a 200 with zero frames and
+      // showed nothing, which looked like "hints randomly fail". Track the
+      // visible answer so we can guarantee a usable hint either way.
+      let answerText = '';
       try {
         for await (const chunk of streamChat(env, {
           // Hints stay deliberately short and must never reveal the answer key.
@@ -288,7 +295,21 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
           // here would be noise, so only answer-channel text is forwarded.
           if (chunk.type === 'delta' && chunk.channel === 'reasoning') continue;
           if (chunk.type === 'reasoning_start' || chunk.type === 'reasoning_end') continue;
-          if (chunk.type === 'delta') wroteAny = true;
+          if (chunk.type === 'done' && !answerText.trim() && !res.writableEnded) {
+            // Nothing visible was produced: stream the curated fallback so the
+            // learner always gets a real hint instead of an empty panel.
+            const fallback = curatedHint(question);
+            answerText = fallback;
+            wroteAny = true;
+            await send({ type: 'delta', channel: 'answer', text: fallback });
+            terminated = true;
+            await send({ ...chunk, degraded: true });
+            continue;
+          }
+          if (chunk.type === 'delta') {
+            wroteAny = true;
+            answerText += chunk.text ?? '';
+          }
           if (chunk.type === 'done' || chunk.type === 'error') terminated = true;
           await send(chunk);
         }
@@ -338,10 +359,15 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
         temperature: 0.4,
       });
       await incrementUsage(user.id, 'aiExplanations', 1);
+      // Same empty-answer guard as the streaming route: a reasoning model can
+      // return an empty string after spending its whole budget internally.
+      if (!result.text.trim()) {
+        return reply.send({ hint: curatedHint(question), model: result.model, degraded: true });
+      }
       return reply.send({ hint: result.text, model: result.model, degraded: false });
     } catch {
       await incrementUsage(user.id, 'aiExplanations', 1);
-      return reply.send({ hint: 'Focus on the key constraint in the scenario before eliminating options.', degraded: true });
+      return reply.send({ hint: curatedHint(question), degraded: true });
     }
   });
 
