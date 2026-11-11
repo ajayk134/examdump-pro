@@ -274,6 +274,8 @@ export function notifySubscription(
     userId?: string;
     name?: string;
     kind: 'activated' | 'renewed' | 'expiring' | 'cancelled';
+    /** Display name of the plan; required by the subscription templates. */
+    planName?: string;
     dateLabel?: string;
     dateValue?: string;
     /** Period key for dedupe, e.g. `2025-11` or the expiry date. */
@@ -292,8 +294,11 @@ export function notifySubscription(
     data: {
       name: args.name,
       kind: args.kind,
-      dateLabel: args.dateLabel,
-      dateValue: args.dateValue,
+      planName: args.planName ?? 'ExamDump Premium',
+      // The template requires a date; supplying a readable default keeps a call
+      // site that forgets it from failing the whole send.
+      dateLabel: args.dateLabel ?? 'Effective from',
+      dateValue: args.dateValue ?? new Date().toUTCString(),
       manageUrl: `${env.PUBLIC_WEB_URL}/pricing`,
     },
     // A reminder must never be sent twice for the same period.

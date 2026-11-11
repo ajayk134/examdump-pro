@@ -49,6 +49,17 @@ import {
   buildUnsubscribeHeaders,
 } from '../src/services/mail/unsubscribe.js';
 import { resolveAudience, segmentPredicate, validateCampaign } from '../src/services/mail/campaign.service.js';
+import {
+  notifyAccountNotice,
+  notifyAnnouncement,
+  notifyLoginAlert,
+  notifyPasswordChanged,
+  notifyPasswordReset,
+  notifySubscription,
+  notifySupportReceived,
+  notifyVerification,
+  notifyWelcome,
+} from '../src/services/mail/notify.service.js';
 
 let ctx: TestContext;
 let env: Env;
@@ -593,5 +604,56 @@ describe('campaign audience', () => {
       inactiveDays: 30,
     });
     expect(predicate).toBeDefined();
+  });
+});
+
+/* --------------------- built-in template completeness -------------------- */
+
+describe('built-in templates render', () => {
+  /**
+   * Guards against the class of bug where a helper forgets a field the template
+   * requires: the send then fails at render time and looks like "user opted out".
+   */
+  it('every notify helper produces a renderable message', async () => {
+    const user = await makeUser('qa-render-all@example.com', { plan: 'premium' });
+    const base = { to: user.email, userId: user.id, name: user.name };
+
+    const results = await Promise.all([
+      notifyVerification(env, { ...base, verifyUrl: 'http://x/verify' }),
+      notifyPasswordReset(env, { ...base, resetUrl: 'http://x/reset' }),
+      notifyWelcome(env, { ...base }),
+      notifyLoginAlert(env, { ...base, when: new Date() }),
+      notifyPasswordChanged(env, { ...base, when: new Date() }),
+      notifyAccountNotice(env, { ...base, heading: 'H', body: 'B' }),
+      notifySupportReceived(env, { ...base, reference: 'TKT-1', subject: 'S', message: 'M' }),
+      notifySubscription(env, { ...base, kind: 'activated', periodKey: 'a' }),
+      notifySubscription(env, { ...base, kind: 'renewed', periodKey: 'b' }),
+      notifySubscription(env, { ...base, kind: 'expiring', periodKey: 'c' }),
+      notifySubscription(env, { ...base, kind: 'cancelled', periodKey: 'd' }),
+    ]);
+
+    for (const result of results) {
+      expect(result.skippedReason).not.toBe('render_failed');
+    }
+    // At least most of them should be queued; security/transactional are never
+    // blocked by defaults.
+    expect(results.filter((r) => r.queued).length).toBeGreaterThanOrEqual(9);
+  });
+
+  it('renders an announcement with an unsubscribe link', async () => {
+    const user = await makeUser('qa-render-ann@example.com');
+    await updatePreferences(user.id, { marketingOptIn: true, productUpdates: true });
+    const result = await notifyAnnouncement(env, {
+      to: user.email,
+      userId: user.id,
+      name: user.name,
+      title: 'News',
+      body: 'Something happened.',
+    });
+    expect(result.queued).toBe(true);
+
+    const [row] = await getDb().select().from(emailQueue).where(eq(emailQueue.id, result.id!));
+    expect(row?.category).toBe('marketing');
+    expect(row?.html).toContain('unsubscribe');
   });
 });

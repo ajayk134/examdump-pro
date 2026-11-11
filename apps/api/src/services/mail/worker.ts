@@ -131,7 +131,14 @@ export async function scheduleSubscriptionReminders(
       logger: options.logger,
     });
     if (result.queued) expiringQueued += 1;
-    else expiringSkipped += 1;
+    else {
+      expiringSkipped += 1;
+      // A render failure is a bug in the template, not a policy decision. Log
+      // it loudly so it does not masquerade as "user opted out".
+      if (result.skippedReason === 'render_failed') {
+        options.logger?.error({ userId: user.id, template: 'subscription_expiring' }, 'mail.reminder_render_failed');
+      }
+    }
   }
 
   return { expiringQueued, expiringSkipped, cancelledQueued: 0 };
