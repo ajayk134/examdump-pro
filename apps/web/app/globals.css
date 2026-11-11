@@ -532,6 +532,12 @@ body::before {
   }
 }
 
+/* Entry animations deliberately do NOT use `animation-fill-mode: both`.
+   A filled animation keeps its final transform on the element forever, and any
+   transform - even an identity matrix - makes the element a containing block
+   for `position: fixed` descendants. That trapped modal/drawer overlays inside
+   this element instead of the viewport. Ending on the neutral value and
+   letting the animation release is what keeps overlays correct. */
 @keyframes rise {
   from {
     opacity: 0;
@@ -586,11 +592,11 @@ body::before {
 }
 
 .animate-rise {
-  animation: rise 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: rise 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .animate-pop {
-  animation: pop 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: pop 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .animate-sheet {

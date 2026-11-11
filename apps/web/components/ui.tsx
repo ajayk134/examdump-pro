@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/format';
 
 /* ------------------------------------------------------------------ */
@@ -500,13 +500,50 @@ export function Drawer({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  /**
+   * Height of the area the user can actually see.
+   *
+   * `dvh` units are unreliable here: on pages taller than the screen the
+   * dynamic viewport reports the document height rather than the visible
+   * height, which made the sheet taller than the screen and pushed it above
+   * y=0. The visual viewport is the only value that stays correct while the
+   * on-screen keyboard is open, so it is measured directly and applied as an
+   * inline height.
+   */
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const sync = () => {
+      const vv = window.visualViewport;
+      const visible = vv ? vv.height : window.innerHeight;
+      // Ignore implausible values (some embedded browsers report 0 mid-resize).
+      if (visible > 120) setViewportHeight(visible);
+    };
+    sync();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', sync);
+    vv?.addEventListener('scroll', sync);
+    window.addEventListener('resize', sync);
+    return () => {
+      vv?.removeEventListener('resize', sync);
+      vv?.removeEventListener('scroll', sync);
+      window.removeEventListener('resize', sync);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
 
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    const originalOverflow = document.body.style.overflow;
+    // Lock the document, not just <body>: `overflow:hidden` on body alone
+    // leaves <html> scrollable, so the page behind the sheet still moved.
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalHtmlOverflow = document.documentElement.style.overflow;
+    const originalOverscroll = document.documentElement.style.overscrollBehavior;
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.documentElement.style.overscrollBehavior = 'none';
 
     const focusables = () =>
       Array.from(
@@ -541,8 +578,10 @@ export function Drawer({
     return () => {
       cancelAnimationFrame(raf);
       document.removeEventListener('keydown', onKeyDown, true);
-      document.body.style.overflow = originalOverflow;
       previouslyFocused?.focus?.();
+      document.body.style.overflow = originalBodyOverflow;
+      document.documentElement.style.overflow = originalHtmlOverflow;
+      document.documentElement.style.overscrollBehavior = originalOverscroll;
     };
   }, [open, onClose]);
 
@@ -556,18 +595,46 @@ export function Drawer({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        style={
+          side === 'bottom'
+            ? viewportHeight
+              ? // A definite height is what lets the flex children below
+                // compute their own heights; with `max-height` alone the
+                // transcript falls back to content height and pushes the
+                // composer past the bottom of the screen.
+                { height: `${Math.round(viewportHeight)}px`, maxHeight: `${Math.round(viewportHeight)}px` }
+              : undefined
+            : undefined
+        }
         className={cn(
           'absolute flex flex-col overflow-hidden border-surface-border bg-surface-raised shadow-2xl',
           side === 'right'
             ? 'inset-y-0 right-0 w-full animate-slide-in border-l sm:max-w-lg'
-            : 'inset-x-0 bottom-0 h-[88dvh] animate-sheet rounded-t-3xl border-t',
+            : 'inset-x-0 bottom-0 animate-sheet rounded-t-2xl border-t',
           className,
         )}
       >
         <h2 id={titleId} className="sr-only">
           {title}
         </h2>
-        <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+        {side === 'bottom' ? (
+          <div
+            aria-hidden="true"
+            className="flex shrink-0 justify-center pt-2 pb-1"
+          >
+            <span className="h-1 w-9 rounded-full bg-surface-border-strong" />
+          </div>
+        ) : null}
+        <div
+          className="flex min-h-0 flex-1 flex-col"
+          style={
+            side === 'bottom'
+              ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' }
+              : undefined
+          }
+        >
+          {children}
+        </div>
       </div>
     </div>
   );

@@ -219,17 +219,24 @@ export function AiChat({
   /* Scrolling                                                         */
   /* ---------------------------------------------------------------- */
 
+  const [showJump, setShowJump] = useState(false);
+
   const onTranscriptScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    stickToBottom.current = distance < 80;
+    const nearBottom = distance < 80;
+    stickToBottom.current = nearBottom;
+    // Only worth offering once the reader is meaningfully far from the end.
+    setShowJump(distance > 240);
   }, []);
 
   const scrollToBottom = useCallback((smooth = true) => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    stickToBottom.current = true;
+    setShowJump(false);
   }, []);
 
   useEffect(() => {
@@ -625,6 +632,22 @@ export function AiChat({
           ) : null}
         </div>
       </div>
+
+      {/* Jump to latest: floats above the composer while the reader is
+          scrolled away from the newest message. */}
+      {showJump ? (
+        <div className="pointer-events-none relative z-10 -mb-px flex justify-center">
+          <button
+            type="button"
+            onClick={() => scrollToBottom()}
+            className="pointer-events-auto mb-2 inline-flex min-h-10 items-center gap-1.5 rounded-full border border-surface-border-strong bg-surface-raised/95 px-3.5 py-1.5 text-xs font-semibold text-content-primary shadow-lg backdrop-blur transition-colors hover:border-accent/50"
+            aria-label="Jump to latest message"
+          >
+            <IconChevronDown width={14} height={14} />
+            Latest
+          </button>
+        </div>
+      ) : null}
 
       {/* Composer */}
       <div className="shrink-0 border-t border-surface-border bg-surface-raised/80 px-2.5 py-2 backdrop-blur sm:px-4 sm:py-2.5 [@media(max-height:480px)]:py-1.5">
