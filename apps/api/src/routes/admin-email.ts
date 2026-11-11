@@ -45,7 +45,8 @@ import { htmlToText, renderTemplate, validateTemplate } from '../services/mail/p
 import { suppressAddress } from '../services/mail/policy.service.js';
 import { workerState } from '../services/mail/worker.js';
 import { renderMail, type MailTemplateName } from '../services/mail/render.js';
-import { brandContext, mailConfigured } from '../services/mail/mail.service.js';
+import { brandContext, mailConfigured, verifyMailer } from '../services/mail/mail.service.js';
+import { auditSenderIdentity } from '../services/mail/deliverability.js';
 
 const segmentSchema = z.object({
   plan: z.enum(['free', 'premium', 'any']).optional(),
@@ -154,8 +155,21 @@ export async function adminEmailRoutes(app: FastifyInstance, env: Env): Promise<
       campaigns: campaigns[0] ?? { total: 0, scheduled: 0, sent: 0, draft: 0 },
       delivery: deliveryRates ?? { sent: 0, failed: 0, suppressed: 0 },
       suppressions: Number(suppressionCount?.value ?? 0),
+      deliverability: auditSenderIdentity(env.MAIL_FROM),
       trend,
     };
+  });
+
+  /**
+   * Live sender-authentication check.
+   *
+   * Reports whether the sending identity can be authenticated, and runs an SMTP
+   * `verify` to confirm the credentials/connection. Read-only: it sends no mail.
+   */
+  app.get('/email/deliverability', async () => {
+    const report = auditSenderIdentity(env.MAIL_FROM);
+    const smtp = await verifyMailer(env).catch((err) => ({ ok: false, error: (err as Error).message }));
+    return { ...report, smtp: { configured: mailConfigured(env), connected: smtp.ok, error: smtp.error ?? null } };
   });
 
   /* ------------------------------ templates ----------------------------- */

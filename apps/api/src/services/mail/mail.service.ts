@@ -375,8 +375,12 @@ export interface RawMailInput {
   subject: string;
   html: string;
   text: string;
-  /** Inbox-visible headers for unsubscribe (marketing only). */
+  /** Standard/automation headers built by headers.ts (and unsubscribe for marketing). */
   headers?: Record<string, string>;
+  /** Stable Message-ID so a retry is the same message, not a new one. */
+  messageId?: string;
+  /** Explicit Date header; an absent Date is a recognised spam signal. */
+  date?: Date;
   userId?: string | null;
   template: string;
   referenceId?: string | null;
@@ -458,6 +462,10 @@ export async function deliverRaw(env: Env, input: RawMailInput): Promise<RawMail
       subject: input.subject,
       html: input.html,
       text: input.text,
+      // Explicit Date and Message-ID: an unset Date is a documented spam signal,
+      // and a stable id keeps a retried message recognisable.
+      date: input.date ?? new Date(),
+      messageId: input.messageId,
       headers: input.headers,
     });
     const messageId = info.messageId ?? undefined;

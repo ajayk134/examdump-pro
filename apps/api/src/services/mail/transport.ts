@@ -9,6 +9,7 @@ import type { EmailQueueRow } from '../../db/schema/mail.js';
 import { deliverRaw, type MailLogger } from './mail.service.js';
 import { checkRecipientPolicy, type MailCategory } from './policy.service.js';
 import { buildUnsubscribeHeaders } from './unsubscribe.js';
+import { buildMailHeaders } from './headers.js';
 
 export interface SendOutcome {
   outcome: 'sent' | 'failed' | 'suppressed';
@@ -45,8 +46,28 @@ export async function sendRenderedMail(
     return { outcome: 'suppressed', error: policy.reason ?? 'suppressed', retryable: false };
   }
 
-  const headers =
-    category === 'marketing' ? buildUnsubscribeHeaders(env, row.recipient, row.userId ?? undefined) : undefined;
+  // Standard automation/bookkeeping headers for every message, plus list
+  // headers for marketing. These are the deliverability levers we control.
+  const unsubscribe =
+    category === 'marketing' ? buildUnsubscribeHeaders(env, row.recipient, row.userId ?? undefined) : {};
+  const headers = {
+    ...buildMailHeaders({
+      category,
+      webUrl: env.PUBLIC_WEB_URL,
+      productName: 'ExamDump',
+      supportEmail: env.MAIL_REPLY_TO ?? 'examdump.official@gmail.com',
+      messageKey: row.id,
+      unsubscribeUrl: unsubscribe['List-Unsubscribe']?.replace(/^<|>$/g, ''),
+      referenceId: row.referenceId ?? undefined,
+    }),
+  };
+
+  /**
+   * Message-ID is derived from the queue row id, so it is stable across retries.
+   * Using the configured sender's domain keeps it consistent with From.
+   */
+  const senderHost = (env.MAIL_FROM.match(/@([^>\s]+)/)?.[1] ?? 'examdump.invalid').trim();
+  const messageId = `<${row.id}@${senderHost}>`;
 
   const result = await deliverRaw(env, {
     to: row.recipient,
@@ -58,6 +79,7 @@ export async function sendRenderedMail(
     referenceId: row.referenceId,
     logger,
     headers,
+    messageId,
   });
 
   if (result.delivered) {

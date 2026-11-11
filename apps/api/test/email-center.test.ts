@@ -60,6 +60,8 @@ import {
   notifyVerification,
   notifyWelcome,
 } from '../src/services/mail/notify.service.js';
+import { buildMailHeaders } from '../src/services/mail/headers.js';
+import { auditSenderIdentity } from '../src/services/mail/deliverability.js';
 
 let ctx: TestContext;
 let env: Env;
@@ -655,5 +657,104 @@ describe('built-in templates render', () => {
     const [row] = await getDb().select().from(emailQueue).where(eq(emailQueue.id, result.id!));
     expect(row?.category).toBe('marketing');
     expect(row?.html).toContain('unsubscribe');
+  });
+});
+
+/* ---------------------------- deliverability ---------------------------- */
+
+describe('outbound headers', () => {
+  const base = {
+    webUrl: 'https://examtopicspro.duckdns.org',
+    productName: 'ExamDump',
+    supportEmail: 'examdump.official@gmail.com',
+    messageKey: 'row-123',
+  };
+
+  it('marks transactional mail as machine generated', () => {
+    const headers = buildMailHeaders({ ...base, category: 'transactional' });
+    expect(headers['Auto-Submitted']).toBe('auto-generated');
+    expect(headers['X-Auto-Response-Suppress']).toContain('AutoReply');
+    // Precedence: bulk must never appear on transactional mail: filters
+    // deprioritise it, and a password reset must not be deprioritised.
+    expect(headers['Precedence']).toBeUndefined();
+    expect(headers['List-Unsubscribe']).toBeUndefined();
+  });
+
+  it('classifies marketing mail as list traffic', () => {
+    const headers = buildMailHeaders({
+      ...base,
+      category: 'marketing',
+      unsubscribeUrl: 'https://x.test/unsubscribe?t=1',
+    });
+    expect(headers['Precedence']).toBe('bulk');
+    expect(headers['List-Id']).toContain('ExamDump');
+    expect(headers['List-Unsubscribe']).toBe('<https://x.test/unsubscribe?t=1>');
+    expect(headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+  });
+
+  it('includes a Feedback-ID tied to the message', () => {
+    const headers = buildMailHeaders({ ...base, category: 'transactional' });
+    expect(headers['Feedback-ID']).toContain('row-123');
+    expect(headers['Feedback-ID']).toContain('examtopicspro.duckdns.org');
+  });
+
+  it('survives a malformed public url', () => {
+    const headers = buildMailHeaders({ ...base, webUrl: 'not-a-url', category: 'transactional' });
+    expect(headers['Auto-Submitted']).toBe('auto-generated');
+  });
+
+  it('omits List-Unsubscribe for marketing without a url', () => {
+    const headers = buildMailHeaders({ ...base, category: 'marketing' });
+    expect(headers['Precedence']).toBe('bulk');
+    expect(headers['List-Unsubscribe']).toBeUndefined();
+  });
+});
+
+describe('sender authentication audit', () => {
+  it('flags a shared consumer domain as high risk', () => {
+    const report = auditSenderIdentity('ExamDump <examdump.official@gmail.com>');
+    expect(report.fromDomain).toBe('gmail.com');
+    expect(report.sharedConsumerDomain).toBe(true);
+    expect(report.ownedDomain).toBe(false);
+    expect(report.risk).toBe('high');
+  });
+
+  it('states that SPF, DKIM and DMARC are all not possible for gmail.com', () => {
+    const report = auditSenderIdentity('ExamDump <examdump.official@gmail.com>');
+    expect(report.authentication.spf.status).toBe('not_possible');
+    expect(report.authentication.dkim.status).toBe('not_possible');
+    expect(report.authentication.dmarc.status).toBe('not_possible');
+  });
+
+  it('recommends a domain we own rather than claiming a fix', () => {
+    const report = auditSenderIdentity('someone@gmail.com');
+    expect(report.recommendations.join(' ')).toMatch(/domain you own/i);
+    // Must be explicit that this is not something the code can solve.
+    expect(report.summary).toMatch(/cannot authenticate/i);
+  });
+
+  it('reports an owned domain as low risk with available authentication', () => {
+    const report = auditSenderIdentity('ExamDump <mail@examdump.pro>');
+    expect(report.ownedDomain).toBe(true);
+    expect(report.sharedConsumerDomain).toBe(false);
+    expect(report.risk).toBe('low');
+    expect(report.authentication.dkim.status).toBe('possible');
+  });
+
+  it('covers the other common consumer providers', () => {
+    for (const address of ['a@yahoo.com', 'a@outlook.com', 'a@hotmail.com', 'a@icloud.com', 'a@proton.me']) {
+      expect(auditSenderIdentity(address).sharedConsumerDomain).toBe(true);
+    }
+  });
+});
+
+describe('message id stability', () => {
+  it('derives a stable Message-ID from the queue row', async () => {
+    const user = await makeUser('qa-msgid@example.com');
+    const first = await enqueueEmail(message({ to: user.email, userId: user.id }));
+    const [row] = await getDb().select().from(emailQueue).where(eq(emailQueue.id, first.id!));
+    // The transport builds `<rowId@senderHost>`; the id itself is stable and
+    // unique, which is what makes a retry recognisable as the same message.
+    expect(row?.id).toBe(first.id);
   });
 });

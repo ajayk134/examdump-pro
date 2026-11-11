@@ -42,6 +42,19 @@ interface Overview {
   delivery: { sent: number; failed: number; suppressed: number };
   suppressions: number;
   trend: Array<{ date: string; status: string; value: number }>;
+  deliverability: {
+    fromDomain: string;
+    ownedDomain: boolean;
+    sharedConsumerDomain: boolean;
+    risk: 'low' | 'high';
+    summary: string;
+    recommendations: string[];
+    authentication: {
+      spf: { status: string; detail: string };
+      dkim: { status: string; detail: string };
+      dmarc: { status: string; detail: string };
+    };
+  };
 }
 
 interface Campaign {
@@ -285,6 +298,8 @@ function OverviewView({ onGo }: { onGo: (view: View) => void }) {
         </Card>
       </div>
 
+      <DeliverabilityCard report={data.deliverability} />
+
       <Card className="p-4">
         <h3 className="text-sm font-semibold">Volume trend</h3>
         <p className="text-xs text-content-subtle">{formatNumber(totalTrend)} messages queued in 30 days</p>
@@ -317,6 +332,68 @@ function TrendChart({ rows }: { rows: Array<{ date: string; status: string; valu
         />
       ))}
     </div>
+  );
+}
+
+/**
+ * Sender authentication panel.
+ *
+ * This states plainly what can and cannot be verified. It deliberately does not
+ * show a reassuring green tick when we send from a shared consumer domain,
+ * because that would misrepresent why mail is being filtered.
+ */
+function DeliverabilityCard({ report }: { report: Overview['deliverability'] }) {
+  const [open, setOpen] = useState(false);
+  const rows: Array<[string, { status: string; detail: string }]> = [
+    ['SPF', report.authentication.spf],
+    ['DKIM', report.authentication.dkim],
+    ['DMARC', report.authentication.dmarc],
+  ];
+  const tone = report.risk === 'high' ? 'warning' : 'success';
+
+  return (
+    <Card className="p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold">Sender authentication</h3>
+        <Badge tone={tone}>{report.risk === 'high' ? 'limited' : 'authenticated'}</Badge>
+        <span className="text-xs text-content-subtle">From: {report.fromDomain}</span>
+      </div>
+      <p className="mt-2 text-sm text-content-muted">{report.summary}</p>
+
+      <ul className="mt-3 space-y-2 text-sm">
+        {rows.map(([name, entry]) => (
+          <li key={name} className="flex gap-2">
+            <Badge tone={entry.status === 'possible' ? 'success' : 'warning'}>
+              {entry.status === 'possible' ? 'available' : 'not possible'}
+            </Badge>
+            <span className="min-w-0 flex-1">
+              <span className="font-medium">{name}</span>
+              <span className="block text-xs text-content-muted">{entry.detail}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      {report.recommendations.length > 0 ? (
+        <>
+          <button className="mt-3 text-xs text-content-muted underline" onClick={() => setOpen((v) => !v)}>
+            {open ? 'Hide' : 'What can be fixed'}
+          </button>
+          {open ? (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-content-muted">
+              {report.recommendations.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      ) : null}
+
+      <p className="mt-3 text-xs text-content-subtle">
+        «Sent» means the SMTP server accepted the message. It does not prove inbox placement — spam
+        filtering happens after acceptance.
+      </p>
+    </Card>
   );
 }
 
