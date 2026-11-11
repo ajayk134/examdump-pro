@@ -208,6 +208,105 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
     },
   );
 
+  /**
+   * Streaming variant of `/hint`.
+   *
+   * Hints are short, so the win here is perceived responsiveness: the reader
+   * sees the nudge being written instead of staring at a spinner. Reuses the
+   * same SSE plumbing (hijack, flush, drain-aware writes, explicit terminator)
+   * as `/explain/stream` so proxy buffering cannot swallow the frames.
+   */
+  app.post(
+    '/hint/stream',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { user } = await requireAuth(request, env);
+      const input = parseOrThrow(aiExplainSchema, request.body);
+
+      const settings = await getSettings(env);
+      const entitlements = await resolveEntitlements(user, settings);
+
+      const { question, exam, provider } = await getDatasetClient(env).getQuestion(
+        input.provider,
+        input.exam,
+        input.questionId,
+      );
+
+      // Without a model we can still offer the curated fallback, but there is
+      // nothing to stream, so answer with a normal JSON response.
+      if (!aiConfigured(env)) {
+        return reply.send({
+          hint: question.explanation?.slice(0, 220) || 'Review the key terms in the question stem.',
+          degraded: true,
+        });
+      }
+
+      const limit = aiDailyLimit(env, entitlements.plan);
+      await assertWithinQuota(user.id, [{ field: 'aiExplanations', limit, label: 'AI hint' }]);
+
+      reply.hijack();
+      const res = reply.raw;
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      res.flushHeaders?.();
+      res.socket?.setNoDelay(true);
+
+      const send = async (payload: unknown): Promise<void> => {
+        if (res.writableEnded || res.destroyed) return;
+        const ok = res.write(`data: ${JSON.stringify(payload)}\n\n`);
+        if (!ok) {
+          await new Promise<void>((resolve) => {
+            const done = () => {
+              res.off('drain', done);
+              res.off('close', done);
+              resolve();
+            };
+            res.once('drain', done);
+            res.once('close', done);
+          });
+        }
+      };
+
+      let terminated = false;
+      let wroteAny = false;
+      try {
+        for await (const chunk of streamChat(env, {
+          // Hints stay deliberately short and must never reveal the answer key.
+          messages: buildHintMessages(question, {
+            examTitle: exam.title,
+            examCode: exam.code,
+            providerTitle: provider.title,
+          }),
+          maxTokens: 220,
+          temperature: 0.4,
+        })) {
+          // Hints are a single short nudge; showing the model's planning text
+          // here would be noise, so only answer-channel text is forwarded.
+          if (chunk.type === 'delta' && chunk.channel === 'reasoning') continue;
+          if (chunk.type === 'reasoning_start' || chunk.type === 'reasoning_end') continue;
+          if (chunk.type === 'delta') wroteAny = true;
+          if (chunk.type === 'done' || chunk.type === 'error') terminated = true;
+          await send(chunk);
+        }
+      } catch (err) {
+        request.log.error({ err }, 'ai.hint.stream_failed');
+        terminated = true;
+        await send({ type: 'error', message: 'The AI tutor is temporarily unavailable.' });
+      } finally {
+        if (!terminated) await send({ type: 'done' });
+        if (!res.writableEnded) res.end();
+        // A failed attempt still consumes the model call we already made.
+        if (wroteAny || !terminated) {
+          await incrementUsage(user.id, 'aiExplanations', 1).catch(() => undefined);
+        }
+      }
+    },
+  );
+
   /** A short nudge that never reveals the correct option. */
   app.post('/hint', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { user } = await requireAuth(request, env);

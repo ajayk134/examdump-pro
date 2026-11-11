@@ -37,9 +37,20 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
   const aiAbort = useRef<AbortController | null>(null);
   const [hintText, setHintText] = useState('');
   const [hintLoading, setHintLoading] = useState(false);
+  const [hintStreaming, setHintStreaming] = useState(false);
+  const [hintError, setHintError] = useState('');
+  const hintAbort = useRef<AbortController | null>(null);
   const [aiRemaining, setAiRemaining] = useState<number | null>(null);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+
+  useEffect(
+    () => () => {
+      hintAbort.current?.abort();
+      aiAbort.current?.abort();
+    },
+    [],
+  );
 
   const correct = question.answer ?? '';
   const required = correct.length > 0 ? correct.length : question.type === 'multiple' ? 2 : 1;
@@ -226,22 +237,52 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
       toast('Sign in to use the AI tutor.', 'info');
       return;
     }
-    setHintLoading(true);
+    hintAbort.current?.abort();
+    const controller = new AbortController();
+    hintAbort.current = controller;
+
+    setHintError('');
     setHintText('');
+    setHintLoading(true);
+    setHintStreaming(false);
+
+    let received = false;
     try {
-      const data = await post<{ hint: string; degraded?: boolean }>('/ai/hint', {
-        provider: providerId,
-        exam: examKey,
-        questionId: question.id,
-      });
-      setHintText(data.hint);
-      if (data.degraded) setAiEnabled(false);
-      else setAiRemaining((prev) => (prev === null ? prev : Math.max(0, prev - 1)));
+      await streamPost(
+        '/ai/hint/stream',
+        { provider: providerId, exam: examKey, questionId: question.id },
+        {
+          onDelta: (text) => {
+            if (!received) {
+              received = true;
+              // First token: swap the spinner for the caret so the wait never
+              // looks frozen between "loading" and visible output.
+              setHintLoading(false);
+              setHintStreaming(true);
+            }
+            setHintText((prev) => prev + text);
+          },
+          onDone: () => {
+            setAiRemaining((prev) => (prev === null ? prev : Math.max(0, prev - 1)));
+          },
+          onError: (message) => setHintError(message),
+        },
+        controller.signal,
+      );
     } catch (err) {
-      toast((err as Error).message, 'error');
+      if ((err as Error).name !== 'AbortError') setHintError((err as Error).message);
     } finally {
       setHintLoading(false);
+      setHintStreaming(false);
+      hintAbort.current = null;
     }
+  };
+
+  const stopHint = () => {
+    hintAbort.current?.abort();
+    hintAbort.current = null;
+    setHintLoading(false);
+    setHintStreaming(false);
   };
 
   const sortedSelected = [...selected].sort().join('');
@@ -352,10 +393,17 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
           {aiEnabled ? (
             <>
               {!revealed ? (
-                <button onClick={requestHint} className="btn-ghost" disabled={hintLoading}>
-                  <IconSparkles width={16} height={16} />
-                  {hintLoading ? 'Thinking…' : 'Hint'}
-                </button>
+                hintLoading || hintStreaming ? (
+                  <button onClick={stopHint} className="btn-ghost">
+                    <IconStop width={16} height={16} />
+                    {hintLoading ? 'Thinking…' : 'Stop'}
+                  </button>
+                ) : (
+                  <button onClick={requestHint} className="btn-ghost">
+                    <IconSparkles width={16} height={16} />
+                    {hintText ? 'Another hint' : 'Hint'}
+                  </button>
+                )
               ) : null}
               {aiLoading ? (
                 <button onClick={stopExplain} className="btn-secondary">
@@ -412,12 +460,43 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
         </div>
       ) : null}
 
-      {hintText ? (
-        <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-500/5 p-4">
-          <p className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-amber-600 dark:text-amber-300">
-            <IconSparkles width={16} height={16} /> Hint
-          </p>
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-content-secondary">{hintText}</p>
+      {hintText || hintLoading || hintError ? (
+        <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-500/5 p-3.5 sm:p-4">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-600 dark:text-amber-300">
+              <IconSparkles width={16} height={16} /> Hint
+            </p>
+            {hintStreaming ? (
+              <span className="text-[11px] font-medium text-content-muted">writing…</span>
+            ) : hintText ? (
+              <span className="text-[11px] font-medium text-content-muted">done</span>
+            ) : null}
+          </div>
+
+          {hintError ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="min-w-0 text-sm text-content-secondary">{hintError}</p>
+              <button onClick={requestHint} className="btn-ghost btn-sm shrink-0">
+                Try again
+              </button>
+            </div>
+          ) : (
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-content-secondary">
+              {hintText}
+              {hintStreaming ? (
+                <span
+                  aria-hidden="true"
+                  className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.15em] animate-pulse rounded-full bg-amber-500 align-middle"
+                />
+              ) : null}
+            </p>
+          )}
+
+          {hintLoading ? (
+            <p className="flex items-center gap-2 text-sm text-content-muted">
+              Thinking… <span className="dot-pulse" aria-hidden="true" />
+            </p>
+          ) : null}
         </div>
       ) : null}
 

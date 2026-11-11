@@ -54,10 +54,10 @@ function AskInner() {
           paddingBottom: 'calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px))',
         }}
       >
-        <div className="mx-auto w-full max-w-3xl shrink-0 px-3 pt-1.5 pb-1 sm:px-0">
+        <div className="mx-auto w-full max-w-3xl shrink-0 px-3 pt-1.5 pb-1 sm:px-0 [@media(max-height:480px)]:hidden">
           <Link
             href="/ask"
-            className="inline-flex min-h-9 items-center gap-1 text-xs text-content-muted transition-colors hover:text-content-primary"
+            className="inline-flex min-h-10 items-center gap-1 text-xs text-content-muted transition-colors hover:text-content-primary"
           >
             ← All conversations
           </Link>

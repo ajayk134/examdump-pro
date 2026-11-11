@@ -18,6 +18,7 @@ import {
   IconTrophy,
 } from '@/components/icons';
 import { formatDuration, formatNumber, relativeTime, scoreColor } from '@/lib/format';
+import { RecommendationCard } from '@/components/recommendation-card';
 
 export default function DashboardPage() {
   const { user, loading } = useAuth();
@@ -135,8 +136,8 @@ export default function DashboardPage() {
         <StatCard label="Mock exams" value={formatNumber(stats.mockTests)} hint="Completed simulations" icon={<IconTrophy />} />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <div className="surface p-5 lg:col-span-2">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="surface min-w-0 p-4 sm:p-5 lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
             <div>
               <h2 className="heading-2">Performance</h2>
@@ -149,42 +150,33 @@ export default function DashboardPage() {
           <LineChart data={performance} />
         </div>
 
-        <div className="surface p-5">
+        <div className="surface min-w-0 p-4 sm:p-5">
           <h2 className="heading-2 mb-3">Weak topics</h2>
           <WeakTopicsList topics={weakTopics} />
           <Link href="/exams" className="btn-secondary mt-4 w-full">Practise weak areas</Link>
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="surface p-5">
-          <div className="mb-3 flex items-center justify-between">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="surface min-w-0 p-4 sm:p-5">
+          <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="heading-2">Recommended for you</h2>
-            <IconSparkles className="text-brand-400" />
+            <IconSparkles className="shrink-0 text-accent" width={18} height={18} />
           </div>
           {recommendations.length === 0 ? (
             <p className="py-6 text-center text-sm text-content-muted">Browse the catalogue to get recommendations.</p>
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ul className="flex flex-col gap-2.5">
               {recommendations.map((rec) => (
-                <li key={`${rec.exam.providerId}-${rec.exam.key}`}>
-                  <Link
-                    href={`/study?provider=${encodeURIComponent(rec.exam.providerId)}&exam=${encodeURIComponent(rec.exam.key)}&mode=practice`}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-surface-border p-3 transition hover:border-brand-400/60 hover:bg-surface-overlay"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">{rec.exam.code}</p>
-                      <p className="truncate text-xs text-content-muted">{rec.exam.providerTitle} · {rec.reason}</p>
-                    </div>
-                    <span className="badge shrink-0">{formatNumber(rec.exam.questionCount)} Q</span>
-                  </Link>
+                <li key={`${rec.exam.providerId}-${rec.exam.key}`} className="min-w-0">
+                  <RecommendationCard rec={rec} />
                 </li>
               ))}
             </ul>
           )}
         </div>
 
-        <div className="surface p-5">
+        <div className="surface min-w-0 p-4 sm:p-5">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="heading-2">Recent attempts</h2>
             <Link
@@ -219,7 +211,7 @@ export default function DashboardPage() {
       </section>
 
       {progress.length > 0 ? (
-        <section className="surface p-5">
+        <section className="surface min-w-0 p-4 sm:p-5">
           <h2 className="heading-2 mb-3">Your exams</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {progress.map((item) => {

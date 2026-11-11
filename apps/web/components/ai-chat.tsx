@@ -420,21 +420,22 @@ export function AiChat({
         className={cn(
           'flex shrink-0 items-center gap-2 border-b border-surface-border px-3 sm:px-4',
           embedded ? 'py-2' : 'py-2.5',
+          '[@media(max-height:480px)]:py-1',
         )}
       >
-        {!embedded ? <AssistantAvatar size={30} /> : null}
+        {!embedded ? <span className="[@media(max-height:480px)]:hidden"><AssistantAvatar size={30} /></span> : null}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-content-primary">
             {embedded ? 'Conversation' : headerTitle}
           </p>
-          <p className="truncate text-[0.6875rem] text-content-muted">
+          <p className="truncate text-[0.6875rem] text-content-muted [@media(max-height:480px)]:hidden">
             {questionAnchored ? 'Grounded in this question' : 'Certification tutor'}
           </p>
         </div>
         <button
           type="button"
           onClick={startNew}
-          className="btn-ghost !min-h-9 !px-2 !py-1.5"
+          className="btn-ghost !px-2 !py-1.5 touch:h-11 touch:w-11"
           aria-label="New conversation"
           title="New conversation"
         >
@@ -443,7 +444,7 @@ export function AiChat({
         <button
           type="button"
           onClick={() => setHistoryOpen((v) => !v)}
-          className="btn-ghost !min-h-9 !px-2 !py-1.5"
+          className="btn-ghost !px-2 !py-1.5 touch:h-11 touch:w-11"
           aria-label="Conversation history"
           aria-expanded={historyOpen}
           title="History"
@@ -458,7 +459,7 @@ export function AiChat({
           <button
             type="button"
             onClick={onClose}
-            className="btn-ghost !min-h-9 !px-2 !py-1.5"
+            className="btn-ghost !px-2 !py-1.5 touch:h-11 touch:w-11"
             aria-label="Close"
           >
             ✕
@@ -515,7 +516,7 @@ export function AiChat({
         onScroll={onTranscriptScroll}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
       >
-        <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-5">
+        <div className="mx-auto w-full max-w-3xl px-3.5 py-3.5 sm:px-5 sm:py-5">
           {loading ? (
             <div className="flex flex-col gap-3">
               <div className="ml-auto h-10 w-2/5 animate-pulse rounded-2xl bg-surface-overlay" />
@@ -577,7 +578,7 @@ export function AiChat({
                             <button
                               type="button"
                               onClick={() => void copyMessage(message)}
-                              className="grid h-8 w-8 place-items-center rounded-md text-content-muted transition-colors hover:bg-surface-overlay hover:text-content-primary"
+                              className="grid h-8 w-8 place-items-center rounded-md text-content-muted transition-colors hover:bg-surface-overlay hover:text-content-primary touch:h-10 touch:w-10"
                               aria-label="Copy answer"
                               title="Copy"
                             >
@@ -587,7 +588,7 @@ export function AiChat({
                               <button
                                 type="button"
                                 onClick={regenerate}
-                                className="grid h-8 w-8 place-items-center rounded-md text-content-muted transition-colors hover:bg-surface-overlay hover:text-content-primary"
+                                className="grid h-8 w-8 place-items-center rounded-md text-content-muted transition-colors hover:bg-surface-overlay hover:text-content-primary touch:h-10 touch:w-10"
                                 aria-label="Regenerate answer"
                                 title="Regenerate"
                               >
@@ -626,17 +627,17 @@ export function AiChat({
       </div>
 
       {/* Composer */}
-      <div className="shrink-0 border-t border-surface-border bg-surface-raised/80 px-3 py-2.5 backdrop-blur sm:px-4">
+      <div className="shrink-0 border-t border-surface-border bg-surface-raised/80 px-2.5 py-2 backdrop-blur sm:px-4 sm:py-2.5 [@media(max-height:480px)]:py-1.5">
         <div className="mx-auto w-full max-w-3xl">
           {showSuggestions ? (
-            <div className="mb-2 -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="mb-2 -mx-1 flex snap-x snap-mandatory gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [@media(max-height:480px)]:mb-1">
               {suggestions.slice(0, 4).map((s) => (
                 <button
                   key={s}
                   type="button"
                   disabled={streaming}
                   onClick={() => void send(s)}
-                  className="chip shrink-0 text-xs"
+                  className="chip max-w-[15rem] shrink-0 snap-start !items-start text-left text-xs leading-snug whitespace-normal"
                 >
                   {s}
                 </button>
@@ -683,7 +684,7 @@ export function AiChat({
               )}
             </div>
           </form>
-          <p className="mt-1.5 px-1 text-[0.6875rem] text-content-muted">
+          <p className="mt-1.5 px-1 text-[0.6875rem] text-content-muted [@media(max-height:480px)]:hidden">
             {!anchored && !conversationId ? (
               <>
                 Pick an exam to ground the tutor:{' '}

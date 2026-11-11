@@ -89,7 +89,20 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    /**
+     * `touch:` variant — targets devices whose primary pointer is coarse.
+     *
+     * Tailwind's `hover:`/`sm:` variants cannot express "this is a finger, not
+     * a mouse", so tap-target sizing had to be repeated as one-off `!min-h-*`
+     * overrides on individual buttons. Exposing the media query as a variant
+     * lets a component state its touch size once and keeps mouse-sized
+     * controls untouched on desktop.
+     */
+    ({ addVariant }: { addVariant: (name: string, definition: string) => void }) => {
+      addVariant('touch', '@media (pointer: coarse)');
+    },
+  ],
 };
 
 export default config;
