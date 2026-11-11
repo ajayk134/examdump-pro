@@ -19,7 +19,7 @@ export const SUBSCRIPTION_STATUS = [
 ] as const;
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUS)[number];
 
-export const QUESTION_MODES = ['practice', 'reading', 'mock', 'timed', 'random'] as const;
+export const QUESTION_MODES = ['practice', 'mock', 'timed', 'random'] as const;
 export type QuestionMode = (typeof QUESTION_MODES)[number];
 
 export const ATTEMPT_STATUS = ['in_progress', 'completed', 'abandoned'] as const;
@@ -193,7 +193,7 @@ export const FREE_PLAN: PlanDefinition = {
   currency: CURRENCY,
   features: [
     '5 free questions in every exam',
-    'Practice & reading modes',
+    'Practice mode with instant feedback',
     'Bookmarks and personal notes',
     'Basic progress tracking',
   ],

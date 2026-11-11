@@ -26,6 +26,7 @@ export function Footer() {
           <p className="text-sm font-semibold">Account</p>
           <ul className="mt-3 space-y-2 text-sm text-content-muted">
             <li><Link href="/dashboard" className="hover:text-content-primary">Dashboard</Link></li>
+            <li><Link href="/ask" className="hover:text-content-primary">Ask AI</Link></li>
             <li><Link href="/profile" className="hover:text-content-primary">Settings</Link></li>
             <li><Link href="/referrals" className="hover:text-content-primary">Refer a friend</Link></li>
             <li><Link href="/support" className="hover:text-content-primary">Support</Link></li>

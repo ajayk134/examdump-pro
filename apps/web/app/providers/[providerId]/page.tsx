@@ -79,8 +79,7 @@ export default function ProviderPage() {
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
                 <Link href={`/study?provider=${encodeURIComponent(exam.providerId)}&exam=${encodeURIComponent(exam.key)}&mode=practice`} className="btn-primary !px-3 !py-1.5 text-xs">Practice</Link>
-                <Link href={`/study?provider=${encodeURIComponent(exam.providerId)}&exam=${encodeURIComponent(exam.key)}&mode=reading`} className="btn-secondary !px-3 !py-1.5 text-xs">Read</Link>
-                <Link href={`/study?provider=${encodeURIComponent(exam.providerId)}&exam=${encodeURIComponent(exam.key)}&mode=mock`} className="btn-ghost !px-3 !py-1.5 text-xs">Mock</Link>
+                        <Link href={`/study?provider=${encodeURIComponent(exam.providerId)}&exam=${encodeURIComponent(exam.key)}&mode=mock`} className="btn-ghost !px-3 !py-1.5 text-xs">Mock</Link>
               </div>
             </div>
           ))}

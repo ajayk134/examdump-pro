@@ -1,0 +1,155 @@
+'use client';
+
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { get } from '@/lib/api';
+import type { Exam } from '@/lib/types';
+import { AiChat } from '@/components/ai-chat';
+import { Alert, Spinner } from '@/components/ui';
+import { IconSearch, IconSparkles } from '@/components/icons';
+
+const POPULAR = ['cisco', 'aws', 'microsoft', 'comptia', 'google', 'pmi'];
+
+function AskInner() {
+  const params = useSearchParams();
+  const provider = params.get('provider');
+  const exam = params.get('exam');
+  const questionId = params.get('question') ?? undefined;
+
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Exam[] | null>(null);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults(null);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const data = await get<{ items: Exam[] }>(
+          `/exams/search?q=${encodeURIComponent(query.trim())}&pageSize=8`,
+        );
+        setResults(data.items ?? []);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  if (provider && exam) {
+    return (
+      <div className="mx-auto flex h-[calc(100dvh-8rem)] max-w-3xl flex-col">
+        <div className="mb-3 flex items-center gap-2">
+          <Link href="/ask" className="text-sm text-content-muted transition hover:text-content-primary">
+            ← All conversations
+          </Link>
+        </div>
+        <div className="card flex min-h-0 flex-1 flex-col overflow-hidden">
+          <AiChat
+            key={`${provider}:${exam}:${questionId ?? ''}`}
+            providerId={provider}
+            examKey={exam}
+            questionId={questionId}
+            examLabel={exam}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <header className="mb-8 text-center">
+        <span className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-sky-400 text-white shadow-lg shadow-brand-500/25">
+          <IconSparkles width={26} height={26} />
+        </span>
+        <h1 className="text-3xl font-bold tracking-tight text-content-primary">Ask the AI tutor</h1>
+        <p className="mx-auto mt-2 max-w-md text-sm text-content-secondary">
+          Understand any concept, unpack a tricky question, or get a study plan. Grounded in the exam you
+          choose.
+        </p>
+      </header>
+
+      <div className="card p-5">
+        <label htmlFor="ask-search" className="label">
+          Which exam are you studying for?
+        </label>
+        <div className="relative">
+          <IconSearch
+            width={18}
+            height={18}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-content-muted"
+          />
+          <input
+            id="ask-search"
+            className="input !pl-10"
+            placeholder="Search by exam code, name or vendor…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+
+        <div className="mt-4">
+          {searching ? (
+            <Spinner label="Searching…" />
+          ) : results && results.length > 0 ? (
+            <ul className="divide-y divide-surface-border">
+              {results.map((item) => (
+                <li key={`${item.providerId}:${item.key}`}>
+                  <Link
+                    href={`/ask?provider=${encodeURIComponent(item.providerId)}&exam=${encodeURIComponent(item.key)}`}
+                    className="flex items-center justify-between gap-3 rounded-lg px-2 py-2.5 transition hover:bg-surface-overlay"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-content-primary">
+                        {item.code}
+                      </span>
+                      <span className="block truncate text-xs text-content-muted">
+                        {item.title} · {item.providerTitle}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs text-brand-600 dark:text-brand-300">Chat →</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : results && results.length === 0 ? (
+            <Alert tone="warning">No exams matched that search.</Alert>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {POPULAR.map((slug) => (
+                <Link
+                  key={slug}
+                  href={`/providers/${encodeURIComponent(slug)}`}
+                  className="badge transition hover:border-brand-400/60 hover:text-content-primary"
+                >
+                  {slug}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <p className="mt-4 text-center text-xs text-content-muted">
+        Every question also has an <strong className="font-semibold">Ask AI</strong> button, so the tutor
+        already knows what you are looking at.
+      </p>
+    </div>
+  );
+}
+
+export default function AskPage() {
+  return (
+    <Suspense fallback={<Spinner label="Loading…" />}>
+      <AskInner />
+    </Suspense>
+  );
+}

@@ -91,7 +91,7 @@ export function buildOpenApi(publicWebUrl: string) {
           parameters: [
             { in: 'path', name: 'providerId', required: true, schema: { type: 'string' } },
             { in: 'path', name: 'examKey', required: true, schema: { type: 'string' } },
-            { in: 'query', name: 'mode', schema: { type: 'string', enum: ['practice', 'reading', 'mock', 'timed', 'random'] } },
+            { in: 'query', name: 'mode', schema: { type: 'string', enum: ['practice', 'mock', 'timed', 'random'] } },
             { in: 'query', name: 'limit', schema: { type: 'integer' } },
             { in: 'query', name: 'offset', schema: { type: 'integer' } },
           ],

@@ -6,22 +6,26 @@ import { QuestionContent } from './question-content';
 import { useAuth, useToast } from './providers';
 import { del, get, post } from '@/lib/api';
 import { cn } from '@/lib/format';
-import { IconBookmark, IconNote, IconSparkles, IconCheck, IconX } from './icons';
+import { Drawer } from './ui';
+import { AiChat } from './ai-chat';
+import { IconBookmark, IconMessage, IconNote, IconSparkles, IconCheck, IconX } from './icons';
 
 interface Props {
   question: Question;
   index?: number;
   providerId: string;
   examKey: string;
-  initiallyRevealed?: boolean;
-  allowPractice?: boolean;
+  /** Called once when the learner first checks an answer. */
+  onAnswered?: () => void;
+  /** Renders a subtle "done" marker in the header. */
+  answered?: boolean;
 }
 
-export function QuestionCard({ question, index, providerId, examKey, initiallyRevealed = false, allowPractice = true }: Props) {
+export function QuestionCard({ question, index, providerId, examKey, onAnswered, answered = false }: Props) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [selected, setSelected] = useState<string[]>([]);
-  const [revealed, setRevealed] = useState(initiallyRevealed);
+  const [revealed, setRevealed] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState('');
@@ -32,6 +36,7 @@ export function QuestionCard({ question, index, providerId, examKey, initiallyRe
   const [hintLoading, setHintLoading] = useState(false);
   const [aiRemaining, setAiRemaining] = useState<number | null>(null);
   const [aiEnabled, setAiEnabled] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const correct = question.answer ?? '';
   const required = correct.length > 0 ? correct.length : question.type === 'multiple' ? 2 : 1;
@@ -78,11 +83,8 @@ export function QuestionCard({ question, index, providerId, examKey, initiallyRe
   };
 
   const check = () => {
-    if (!question.answer) {
-      setRevealed(true);
-      return;
-    }
     setRevealed(true);
+    onAnswered?.();
   };
 
   const reset = () => {
@@ -219,6 +221,11 @@ export function QuestionCard({ question, index, providerId, examKey, initiallyRe
           {question.type === 'multiple' ? <span className="badge">Multiple answers</span> : null}
           {question.type === 'dragdrop' ? <span className="badge">Drag & drop / visual</span> : null}
           {question.stemImages.length > 0 ? <span className="badge">{question.stemImages.length} image{question.stemImages.length > 1 ? 's' : ''}</span> : null}
+          {answered ? (
+            <span className="badge border-emerald-400/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+              <IconCheck width={12} height={12} /> Done
+            </span>
+          ) : null}
         </div>
         <div className="flex items-center gap-1">
           <button onClick={toggleBookmark} className={cn('btn-ghost h-9 w-9 !px-0', bookmarked && 'text-amber-400')} aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark question'} aria-pressed={bookmarked}>
@@ -271,7 +278,7 @@ export function QuestionCard({ question, index, providerId, examKey, initiallyRe
         </p>
       )}
 
-      {allowPractice && question.choices.length > 0 ? (
+      {question.choices.length > 0 ? (
         <div className="mt-5 flex flex-wrap items-center gap-2">
           {!revealed ? (
             <button onClick={check} className="btn-primary" disabled={selected.length === 0}>
@@ -292,6 +299,9 @@ export function QuestionCard({ question, index, providerId, examKey, initiallyRe
               ) : null}
               <button onClick={explain} className="btn-ghost" disabled={aiLoading}>
                 <IconSparkles width={16} height={16} /> {aiLoading ? 'Thinking…' : 'AI explain'}
+              </button>
+              <button onClick={() => setChatOpen(true)} className="btn-secondary">
+                <IconMessage width={16} height={16} /> Ask AI
               </button>
               {aiRemaining !== null ? (
                 <span className="text-xs text-content-muted">{aiRemaining} AI credits left today</span>
@@ -354,6 +364,18 @@ export function QuestionCard({ question, index, providerId, examKey, initiallyRe
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-content-secondary">{aiText}</p>
         </div>
       ) : null}
+
+      <Drawer open={chatOpen} onClose={() => setChatOpen(false)} title="Ask AI about this question">
+        <AiChat
+          key={`${providerId}:${examKey}:${question.id}`}
+          providerId={providerId}
+          examKey={examKey}
+          questionId={question.id}
+          examLabel={examKey}
+          embedded
+          onClose={() => setChatOpen(false)}
+        />
+      </Drawer>
 
       {noteOpen ? (
         <div className="mt-4 space-y-2">

@@ -26,7 +26,7 @@ function StudyInner() {
     return <MockSession providerId={provider} examKey={exam} mode={mode} />;
   }
 
-  const studyMode = mode === 'reading' ? 'reading' : mode === 'random' ? 'random' : 'practice';
+  const studyMode = mode === 'random' ? 'random' : 'practice';
   return <StudySession providerId={provider} examKey={exam} mode={studyMode} />;
 }
 

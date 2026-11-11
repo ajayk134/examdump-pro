@@ -253,3 +253,237 @@ export function offlineExplanation(
   ];
   return parts.join('\n\n');
 }
+
+/* ------------------------------------------------------------------ */
+/* Streaming chat                                                      */
+/* ------------------------------------------------------------------ */
+
+export interface StreamChunk {
+  type: 'delta' | 'done' | 'error';
+  text?: string;
+  model?: string;
+  degraded?: boolean;
+  message?: string;
+  /** Why the provider stopped: `stop`, `length` (token cap) or `content_filter`. */
+  finishReason?: string;
+}
+
+/**
+ * Stream a completion as server-sent-event friendly chunks.
+ *
+ * Only the first model that responds with a 2xx is used; if it fails before
+ * any token is emitted we fall back to the next candidate. Once tokens have
+ * been yielded a failure is surfaced as an error chunk instead of silently
+ * restarting, so the client never sees duplicated text.
+ */
+export async function* streamChat(
+  env: Env,
+  options: ChatOptions,
+): AsyncGenerator<StreamChunk> {
+  if (!aiConfigured(env)) {
+    yield { type: 'error', message: 'AI assistance is not configured on this server.' };
+    return;
+  }
+
+  let lastError: unknown;
+  for (const model of aiModelCandidates(env)) {
+    let emitted = false;
+    try {
+      for await (const chunk of streamModel(env, model, options)) {
+        emitted = true;
+        yield chunk;
+      }
+      return;
+    } catch (err) {
+      lastError = err;
+      if (emitted) {
+        yield {
+          type: 'error',
+          message: 'The response was interrupted. Please try again.',
+        };
+        return;
+      }
+      const e = err as { retryable?: boolean; status?: number };
+      if (e.status && e.status < 500 && e.status !== 404 && e.status !== 410 && e.status !== 429) break;
+    }
+  }
+
+  const e = lastError as { status?: number };
+  yield {
+    type: 'error',
+    message:
+      e?.status === 429
+        ? 'The AI tutor is busy right now. Please retry in a moment.'
+        : 'The AI tutor is temporarily unavailable. Please try again.',
+  };
+}
+
+async function* streamModel(
+  env: Env,
+  model: string,
+  options: ChatOptions,
+): AsyncGenerator<StreamChunk> {
+  const started = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), env.AI_TIMEOUT_MS);
+  const signal = options.signal
+    ? AbortSignal.any([controller.signal, options.signal])
+    : controller.signal;
+
+  try {
+    const response = await fetch(`${env.AI_BASE_URL.replace(/\/+$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        Authorization: `Bearer ${env.AI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: options.messages,
+        temperature: options.temperature ?? 0.35,
+        top_p: 0.9,
+        max_tokens: options.maxTokens ?? env.AI_MAX_TOKENS,
+        stream: true,
+      }),
+      signal,
+    });
+
+    if (!response.ok || !response.body) {
+      throw Object.assign(new Error(`AI provider responded ${response.status}`), {
+        status: response.status,
+        retryable: [404, 410, 429, 503, 504].includes(response.status),
+      });
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finishReason: string | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE frames are separated by a blank line; keep the trailing partial.
+      const frames = buffer.split('\n\n');
+      buffer = frames.pop() ?? '';
+      for (const frame of frames) {
+        for (const line of frame.split('\n')) {
+          if (!line.startsWith('data:')) continue;
+          const payload = line.slice(5).trim();
+          if (!payload || payload === '[DONE]') continue;
+          try {
+            const parsed = JSON.parse(payload) as {
+              choices?: Array<{
+                delta?: { content?: string | null };
+                finish_reason?: string | null;
+              }>;
+            };
+            const choice = parsed.choices?.[0];
+            const text = choice?.delta?.content;
+            if (text) yield { type: 'delta', text };
+            if (choice?.finish_reason) {
+              // `length` means the provider hit the max-token ceiling; the
+              // answer is complete as far as it will get.
+              finishReason = choice.finish_reason;
+            }
+          } catch {
+            // Ignore malformed keepalive frames.
+          }
+        }
+      }
+    }
+
+    yield { type: 'done', model, degraded: false, finishReason: finishReason ?? 'stop' };
+    void started;
+  } catch (err) {
+    const error = err as Error & { status?: number };
+    if (error.name === 'AbortError') {
+      // The provider hit our time budget after already emitting tokens. Treat
+      // this as a finished (possibly partial) answer rather than an error so
+      // the learner keeps what was streamed instead of losing the turn.
+      yield { type: 'done', model, degraded: true, finishReason: 'timeout' };
+      return;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Tutor prompts                                                       */
+/* ------------------------------------------------------------------ */
+
+const TUTOR_SYSTEM_PROMPT = [
+  'You are ExamDump\'s certification tutor: a patient, precise subject-matter expert.',
+  'Rules:',
+  '- Answer in clear Markdown. Use short paragraphs, bullet lists and bold key terms.',
+  '- When maths, formulas or subnetting arithmetic appears, wrap it in $...$ (inline) or $$...$$ (block) LaTeX.',
+  '- If the learner asks why an option is wrong, address each distractor they mention.',
+  '- Prefer step-by-step reasoning: state the principle, apply it to the scenario, then conclude.',
+  '- Offer a short memory trick or mnemonic when it genuinely helps.',
+  '- Never invent exam facts, version numbers or product behaviour you are unsure about.',
+  '- Keep answers focused; do not pad with flattery or filler.',
+].join('\n');
+
+export interface TutorContext {
+  examCode?: string | null;
+  examTitle?: string | null;
+  providerTitle?: string | null;
+  questionStem?: string | null;
+  questionChoices?: Array<{ key: string; text: string }> | null;
+  correctAnswer?: string | null;
+  referenceExplanation?: string | null;
+  learnerChoice?: string[] | null;
+}
+
+/** Build the system message describing the question under discussion. */
+export function buildTutorSystemPrompt(context: TutorContext): string {
+  const lines = [TUTOR_SYSTEM_PROMPT];
+  const header: string[] = [];
+  if (context.examCode) {
+    header.push(`Exam: ${context.examCode}${context.examTitle ? ` - ${context.examTitle}` : ''}`);
+  }
+  if (context.providerTitle) header.push(`Vendor: ${context.providerTitle}`);
+
+  if (header.length) lines.push('', 'Current exam context:', ...header);
+
+  if (context.questionStem) {
+    lines.push('', 'Question under discussion:', context.questionStem);
+    if (context.questionChoices?.length) {
+      lines.push(
+        'Answer choices:',
+        ...context.questionChoices.map((c) => `${c.key}. ${c.text || '[image option]'}`),
+      );
+    }
+    if (context.correctAnswer) lines.push(`Verified correct answer: ${context.correctAnswer}`);
+    if (context.referenceExplanation) {
+      lines.push(`Reference explanation from the source: ${context.referenceExplanation}`);
+    }
+    if (context.learnerChoice?.length) {
+      lines.push(`The learner selected: ${context.learnerChoice.join(', ')}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+/** Suggested follow-ups surfaced in the chat UI. */
+export function suggestedPrompts(hasQuestion: boolean): string[] {
+  if (hasQuestion) {
+    return [
+      'Explain the correct answer step by step',
+      'Why are the other options wrong?',
+      'Give me a real-world example',
+      'Memory trick to remember this',
+    ];
+  }
+  return [
+    'Explain a concept I am struggling with',
+    'Make me a 5-question quiz on this exam',
+    'What topics should I study first?',
+    'Summarise the hardest subnetting rules',
+  ];
+}

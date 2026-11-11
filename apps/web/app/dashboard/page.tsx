@@ -7,7 +7,16 @@ import { get } from '@/lib/api';
 import type { DashboardData } from '@/lib/types';
 import { Alert, EmptyState, PremiumBadge, ProgressBar, Spinner, StatCard } from '@/components/ui';
 import { Donut, LineChart, WeakTopicsList } from '@/components/charts';
-import { IconChart, IconClock, IconFlame, IconSparkles, IconTrophy } from '@/components/icons';
+import {
+  IconBook,
+  IconBookmark,
+  IconChart,
+  IconClock,
+  IconFlame,
+  IconHistory,
+  IconSparkles,
+  IconTrophy,
+} from '@/components/icons';
 import { formatDuration, formatNumber, relativeTime, scoreColor } from '@/lib/format';
 
 export default function DashboardPage() {
@@ -65,6 +74,46 @@ export default function DashboardPage() {
           Please verify your email address to unlock subscriptions and keep your account secure.
         </Alert>
       ) : null}
+
+      {/* Quick actions */}
+      <section aria-label="Quick actions" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Link href="/ask" className="card card-hover flex items-center gap-2.5 p-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-sky-400 text-white">
+            <IconSparkles width={16} height={16} />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-content-primary">Ask AI</span>
+            <span className="block truncate text-[11px] text-content-muted">Clear a doubt</span>
+          </span>
+        </Link>
+        <Link href="/browse" className="card card-hover flex items-center gap-2.5 p-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-300">
+            <IconBook width={16} height={16} />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-content-primary">Practice</span>
+            <span className="block truncate text-[11px] text-content-muted">Pick an exam</span>
+          </span>
+        </Link>
+        <Link href="/bookmarks" className="card card-hover flex items-center gap-2.5 p-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-300">
+            <IconBookmark width={16} height={16} />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-content-primary">Bookmarks</span>
+            <span className="block truncate text-[11px] text-content-muted">Saved questions</span>
+          </span>
+        </Link>
+        <Link href="/history" className="card card-hover flex items-center gap-2.5 p-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+            <IconHistory width={16} height={16} />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-content-primary">History</span>
+            <span className="block truncate text-[11px] text-content-muted">Past attempts</span>
+          </span>
+        </Link>
+      </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Accuracy" value={`${stats.accuracy}%`} hint={`${formatNumber(stats.totalCorrect)} / ${formatNumber(stats.totalQuestions)} correct`} tone={stats.accuracy >= 80 ? 'success' : 'brand'} icon={<IconChart />} />

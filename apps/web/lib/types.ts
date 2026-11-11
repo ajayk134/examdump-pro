@@ -354,3 +354,36 @@ export interface Note {
   createdAt: string;
   updatedAt: string;
 }
+/* ------------------------------------------------------------------ */
+/* AI tutor chat                                                       */
+/* ------------------------------------------------------------------ */
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  model?: string | null;
+  degraded?: boolean;
+  createdAt?: string;
+  /** Client-only: the message is still streaming in. */
+  pending?: boolean;
+  /** Client-only: transport or provider failure for this turn. */
+  error?: string;
+}
+
+export interface AiConversation {
+  id: string;
+  title: string;
+  providerId: string | null;
+  examKey: string | null;
+  examTitle: string | null;
+  questionId: string | null;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiConversationDetail extends AiConversation {
+  messages: ChatMessage[];
+  suggestions: string[];
+}

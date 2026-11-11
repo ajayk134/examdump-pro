@@ -142,3 +142,53 @@ export type TicketMessage = typeof ticketMessages.$inferSelect;
 export type Settings = typeof settings.$inferSelect;
 export type FeatureFlag = typeof featureFlags.$inferSelect;
 export type EmailTemplate = typeof emailTemplates.$inferSelect;
+
+/**
+ * AI tutor conversations.
+ *
+ * A conversation is anchored to an exam question (optional) so the tutor keeps
+ * full context across follow-up messages. Messages store only the transcript
+ * the learner sees; the question text itself is never duplicated here.
+ */
+export const aiConversations = pgTable(
+  'ai_conversations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull().default('New conversation'),
+    providerId: text('provider_id'),
+    examKey: text('exam_key'),
+    examTitle: text('exam_title'),
+    questionId: text('question_id'),
+    messageCount: integer('message_count').notNull().default(0),
+    createdAt,
+    updatedAt,
+  },
+  (t) => [
+    index('ai_conversations_user_idx').on(t.userId, t.updatedAt),
+    index('ai_conversations_question_idx').on(t.userId, t.providerId, t.examKey, t.questionId),
+  ],
+);
+
+export const aiMessages = pgTable(
+  'ai_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => aiConversations.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    content: text('content').notNull(),
+    model: text('model'),
+    tokens: integer('tokens'),
+    latencyMs: integer('latency_ms'),
+    degraded: boolean('degraded').notNull().default(false),
+    createdAt,
+  },
+  (t) => [index('ai_messages_conversation_idx').on(t.conversationId, t.createdAt)],
+);
+
+export type AiConversation = typeof aiConversations.$inferSelect;
+export type AiMessageRow = typeof aiMessages.$inferSelect;

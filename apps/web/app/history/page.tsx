@@ -66,7 +66,10 @@ export default function HistoryPage() {
                     <td className="px-4 py-3 text-content-muted">{attempt.timeSpentMs ? formatDuration(attempt.timeSpentMs) : '—'}</td>
                     <td className="px-4 py-3 text-content-muted">{formatDateTime(attempt.createdAt)}</td>
                     <td className="px-4 py-3 text-right">
-                      <Link href={`/study?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}&mode=practice`} className="btn-ghost !px-3 !py-1.5 text-xs">Retake</Link>
+                      <div className="flex justify-end gap-1">
+                        <Link href={`/study?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}&mode=practice`} className="btn-ghost !px-3 !py-1.5 text-xs">Retake</Link>
+                        <Link href={`/ask?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}`} className="btn-ghost !px-3 !py-1.5 text-xs">Ask AI</Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

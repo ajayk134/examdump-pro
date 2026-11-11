@@ -22,6 +22,13 @@
       "when": 1794370934257,
       "tag": "0002_enum_multi_hyperswitch",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794375275368,
+      "tag": "0003_ai_tutor_chat",
+      "breakpoints": true
     }
   ]
 }

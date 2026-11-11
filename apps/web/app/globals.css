@@ -10,6 +10,7 @@
   --surface-base: 247 251 255;
   --surface-raised: 255 255 255;
   --surface-overlay: 240 248 255;
+  --surface-sunken: 232 242 252;
   --surface-border: 208 226 243;
   --content-primary: 11 28 48;
   --content-secondary: 42 65 92;
@@ -21,6 +22,7 @@
   --surface-base: 6 12 24;
   --surface-raised: 13 23 40;
   --surface-overlay: 18 31 54;
+  --surface-sunken: 10 18 33;
   --surface-border: 34 54 84;
   --content-primary: 233 242 253;
   --content-secondary: 175 196 220;

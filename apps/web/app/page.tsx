@@ -36,7 +36,7 @@ const features = [
 
 const steps = [
   { title: 'Pick your certification', body: 'Browse by provider or search 1,800+ exams by code or title.' },
-  { title: 'Practice or simulate', body: 'Study in reading mode, drill in practice mode, or sit a timed mock exam.' },
+  { title: 'Practice or simulate', body: 'Drill questions with instant feedback, then sit a timed mock exam under real conditions.' },
   { title: 'Track and improve', body: 'Review analytics, fix weak topics and watch your readiness score climb.' },
 ];
 

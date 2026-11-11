@@ -411,3 +411,25 @@ export const examSelectionSchema = z.object({
   subscriptionId: z.string().uuid(),
   examKeys: z.array(z.string().trim().min(1).max(240)).max(MAX_EXAMS_PER_PLAN),
 });
+
+/* ------------------------------------------------------------------ */
+/* AI tutor chat                                                       */
+/* ------------------------------------------------------------------ */
+
+export const aiChatStartSchema = z.object({
+  provider: z.string().trim().min(1).max(160),
+  exam: z.string().trim().min(1).max(240),
+  questionId: z.string().trim().min(1).max(200).optional(),
+  /** Optional opening message; when absent the conversation is just created. */
+  message: z.string().trim().min(1).max(4000).optional(),
+});
+
+export const aiChatMessageSchema = z.object({
+  message: z.string().trim().min(1).max(4000),
+  /** Options the learner currently has selected for the anchored question. */
+  learnerChoice: z.array(z.string().trim().max(8)).max(8).optional(),
+});
+
+export const aiConversationRenameSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+});

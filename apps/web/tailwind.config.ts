@@ -39,6 +39,7 @@ const config: Config = {
           base: 'rgb(var(--surface-base) / <alpha-value>)',
           raised: 'rgb(var(--surface-raised) / <alpha-value>)',
           overlay: 'rgb(var(--surface-overlay) / <alpha-value>)',
+          sunken: 'rgb(var(--surface-sunken) / <alpha-value>)',
           border: 'rgb(var(--surface-border) / <alpha-value>)',
         },
         content: {

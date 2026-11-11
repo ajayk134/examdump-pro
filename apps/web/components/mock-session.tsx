@@ -5,8 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { post } from '@/lib/api';
 import type { Question } from '@/lib/types';
 import { QuestionContent } from './question-content';
-import { Alert, ProgressBar, Spinner } from './ui';
-import { IconArrowRight, IconCheck, IconClock, IconX } from './icons';
+import { Alert, Drawer, ProgressBar, Spinner } from './ui';
+import { AiChat } from './ai-chat';
+import { IconArrowRight, IconCheck, IconClock, IconMessage, IconRefresh, IconX } from './icons';
 import { cn, formatDuration, scoreColor } from '@/lib/format';
 
 interface StartResponse {
@@ -64,6 +65,8 @@ export function MockSession({
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CompleteResponse | null>(null);
+  const [chatQuestionId, setChatQuestionId] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const startedAt = useRef<number>(Date.now());
   const submittedRef = useRef(false);
 
@@ -159,7 +162,24 @@ export function MockSession({
     );
   }
 
-  if (!session) return <Spinner label="Preparing your mock exam…" />;
+  if (!session) {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <div className="card p-6">
+          <div className="flex items-center gap-2 text-sm text-content-muted">
+            <span className="skeleton h-4 w-24" />
+            <span className="skeleton h-4 w-12" />
+          </div>
+          <Spinner label="Preparing your mock exam…" />
+          <ul className="mt-4 space-y-2 text-sm text-content-muted">
+            <li>Selecting fresh questions from the private bank</li>
+            <li>Shuffling answer options</li>
+            <li>Starting your timer</li>
+          </ul>
+        </div>
+      </div>
+    );
+  }
 
   if (result) {
     const score = result.attempt.scorePercent;
@@ -172,9 +192,24 @@ export function MockSession({
             {result.attempt.correctCount} of {result.attempt.totalQuestions} correct · {formatDuration(result.attempt.timeSpentMs)}
           </p>
           <div className="mx-auto mt-4 max-w-md"><ProgressBar value={score} /></div>
+          <p className="mt-3 text-sm font-medium text-content-secondary">
+            {score >= 85
+              ? 'Exam-ready. Keep this momentum with a timed run.'
+              : score >= 70
+                ? 'Close to the pass mark — review the misses below.'
+                : 'Focus on the weak topics below, then retry.'}
+          </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
-            <button onClick={() => window.location.reload()} className="btn-primary">Try another mock</button>
+            <button onClick={() => window.location.reload()} className="btn-primary">
+              <IconRefresh width={16} height={16} /> Try another mock
+            </button>
             <Link href="/dashboard" className="btn-secondary">View dashboard</Link>
+            <Link
+              href={`/ask?provider=${encodeURIComponent(providerId)}&exam=${encodeURIComponent(examKey)}`}
+              className="btn-secondary"
+            >
+              <IconMessage width={16} height={16} /> Ask the tutor
+            </Link>
             <Link href={`/providers/${encodeURIComponent(providerId)}`} className="btn-ghost">Back to exams</Link>
           </div>
         </div>
@@ -207,6 +242,13 @@ export function MockSession({
                     <b className="text-emerald-500">{item.correctAnswer}</b>
                   </p>
                   {item.explanation ? <p className="mt-2 whitespace-pre-wrap text-content-muted">{item.explanation}</p> : null}
+                  <button
+                    type="button"
+                    onClick={() => setChatQuestionId(item.questionId)}
+                    className="btn-secondary mt-3 !px-3 !py-1.5 text-xs"
+                  >
+                    <IconMessage width={14} height={14} /> Ask AI about this
+                  </button>
                 </div>
               </details>
             );
@@ -221,24 +263,45 @@ export function MockSession({
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-content-muted">{session.exam.providerTitle} · {session.exam.code}</p>
-          <h1 className="text-xl font-bold">{mode === 'timed' ? 'Timed exam' : 'Mock exam'}</h1>
+        <div className="min-w-0">
+          <p className="truncate text-sm text-content-muted">
+            {session.exam.providerTitle} · {session.exam.code}
+          </p>
+          <h1 className="text-lg font-bold tracking-tight text-content-primary sm:text-xl">
+            {mode === 'timed' ? 'Timed exam' : 'Mock exam'}
+          </h1>
         </div>
-        {timeLeft !== null ? (
-          <div className={cn('flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold', timeLeft < 300 ? 'border-rose-400/40 text-rose-500' : 'border-surface-border text-content-secondary')}>
-            <IconClock width={16} height={16} />
-            {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
-          </div>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {timeLeft !== null ? (
+            <div
+              role="timer"
+              aria-live={timeLeft <= 60 ? 'assertive' : 'off'}
+              className={cn(
+                'flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold tabular-nums',
+                timeLeft < 300
+                  ? 'border-rose-400/50 bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                  : 'border-surface-border text-content-secondary',
+              )}
+            >
+              <IconClock width={16} height={16} />
+              {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+            </div>
+          ) : (
+            <span className="badge">Untimed</span>
+          )}
+        </div>
       </div>
 
-      <div>
-        <div className="mb-2 flex justify-between text-xs text-content-muted">
-          <span>Question {index + 1} of {questions.length}</span>
-          <span>{answeredCount} answered</span>
+      <div className="sticky top-0 z-10 -mx-4 bg-surface-base/85 px-4 py-2 backdrop-blur sm:mx-0 sm:rounded-xl sm:px-0">
+        <div className="mb-1.5 flex justify-between text-xs text-content-muted">
+          <span>
+            Question {index + 1} of {questions.length}
+          </span>
+          <span>
+            {answeredCount} answered · {questions.length - answeredCount} left
+          </span>
         </div>
-        <ProgressBar value={((index + 1) / questions.length) * 100} />
+        <ProgressBar value={(answeredCount / questions.length) * 100} />
       </div>
 
       <article className="card p-5 sm:p-6">
@@ -269,16 +332,21 @@ export function MockSession({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <button className="btn-secondary" onClick={() => setIndex((i) => Math.max(0, i - 1))} disabled={index === 0}>Previous</button>
-        <div className="hidden flex-wrap gap-1 sm:flex">
+        <div className="hidden max-w-md flex-wrap justify-center gap-1 sm:flex" aria-label="Question navigator">
           {questions.map((q, i) => (
             <button
               key={q.id}
               onClick={() => setIndex(i)}
+              aria-current={i === index ? 'true' : undefined}
               className={cn(
                 'h-8 w-8 rounded-lg text-xs font-semibold transition',
-                i === index ? 'bg-brand-500 text-white' : (answers[q.id]?.length ?? 0) > 0 ? 'bg-emerald-500/15 text-emerald-500' : 'bg-surface-overlay text-content-muted hover:text-content-primary',
+                i === index
+                  ? 'bg-brand-500 text-white shadow-sm shadow-brand-500/40'
+                  : (answers[q.id]?.length ?? 0) > 0
+                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-surface-overlay text-content-muted hover:text-content-primary',
               )}
-              aria-label={`Go to question ${i + 1}`}
+              aria-label={`Go to question ${i + 1}${(answers[q.id]?.length ?? 0) > 0 ? ', answered' : ''}`}
             >
               {i + 1}
             </button>
@@ -293,11 +361,68 @@ export function MockSession({
         )}
       </div>
 
-      {index === questions.length - 1 ? (
-        <button className="btn-secondary w-full" onClick={() => void submit(session, answers)} disabled={submitting}>
-          Submit now
-        </button>
+      <button
+        className="btn-secondary w-full"
+        onClick={() => setConfirmOpen(true)}
+        disabled={submitting}
+      >
+        Submit exam now
+      </button>
+
+      {/* Confirm-before-submit sheet */}
+      {confirmOpen ? (
+        <div className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-submit-title"
+            className="card w-full max-w-sm p-5"
+          >
+            <h2 id="confirm-submit-title" className="text-base font-semibold text-content-primary">
+              Submit your mock exam?
+            </h2>
+            <p className="mt-1 text-sm text-content-secondary">
+              You answered {answeredCount} of {questions.length} questions.
+              {answeredCount < questions.length
+                ? ` ${questions.length - answeredCount} will be marked incorrect.`
+                : ' All questions answered.'}
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button className="btn-ghost" onClick={() => setConfirmOpen(false)}>
+                Keep working
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  setConfirmOpen(false);
+                  void submit(session, answers);
+                }}
+                disabled={submitting}
+              >
+                {submitting ? 'Grading…' : 'Submit and grade'}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
+
+      <Drawer
+        open={Boolean(chatQuestionId)}
+        onClose={() => setChatQuestionId(null)}
+        title="Ask AI about this question"
+      >
+        {chatQuestionId ? (
+          <AiChat
+            key={chatQuestionId}
+            providerId={providerId}
+            examKey={examKey}
+            questionId={chatQuestionId}
+            examLabel={examKey}
+            embedded
+            onClose={() => setChatQuestionId(null)}
+          />
+        ) : null}
+      </Drawer>
     </div>
   );
 }

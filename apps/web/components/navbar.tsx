@@ -11,6 +11,7 @@ import {
   IconChart,
   IconHistory,
   IconMenu,
+  IconMessage,
   IconMoon,
   IconSettings,
   IconShield,
@@ -25,6 +26,7 @@ import { cn, relativeTime } from '@/lib/format';
 
 const primaryNav = [
   { href: '/browse', label: 'Browse exams' },
+  { href: '/ask', label: 'Ask AI' },
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/pricing', label: 'Pricing' },
@@ -104,12 +106,12 @@ export function Navbar() {
       <nav className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6" aria-label="Main">
         <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-600 to-sky-400 text-lg text-white shadow-lg shadow-brand-500/25">E</span>
-          <span className="hidden text-lg sm:block">
+          <span className="hidden text-lg md:block">
             ExamDump <span className="bg-gradient-to-r from-brand-500 to-sky-400 bg-clip-text text-transparent dark:from-brand-300 dark:to-sky-300">Pro</span>
           </span>
         </Link>
 
-        <div className="ml-2 hidden items-center gap-1 md:flex">
+        <div className="ml-2 hidden items-center gap-1 lg:flex">
           {primaryNav.map((item) => (
             <Link
               key={item.href}
@@ -212,6 +214,7 @@ export function Navbar() {
                     </div>
                     <div className="p-1.5">
                       <MenuLink href="/dashboard" icon={<IconChart />} label="Dashboard" />
+                      <MenuLink href="/ask" icon={<IconMessage />} label="Ask AI" />
                       <MenuLink href="/bookmarks" icon={<IconBook />} label="Bookmarks" />
                       <MenuLink href="/notes" icon={<IconBook />} label="Notes" />
                       <MenuLink href="/history" icon={<IconHistory />} label="History" />
@@ -243,17 +246,27 @@ export function Navbar() {
             </div>
           )}
 
-          <button className="btn-ghost h-10 w-10 !px-0 md:hidden" onClick={() => setMobileOpen((v) => !v)} aria-label="Menu" aria-expanded={mobileOpen}>
+          <button className="btn-ghost h-10 w-10 !px-0 lg:hidden" onClick={() => setMobileOpen((v) => !v)} aria-label="Menu" aria-expanded={mobileOpen}>
             {mobileOpen ? <IconX /> : <IconMenu />}
           </button>
         </div>
       </nav>
 
       {mobileOpen ? (
-        <div className="border-t border-surface-border bg-surface-raised px-4 py-3 md:hidden">
+        <div className="border-t border-surface-border bg-surface-raised px-4 py-3 lg:hidden">
           <div className="flex flex-col gap-1">
             {primaryNav.map((item) => (
-              <Link key={item.href} href={item.href} className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-surface-overlay">
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileOpen(false)}
+                className={cn(
+                  'rounded-lg px-3 py-2 text-sm font-medium transition hover:bg-surface-overlay',
+                  pathname.startsWith(item.href)
+                    ? 'bg-surface-overlay text-content-primary'
+                    : 'text-content-secondary',
+                )}
+              >
                 {item.label}
               </Link>
             ))}

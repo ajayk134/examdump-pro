@@ -89,3 +89,30 @@ export const IconGoogle = (p: SVGProps<SVGSVGElement>) => (
     <path fill="#EA4335" d="M12 4.8c1.8 0 3.4.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.4 6.6l4 3.1A7.2 7.2 0 0 1 12 4.8Z" />
   </svg>
 );
+export const IconSend = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M4 12 20 4l-6 16-3-6-7-2z" /></svg>
+);
+export const IconPlus = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M12 5v14M5 12h14" /></svg>
+);
+export const IconCopy = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></svg>
+);
+export const IconTrash = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M4 7h16M10 4h4M6 7l1 13h10l1-13" /></svg>
+);
+export const IconRefresh = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M20 11a8 8 0 1 0-2.3 6M20 5v6h-6" /></svg>
+);
+export const IconStop = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><rect x="7" y="7" width="10" height="10" rx="2" /></svg>
+);
+export const IconMessage = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M21 12a8 8 0 0 1-8 8H7l-4 3 1-5a8 8 0 1 1 17-6z" /></svg>
+);
+export const IconThumbUp = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M7 22V11l4-8a2 2 0 0 1 2 2v5h5.5a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.3 22H7z" /><path d="M7 11H4v11h3" /></svg>
+);
+export const IconChevronDown = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="m6 9 6 6 6-6" /></svg>
+);

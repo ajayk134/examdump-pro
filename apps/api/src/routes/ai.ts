@@ -1,5 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { aiAssistSchema, aiExplainSchema } from '@examdump/shared';
+import {
+  aiAssistSchema,
+  aiChatMessageSchema,
+  aiChatStartSchema,
+  aiConversationRenameSchema,
+  aiExplainSchema,
+} from '@examdump/shared';
 import type { Env } from '../config/env.js';
 import { requireAuth } from '../lib/guards.js';
 import { parseOrThrow } from '../lib/validation.js';
@@ -8,6 +14,15 @@ import { getDatasetClient } from '../services/dataset.service.js';
 import { canAccessExam, resolveEntitlements } from '../services/entitlement.service.js';
 import { getSettings, getFeatureFlags } from '../services/settings.service.js';
 import { assertWithinQuota, getDailyUsage, incrementUsage } from '../services/usage.service.js';
+import {
+  createConversation,
+  deleteConversation,
+  findQuestionConversation,
+  getConversation,
+  listConversations,
+  renameConversation,
+  sendMessage,
+} from '../services/ai-chat.service.js';
 import {
   aiConfigured,
   AiError,
@@ -235,6 +250,140 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
       throw err;
     }
   });
+
+  /* ---------------------------------------------------------------- */
+  /* Tutor chat (persisted, streaming)                                 */
+  /* ---------------------------------------------------------------- */
+
+  app.get('/chat/conversations', async (request, reply) => {
+    const { user } = await requireAuth(request, env);
+    const conversations = await listConversations(user.id);
+    return reply.send({ conversations });
+  });
+
+  app.post('/chat/conversations', async (request, reply) => {
+    const { user } = await requireAuth(request, env);
+    const input = parseOrThrow(aiChatStartSchema, request.body);
+    const result = await createConversation(env, user, input);
+    return reply.code(201).send(result);
+  });
+
+  /** Latest conversation anchored to a question, so the card can resume it. */
+  app.get('/chat/by-question', async (request, reply) => {
+    const { user } = await requireAuth(request, env);
+    const query = request.query as { provider?: string; exam?: string; questionId?: string };
+    if (!query.provider || !query.exam || !query.questionId) {
+      throw badRequest('provider, exam and questionId are required.');
+    }
+    const conversation = await findQuestionConversation(
+      user.id,
+      query.provider,
+      query.exam,
+      query.questionId,
+    );
+    return reply.send({ conversation });
+  });
+
+  app.get('/chat/conversations/:id', async (request, reply) => {
+    const { user } = await requireAuth(request, env);
+    const { id } = request.params as { id: string };
+    return reply.send(await getConversation(user.id, id));
+  });
+
+  app.patch('/chat/conversations/:id', async (request, reply) => {
+    const { user } = await requireAuth(request, env);
+    const { id } = request.params as { id: string };
+    const input = parseOrThrow(aiConversationRenameSchema, request.body);
+    return reply.send({ conversation: await renameConversation(user.id, id, input.title) });
+  });
+
+  app.delete('/chat/conversations/:id', async (request, reply) => {
+    const { user } = await requireAuth(request, env);
+    const { id } = request.params as { id: string };
+    await deleteConversation(user.id, id);
+    return reply.code(204).send();
+  });
+
+  /**
+   * Stream a tutor reply as Server-Sent Events. Text deltas arrive as
+   * `{"type":"delta","text":"..."}` frames; the stream always terminates with
+   * a `done` or `error` frame.
+   */
+  app.post(
+    '/chat/conversations/:id/messages',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { user } = await requireAuth(request, env);
+      const { id } = request.params as { id: string };
+      const input = parseOrThrow(aiChatMessageSchema, request.body);
+
+      if (!aiConfigured(env)) {
+        return reply.code(503).send({
+          error: { code: 'AI_NOT_CONFIGURED', message: 'AI assistance is not configured on this server.' },
+        });
+      }
+      const flags = await getFeatureFlags();
+      if (!(flags.get('ai_explanations')?.enabled ?? true)) {
+        return reply.code(503).send({
+          error: { code: 'AI_DISABLED', message: 'The AI tutor is temporarily disabled.' },
+        });
+      }
+
+      // Take over the socket: Fastify must not serialise a body for us.
+      reply.hijack();
+      const res = reply.raw;
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      res.flushHeaders?.();
+      // Keep small SSE frames from sitting in Nagle's buffer.
+      res.socket?.setNoDelay(true);
+
+      /**
+       * Write one frame and wait for the socket to drain. Awaiting `drain` is
+       * what keeps a fast token stream from outrunning the socket buffer —
+       * without it the tail of long answers is silently dropped when the
+       * response is ended.
+       */
+      const send = async (payload: unknown): Promise<void> => {
+        if (res.writableEnded || res.destroyed) return;
+        const ok = res.write(`data: ${JSON.stringify(payload)}\n\n`);
+        if (!ok) {
+          await new Promise<void>((resolve) => {
+            const done = () => {
+              res.off('drain', done);
+              res.off('close', done);
+              resolve();
+            };
+            res.once('drain', done);
+            res.once('close', done);
+          });
+        }
+      };
+
+      let terminated = false;
+      try {
+        for await (const chunk of sendMessage(env, user, id, input)) {
+          if (chunk.type === 'done' || chunk.type === 'error') terminated = true;
+          await send(chunk);
+        }
+      } catch (err) {
+        request.log.error({ err }, 'ai.chat.stream_failed');
+        terminated = true;
+        await send({ type: 'error', message: 'The AI tutor is temporarily unavailable.' });
+      } finally {
+        // Always give the client a terminator so it never hangs on a pending
+        // assistant bubble, even if the generator ended without one.
+        if (!terminated && !res.writableEnded && !res.destroyed) {
+          await send({ type: 'done' });
+        }
+        if (!res.writableEnded) res.end();
+      }
+    },
+  );
 }
 
 /**
