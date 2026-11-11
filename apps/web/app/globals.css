@@ -491,6 +491,23 @@ body::before {
     @apply font-medium text-brand-600 underline-offset-4 hover:underline dark:text-brand-300;
   }
 
+  /*
+   * Standalone links are often the only way to complete an action on a phone
+   * ("Forgot password?", "Create an account"). At text size their hit area is
+   * about 16px tall, far below the 44px a comfortable touch target needs, so
+   * people miss them. This expands the *hit area* only: padding is balanced
+   * and the inline box is enlarged, so surrounding text is not displaced and
+   * links that sit inside a sentence still flow normally.
+   */
+  @media (pointer: coarse) {
+    .link {
+      display: inline-block;
+      padding-block: 0.75rem;
+      margin-block: -0.75rem;
+      vertical-align: middle;
+    }
+  }
+
   .divider {
     height: 1px;
     background-color: rgb(var(--surface-border));

@@ -66,7 +66,16 @@ function LoginForm() {
         <div>
           <div className="flex items-center justify-between">
             <label htmlFor="password" className="label">Password</label>
-            <Link href="/forgot-password" className="mb-1.5 text-xs text-brand-500 hover:underline dark:text-brand-300">
+            {/*
+              * "Forgot password?" is the only way to recover an account on a
+              * phone, so it needs a real touch target rather than the 16px tall
+              * box that text-xs produced. `max-sm:-my-2` keeps the row's visual
+              * rhythm unchanged while growing the tappable area.
+              */}
+            <Link
+              href="/forgot-password"
+              className="mb-1.5 inline-block text-xs text-brand-500 hover:underline max-sm:-my-2 max-sm:py-2 dark:text-brand-300"
+            >
               Forgot password?
             </Link>
           </div>

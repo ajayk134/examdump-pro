@@ -430,7 +430,15 @@ export function Tabs<T extends string>({
           onClick={() => onChange(tab.id)}
           className={cn(
             'shrink-0 rounded-lg font-semibold transition-all duration-150',
-            size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3 py-1.5 text-[0.8125rem]',
+            /*
+             * The small sizes are right for a pointer, but on a touch screen
+             * these tabs were only 32px tall and awkward to hit. Grow the
+             * vertical padding only for coarse pointers so the desktop
+             * density is unchanged.
+             */
+            size === 'sm'
+              ? 'px-2.5 py-1 text-xs max-sm:py-2'
+              : 'px-3 py-1.5 text-[0.8125rem] max-sm:py-2',
             value === tab.id
               ? 'bg-surface-raised text-content-primary shadow-sm'
               : 'text-content-muted hover:text-content-secondary',
