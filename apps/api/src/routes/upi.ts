@@ -32,6 +32,12 @@ const createOrderSchema = z.object({
   planId: z.string().min(1),
   billingPeriod: z.enum(['monthly', 'yearly']).default('monthly'),
   couponCode: z.string().trim().max(64).optional(),
+  /*
+   * Exam-scoped plans need the exams they unlock. Without this the field was
+   * stripped by the schema and every single-exam purchase failed validation
+   * *after* a payment row had already been created.
+   */
+  examKeys: z.array(z.string().min(1)).max(10).optional(),
 });
 
 /** Is UPI collection configured well enough to offer it? */
@@ -64,6 +70,7 @@ export async function upiRoutes(app: FastifyInstance, env: Env): Promise<void> {
       planId: input.planId,
       billingPeriod: input.billingPeriod,
       couponCode: input.couponCode,
+      examKeys: input.examKeys,
     });
 
     if (quote.totalMinor <= 0) throw badRequest('This plan has no amount due.');

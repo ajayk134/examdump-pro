@@ -49,6 +49,11 @@ export default function UpiCheckoutPage() {
   const params = useSearchParams();
   const planId = params.get('planId');
   const coupon = params.get('coupon');
+  /*
+   * Exam-scoped plans cannot be bought without naming the exams they unlock,
+   * so the selection made on the pricing page has to travel with the redirect.
+   */
+  const examKeys = params.getAll('examKey');
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [order, setOrder] = useState<UpiOrder | null>(null);
@@ -75,6 +80,7 @@ export default function UpiCheckoutPage() {
         const res = await post<{ order: UpiOrder }>('/upi/orders', {
           planId,
           ...(coupon ? { couponCode: coupon } : {}),
+          ...(examKeys.length ? { examKeys } : {}),
         });
         if (cancelled) return;
         setOrder(res.order);
@@ -92,7 +98,7 @@ export default function UpiCheckoutPage() {
     return () => {
       cancelled = true;
     };
-  }, [planId, coupon, router]);
+  }, [planId, coupon, examKeys.join(','), router]);
 
   /* Countdown to expiry, computed from the server clock offset-free deadline. */
   useEffect(() => {
@@ -299,7 +305,7 @@ export default function UpiCheckoutPage() {
                   <a
                     key={intent.id}
                     href={intent.href}
-                    className="flex items-center justify-center rounded-xl border border-surface-border px-3 py-2.5 text-sm font-medium text-content-primary transition hover:border-accent hover:text-accent"
+                    className="flex min-h-[44px] items-center justify-center rounded-xl border border-surface-border px-3 py-3 text-sm font-medium text-content-primary transition hover:border-accent hover:text-accent"
                   >
                     {intent.label}
                   </a>

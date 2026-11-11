@@ -36,6 +36,8 @@ beforeEach(async () => {
   await db.delete(upiMatches);
   await db.delete(upiNotifications);
   await db.delete(upiOrders);
+  // Orders create `upi` payment rows, so they must not leak between tests.
+  await db.delete(payments).where(eq(payments.provider, 'upi'));
 });
 
 describe('upi status', () => {
@@ -128,6 +130,51 @@ describe('ingest signature', () => {
     expect(res.statusCode).toBe(401);
     const orders = await getDb().select().from(upiOrders);
     expect(orders.length).toBe(0);
+  });
+});
+
+describe('exam-scoped plans', () => {
+  /*
+   * Regression: the request schema originally omitted `examKeys`, so zod
+   * stripped it and every single-exam purchase failed validation with
+   * "Choose the exam you want to unlock" *after* the buyer had been sent to
+   * the checkout page. Found by driving the real UI in a browser.
+   */
+  it('accepts examKeys and rejects a single-scope plan without them', async () => {
+    const user = await registerVerifiedUser(ctx.app);
+    const cookie = user.cookie;
+
+    const enabled = ctx.env as { PAYMENTS_ENABLED?: boolean; UPI_PAYEE_VPA?: string };
+    const prevPaid = enabled.PAYMENTS_ENABLED;
+    const prevVpa = enabled.UPI_PAYEE_VPA;
+    enabled.PAYMENTS_ENABLED = true;
+    enabled.UPI_PAYEE_VPA = 'examdump@okhdfcbank';
+    try {
+      // Without an exam, a single-scope plan must be refused with a clear reason.
+      const missing = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/upi/orders',
+        payload: { planId: 'single-30' },
+        headers: { cookie },
+      });
+      expect(missing.statusCode).toBe(400);
+      expect((missing.json() as { error: { message: string } }).error.message).toMatch(/exam/i);
+
+      // With the exam named, the field must survive validation and an order appear.
+      const ok = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/upi/orders',
+        payload: { planId: 'single-30', examKeys: ['200-301'] },
+        headers: { cookie },
+      });
+      expect(ok.statusCode).toBe(200);
+      const order = (ok.json() as { order: { amountPaise: number; reference: string } }).order;
+      expect(order.amountPaise).toBeGreaterThan(0);
+      expect(order.reference).toMatch(/^ED[A-Z0-9]{8}$/);
+    } finally {
+      enabled.PAYMENTS_ENABLED = prevPaid;
+      enabled.UPI_PAYEE_VPA = prevVpa;
+    }
   });
 });
 

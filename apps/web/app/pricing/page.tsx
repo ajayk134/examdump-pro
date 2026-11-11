@@ -195,6 +195,8 @@ export default function PricingPage() {
       if (upiEnabled) {
         const qs = new URLSearchParams({ planId: selectedPlan });
         if (coupon.trim()) qs.set('coupon', coupon.trim());
+        // Exam-scoped plans need the chosen exams, or the server rejects the order.
+        selectedExams.forEach((e) => qs.append('examKey', e.key));
         window.location.href = `/checkout/upi?${qs.toString()}`;
         return;
       }
