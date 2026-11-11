@@ -84,9 +84,12 @@ export const updateUserAdminSchema = z.object({
 export const grantAccessSchema = z.object({
   scope: z.enum(ACCESS_SCOPES),
   examKey: z.string().trim().min(1).max(240).optional(),
+  examKeys: z.array(z.string().trim().min(1).max(240)).max(10).optional(),
   providerId: z.string().trim().min(1).max(160).optional(),
   note: z.string().max(300).optional(),
   expiresAt: z.coerce.date().optional(),
+  /** Convenience alternative to `expiresAt`, in days from now. */
+  days: z.number().int().min(1).max(3650).optional(),
 });
 
 export const refundSchema = z.object({
@@ -187,12 +190,53 @@ export const createSubscriptionSchema = z.object({
   couponCode: z.string().trim().max(64).optional(),
 });
 
+export const MAX_EXAMS_PER_PLAN = 3;
+
 export const changePlanSchema = z.object({
   planId: z.string().min(1).max(64),
   examKey: z.string().trim().min(1).max(240).optional(),
   providerId: z.string().trim().min(1).max(160).optional(),
+  /** Exams to unlock for a `multi` plan (max 3). */
+  examKeys: z.array(z.string().trim().min(1).max(240)).max(MAX_EXAMS_PER_PLAN).optional(),
   couponCode: z.string().trim().max(64).optional(),
 });
+
+export const quoteSchema = changePlanSchema.extend({
+  examKeys: z.array(z.string().trim().min(1).max(240)).max(MAX_EXAMS_PER_PLAN).optional(),
+});
+
+/** Start a HyperSwitch checkout for a plan (live) or complete a plan change. */
+export const checkoutSchema = quoteSchema.extend({
+  /** Optional client-side idempotency key to avoid duplicate orders. */
+  requestId: z.string().trim().max(64).optional(),
+});
+
+/** Admin-side refund request (full or partial). */
+export const refundRequestSchema = z.object({
+  paymentId: z.string().trim().min(1).max(64),
+  /** Omit for a full refund of the remaining amount. */
+  amountMinor: z.number().int().min(1).max(100_000_000).optional(),
+  reason: z.string().trim().max(300).default(''),
+});
+
+/** Admin bulk actions. */
+export const bulkActionSchema = z.object({
+  action: z.enum([
+    'suspend',
+    'unsuspend',
+    'verify_email',
+    'make_admin',
+    'make_user',
+    'delete',
+    'cancel_subscriptions',
+  ]),
+  ids: z.array(z.string().trim().min(1).max(64)).min(1).max(200),
+  /** Days of access for `grant_premium` style actions (validated server-side). */
+  days: z.number().int().min(1).max(3650).optional(),
+});
+
+
+
 
 export const couponValidateSchema = z.object({
   code: z.string().trim().min(1).max(64),
@@ -213,8 +257,11 @@ export const createPlanAdminSchema = z.object({
   name: z.string().trim().min(2).max(80),
   description: z.string().max(300).default(''),
   scope: z.enum(ACCESS_SCOPES).default('single'),
+  examQuota: z.number().int().min(0).max(10).default(0),
   durationDays: z.number().int().min(1).max(3650),
+  billingCycle: z.enum(['monthly', 'yearly', 'fixed']).default('fixed'),
   earlyAccess: z.boolean().default(false),
+  highlight: z.boolean().default(false),
   priceMinor: z.number().int().min(0).max(100_000_000),
   currency: z.literal('INR').default('INR'),
   features: z.array(z.string().max(120)).max(30).default([]),
@@ -254,6 +301,8 @@ export const aiExplainSchema = z.object({
   provider: z.string().min(1).max(160),
   exam: z.string().min(1).max(240),
   questionId: z.string().min(1).max(200),
+  /** Options already chosen by the learner (helps the tutor target the gap). */
+  choice: z.array(z.string().trim().max(8)).max(8).optional(),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
@@ -263,3 +312,102 @@ export type StartAttemptInput = z.infer<typeof startAttemptSchema>;
 export type CompleteAttemptInput = z.infer<typeof completeAttemptSchema>;
 export type ListQuestionsQuery = z.infer<typeof listQuestionsQuerySchema>;
 export type CreateSubscriptionInput = z.infer<typeof createSubscriptionSchema>;
+
+/* ------------------------------------------------------------------ */
+/* Admin: plans, invoices, reconciliation, support                     */
+/* ------------------------------------------------------------------ */
+
+export const updatePlanAdminSchema = createPlanAdminSchema.partial().extend({
+  examQuota: z.number().int().min(0).max(10).optional(),
+  billingCycle: z.enum(['monthly', 'yearly', 'fixed']).optional(),
+  highlight: z.boolean().optional(),
+});
+
+export const updateCouponAdminSchema = createCouponAdminSchema.partial();
+
+export const adminPaymentListQuerySchema = z.object({
+  q: z.string().trim().max(120).optional(),
+  status: z.string().trim().max(40).optional(),
+  provider: z.string().trim().max(40).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(20),
+  sort: z.enum(['newest', 'oldest', 'amount_desc', 'amount_asc']).default('newest'),
+});
+
+export const adminSubscriptionListQuerySchema = z.object({
+  q: z.string().trim().max(120).optional(),
+  status: z.string().trim().max(40).optional(),
+  scope: z.enum(ACCESS_SCOPES).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(20),
+});
+
+export const adminAuditQuerySchema = z.object({
+  q: z.string().trim().max(120).optional(),
+  action: z.string().trim().max(80).optional(),
+  actorId: z.string().trim().max(64).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+export const announcementsSchema = z.object({
+  title: z.string().trim().min(3).max(120),
+  body: z.string().trim().min(3).max(2000),
+  level: z.enum(['info', 'success', 'warning', 'critical']).default('info'),
+  audience: z.enum(['all', 'users', 'admins']).default('all'),
+  active: z.boolean().default(true),
+  expiresAt: z.coerce.date().optional(),
+});
+
+export const broadcastNotificationSchema = z.object({
+  title: z.string().trim().min(3).max(120),
+  body: z.string().trim().max(1000).default(''),
+  audience: z.enum(['all', 'premium', 'free', 'admins']).default('all'),
+  link: z.string().trim().max(300).optional(),
+});
+
+export const supportTicketCreateSchema = z.object({
+  subject: z.string().trim().min(4).max(160),
+  category: z
+    .enum(['general', 'billing', 'payments', 'content', 'account', 'technical', 'refund'])
+    .default('general'),
+  message: z.string().trim().min(10).max(5000),
+  email: emailSchema.optional(),
+});
+
+export const supportTicketReplySchema = z.object({
+  message: z.string().trim().min(1).max(5000),
+  internal: z.boolean().default(false),
+});
+
+export const supportTicketUpdateSchema = z.object({
+  status: z.enum(['open', 'pending', 'resolved', 'closed']).optional(),
+  priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+  assignedTo: z.string().uuid().nullable().optional(),
+});
+
+export const adminUserListQuerySchemaExtended = adminUserListQuerySchema.extend({
+  status: z.enum(['any', 'active', 'suspended', 'premium', 'free']).default('any'),
+  sort: z.enum(['newest', 'oldest', 'name', 'last_login']).default('newest'),
+});
+
+export const aiAssistSchema = z.object({
+  provider: z.string().min(1).max(160),
+  exam: z.string().min(1).max(240),
+  questionId: z.string().min(1).max(200).optional(),
+  /** Free-form question asked by the learner about the current item. */
+  question: z.string().trim().min(3).max(1000),
+});
+
+export const bookmarkNoteSchema = z.object({
+  note: z.string().max(1000).default(''),
+});
+
+export const examSelectionSchema = z.object({
+  subscriptionId: z.string().uuid(),
+  examKeys: z.array(z.string().trim().min(1).max(240)).max(MAX_EXAMS_PER_PLAN),
+});

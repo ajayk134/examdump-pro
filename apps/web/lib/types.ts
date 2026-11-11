@@ -155,7 +155,7 @@ export interface DashboardData {
   recommendations: Array<{ reason: string; exam: Exam }>;
 }
 
-export type AccessScope = 'single' | 'all';
+export type AccessScope = 'single' | 'multi' | 'all';
 
 export interface Plan {
   id: string;
@@ -170,6 +170,82 @@ export interface Plan {
   features: string[];
   active: boolean;
   sortOrder: number;
+  /** How many exams the pass unlocks (0 = unlimited). */
+  examQuota: number;
+  billingCycle: 'monthly' | 'yearly' | 'fixed';
+  highlight: boolean;
+  badge: string | null;
+}
+
+/** Server-authoritative price for a plan + exam selection + coupon. */
+export interface PlanQuote {
+  plan: Plan;
+  examKeys: string[];
+  grossMinor: number;
+  discountMinor: number;
+  totalMinor: number;
+  couponCode: string | null;
+  currency: string;
+}
+
+export interface Invoice {
+  id: string;
+  number: string;
+  paymentId: string;
+  planId: string;
+  planName: string;
+  subtotalMinor: number;
+  discountMinor: number;
+  totalMinor: number;
+  currency: string;
+  status: string;
+  issuedAt: string;
+  lineItems: Array<{ description: string; amountMinor: number; quantity: number }>;
+  billedTo: { name: string; email: string; country?: string };
+}
+
+export interface CheckoutSession {
+  paymentId: string;
+  paymentRef: string;
+  clientSecret: string | null;
+  amountMinor: number;
+  currency: string;
+  status: string;
+  checkoutUrl: string | null;
+  publishableKey: string | null;
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  level: 'info' | 'success' | 'warning' | 'critical';
+  audience: string;
+  active: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  subject: string;
+  category: string;
+  status: 'open' | 'pending' | 'resolved' | 'closed';
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  createdAt: string;
+  updatedAt: string;
+  lastMessageAt: string;
+  messageCount?: number;
+}
+
+export interface TicketMessage {
+  id: string;
+  ticketId: string;
+  authorId: string | null;
+  authorRole: 'user' | 'admin' | 'system';
+  body: string;
+  createdAt: string;
 }
 
 export interface Subscription {
@@ -178,6 +254,7 @@ export interface Subscription {
   scope: AccessScope;
   status: string;
   examKey: string | null;
+  examKeys?: string[];
   providerId: string | null;
   examTitle: string | null;
   priceMinor: number;
@@ -200,7 +277,10 @@ export interface Payment {
   status: string;
   provider: string;
   providerRef: string;
+  providerPaymentId?: string | null;
   description: string;
+  failureReason?: string | null;
+  paidAt?: string | null;
   createdAt: string;
 }
 
@@ -221,8 +301,14 @@ export interface Entitlements {
   scope: AccessScope | 'none';
   allAccess: boolean;
   examKeys: string[];
+  providerIds?: string[];
   earlyAccess: boolean;
   expiresAt: string | null;
+  questionsPerExam?: number | null;
+  mockExamsPerDay?: number | null;
+  randomQuestionsPerDay?: number | null;
+  dailyQuestionLimit?: number;
+  sources?: Array<{ type: string; scope: AccessScope; examKey: string | null; expiresAt: string | null }>;
 }
 
 export interface Notification {

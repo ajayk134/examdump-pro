@@ -2,7 +2,7 @@ import { pgEnum } from 'drizzle-orm/pg-core';
 
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin']);
 export const planTierEnum = pgEnum('plan_tier', ['free', 'premium']);
-export const accessScopeEnum = pgEnum('access_scope', ['single', 'all']);
+export const accessScopeEnum = pgEnum('access_scope', ['single', 'multi', 'all']);
 export const subscriptionStatusEnum = pgEnum('subscription_status', [
   'active',
   'trialing',
@@ -43,6 +43,7 @@ export const paymentProviderEnum = pgEnum('payment_provider', [
   'manual',
   'razorpay',
   'stripe',
+  'hyperswitch',
   'none',
 ]);
 export const refundStatusEnum = pgEnum('refund_status', ['pending', 'succeeded', 'failed']);

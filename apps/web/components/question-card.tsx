@@ -28,10 +28,31 @@ export function QuestionCard({ question, index, providerId, examKey, initiallyRe
   const [noteSaving, setNoteSaving] = useState(false);
   const [aiText, setAiText] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [hintText, setHintText] = useState('');
+  const [hintLoading, setHintLoading] = useState(false);
+  const [aiRemaining, setAiRemaining] = useState<number | null>(null);
+  const [aiEnabled, setAiEnabled] = useState(false);
 
   const correct = question.answer ?? '';
   const required = correct.length > 0 ? correct.length : question.type === 'multiple' ? 2 : 1;
   const isMulti = question.type === 'multiple' || required > 1;
+
+  // AI capability + quota, so the tutor button can show remaining usage and
+  // stay hidden when the server has no model configured.
+  useEffect(() => {
+    let cancelled = false;
+    get<{ enabled: boolean; remaining: number | null }>('/ai/status')
+      .then((data) => {
+        if (!cancelled) {
+          setAiEnabled(data.enabled);
+          setAiRemaining(typeof data.remaining === 'number' ? data.remaining : null);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -68,6 +89,7 @@ export function QuestionCard({ question, index, providerId, examKey, initiallyRe
     setSelected([]);
     setRevealed(false);
     setAiText('');
+    setHintText('');
   };
 
   const toggleBookmark = async () => {
@@ -132,12 +154,43 @@ export function QuestionCard({ question, index, providerId, examKey, initiallyRe
     setAiLoading(true);
     setAiText('');
     try {
-      const data = await post<{ explanation: string }>('/ai/explain', { provider: providerId, exam: examKey, questionId: question.id });
+      const data = await post<{ explanation: string; degraded?: boolean; remaining?: number }>('/ai/explain', {
+        provider: providerId,
+        exam: examKey,
+        questionId: question.id,
+        choice: selected,
+      });
       setAiText(data.explanation);
+      if (typeof data.remaining === 'number') setAiRemaining(data.remaining);
+      else setAiRemaining((prev) => (prev === null ? prev : Math.max(0, prev - 1)));
+      if (data.degraded) setAiEnabled(false);
     } catch (err) {
       toast((err as Error).message, 'error');
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  const requestHint = async () => {
+    if (!user) {
+      toast('Sign in to use the AI tutor.', 'info');
+      return;
+    }
+    setHintLoading(true);
+    setHintText('');
+    try {
+      const data = await post<{ hint: string; degraded?: boolean }>('/ai/hint', {
+        provider: providerId,
+        exam: examKey,
+        questionId: question.id,
+      });
+      setHintText(data.hint);
+      if (data.degraded) setAiEnabled(false);
+      else setAiRemaining((prev) => (prev === null ? prev : Math.max(0, prev - 1)));
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    } finally {
+      setHintLoading(false);
     }
   };
 
@@ -229,9 +282,22 @@ export function QuestionCard({ question, index, providerId, examKey, initiallyRe
               Try again
             </button>
           )}
-          <button onClick={explain} className="btn-ghost" disabled={aiLoading}>
-            <IconSparkles width={16} height={16} /> {aiLoading ? 'Thinking…' : 'AI explain'}
-          </button>
+          {aiEnabled ? (
+            <>
+              {!revealed ? (
+                <button onClick={requestHint} className="btn-ghost" disabled={hintLoading}>
+                  <IconSparkles width={16} height={16} />
+                  {hintLoading ? 'Thinking…' : 'Get a hint'}
+                </button>
+              ) : null}
+              <button onClick={explain} className="btn-ghost" disabled={aiLoading}>
+                <IconSparkles width={16} height={16} /> {aiLoading ? 'Thinking…' : 'AI explain'}
+              </button>
+              {aiRemaining !== null ? (
+                <span className="text-xs text-content-muted">{aiRemaining} AI credits left today</span>
+              ) : null}
+            </>
+          ) : null}
           {revealed && correct ? (
             <span className={cn('text-sm font-semibold', isCorrect ? 'text-emerald-500' : 'text-rose-500')}>
               {selected.length === 0 ? `Answer: ${correct}` : isCorrect ? 'Correct' : `Incorrect — answer: ${correct}`}
@@ -270,6 +336,15 @@ export function QuestionCard({ question, index, providerId, examKey, initiallyRe
               </div>
             </div>
           ) : null}
+        </div>
+      ) : null}
+
+      {hintText ? (
+        <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-500/5 p-4">
+          <p className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-amber-600 dark:text-amber-300">
+            <IconSparkles width={16} height={16} /> Hint
+          </p>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-content-secondary">{hintText}</p>
         </div>
       ) : null}
 

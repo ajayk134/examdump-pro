@@ -7,8 +7,27 @@ import type { Paginated, Plan, User } from '@/lib/types';
 import { Alert, EmptyState, Spinner, StatCard, Tabs } from '@/components/ui';
 import { formatDate, formatMoneyMinor, formatNumber } from '@/lib/format';
 import { IconShield, IconTrophy } from '@/components/icons';
+import {
+  AnnouncementsPanel,
+  IntegrationsPanel,
+  PaymentsPanel,
+  TicketsPanel,
+  WebhooksPanel,
+} from '@/components/admin-ops';
 
-type Tab = 'overview' | 'users' | 'coupons' | 'plans' | 'settings' | 'audit' | 'dataset';
+type Tab =
+  | 'overview'
+  | 'users'
+  | 'payments'
+  | 'webhooks'
+  | 'coupons'
+  | 'plans'
+  | 'tickets'
+  | 'announcements'
+  | 'integrations'
+  | 'settings'
+  | 'audit'
+  | 'dataset';
 
 interface AdminStats {
   users: { total: number; premium: number; verified: number; suspended: number };
@@ -73,8 +92,13 @@ export default function AdminPage() {
         tabs={[
           { id: 'overview', label: 'Overview' },
           { id: 'users', label: 'Users' },
+          { id: 'payments', label: 'Payments' },
+          { id: 'webhooks', label: 'Webhooks' },
           { id: 'coupons', label: 'Coupons' },
           { id: 'plans', label: 'Plans' },
+          { id: 'tickets', label: 'Tickets' },
+          { id: 'announcements', label: 'Announcements' },
+          { id: 'integrations', label: 'Integrations' },
           { id: 'settings', label: 'Settings' },
           { id: 'audit', label: 'Audit log' },
           { id: 'dataset', label: 'Dataset' },
@@ -85,8 +109,13 @@ export default function AdminPage() {
 
       {tab === 'overview' ? <Overview /> : null}
       {tab === 'users' ? <UsersPanel /> : null}
+      {tab === 'payments' ? <PaymentsPanel /> : null}
+      {tab === 'webhooks' ? <WebhooksPanel /> : null}
       {tab === 'coupons' ? <CouponsPanel /> : null}
       {tab === 'plans' ? <PlansPanel /> : null}
+      {tab === 'tickets' ? <TicketsPanel /> : null}
+      {tab === 'announcements' ? <AnnouncementsPanel /> : null}
+      {tab === 'integrations' ? <IntegrationsPanel /> : null}
       {tab === 'settings' ? <SettingsPanel /> : null}
       {tab === 'audit' ? <AuditPanel /> : null}
       {tab === 'dataset' ? <DatasetPanel /> : null}

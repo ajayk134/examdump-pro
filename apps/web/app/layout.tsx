@@ -3,6 +3,7 @@ import './globals.css';
 import { AppProviders } from '@/components/providers';
 import { Navbar } from '@/components/navbar';
 import { Footer } from '@/components/footer';
+import { AnnouncementBanner } from '@/components/announcement-banner';
 
 export const metadata: Metadata = {
   title: {
@@ -24,8 +25,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f8fafc' },
-    { media: '(prefers-color-scheme: dark)', color: '#070b18' },
+    { media: '(prefers-color-scheme: light)', color: '#f7fbff' },
+    { media: '(prefers-color-scheme: dark)', color: '#060c18' },
   ],
 };
 
@@ -41,11 +42,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AppProviders>
           <a
             href="#main"
-            className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-lg focus:bg-brand-500 focus:px-4 focus:py-2 focus:text-slate-950"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-lg focus:bg-brand-500 focus:px-4 focus:py-2 focus:text-white"
           >
             Skip to content
           </a>
           <Navbar />
+          <AnnouncementBanner />
           <main id="main" className="mx-auto min-h-[calc(100vh-4rem)] w-full max-w-7xl px-4 py-8 sm:px-6">
             {children}
           </main>

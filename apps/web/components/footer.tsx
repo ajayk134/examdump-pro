@@ -6,7 +6,7 @@ export function Footer() {
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
         <div>
           <p className="flex items-center gap-2 font-bold">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-cyan-400 text-slate-950">E</span>
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand-600 to-sky-400 text-white">E</span>
             ExamDump Pro
           </p>
           <p className="mt-3 max-w-xs text-sm text-content-muted">
@@ -28,6 +28,7 @@ export function Footer() {
             <li><Link href="/dashboard" className="hover:text-content-primary">Dashboard</Link></li>
             <li><Link href="/profile" className="hover:text-content-primary">Settings</Link></li>
             <li><Link href="/referrals" className="hover:text-content-primary">Refer a friend</Link></li>
+            <li><Link href="/support" className="hover:text-content-primary">Support</Link></li>
             <li><Link href="/login" className="hover:text-content-primary">Sign in</Link></li>
           </ul>
         </div>

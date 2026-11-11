@@ -276,7 +276,7 @@ export function MockSession({
               onClick={() => setIndex(i)}
               className={cn(
                 'h-8 w-8 rounded-lg text-xs font-semibold transition',
-                i === index ? 'bg-brand-500 text-slate-950' : (answers[q.id]?.length ?? 0) > 0 ? 'bg-emerald-500/15 text-emerald-500' : 'bg-surface-overlay text-content-muted hover:text-content-primary',
+                i === index ? 'bg-brand-500 text-white' : (answers[q.id]?.length ?? 0) > 0 ? 'bg-emerald-500/15 text-emerald-500' : 'bg-surface-overlay text-content-muted hover:text-content-primary',
               )}
               aria-label={`Go to question ${i + 1}`}
             >

@@ -6,23 +6,25 @@
   --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
 
-  --surface-base: 248 250 252;
+  /* Light: crisp paper white with a cool sky wash. */
+  --surface-base: 247 251 255;
   --surface-raised: 255 255 255;
-  --surface-overlay: 241 245 249;
-  --surface-border: 226 232 240;
-  --content-primary: 15 23 42;
-  --content-secondary: 51 65 85;
-  --content-muted: 100 116 139;
+  --surface-overlay: 240 248 255;
+  --surface-border: 208 226 243;
+  --content-primary: 11 28 48;
+  --content-secondary: 42 65 92;
+  --content-muted: 108 133 160;
 }
 
 .dark {
-  --surface-base: 7 11 24;
-  --surface-raised: 15 22 42;
-  --surface-overlay: 20 29 54;
-  --surface-border: 35 47 82;
-  --content-primary: 235 239 250;
-  --content-secondary: 186 195 219;
-  --content-muted: 132 143 173;
+  /* Dark: deep navy with a sky-blue bloom. */
+  --surface-base: 6 12 24;
+  --surface-raised: 13 23 40;
+  --surface-overlay: 18 31 54;
+  --surface-border: 34 54 84;
+  --content-primary: 233 242 253;
+  --content-secondary: 175 196 220;
+  --content-muted: 122 146 175;
 }
 
 * {
@@ -46,15 +48,32 @@ body::before {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background:
-    radial-gradient(60rem 40rem at 15% -10%, rgba(99, 102, 241, 0.18), transparent 60%),
-    radial-gradient(50rem 30rem at 100% 0%, rgba(34, 211, 238, 0.12), transparent 60%);
   pointer-events: none;
+  background:
+    radial-gradient(55rem 38rem at 8% -12%, rgba(56, 189, 248, 0.22), transparent 62%),
+    radial-gradient(46rem 30rem at 102% -6%, rgba(59, 152, 246, 0.18), transparent 60%),
+    radial-gradient(40rem 26rem at 52% 108%, rgba(14, 165, 233, 0.1), transparent 65%);
+}
+
+.dark body::before {
+  background:
+    radial-gradient(55rem 38rem at 8% -12%, rgba(56, 189, 248, 0.16), transparent 62%),
+    radial-gradient(46rem 30rem at 102% -6%, rgba(37, 122, 235, 0.18), transparent 60%),
+    radial-gradient(40rem 26rem at 52% 108%, rgba(14, 165, 233, 0.1), transparent 65%);
 }
 
 @layer components {
   .card {
-    @apply rounded-2xl border border-surface-border bg-surface-raised/80 backdrop-blur-sm;
+    @apply rounded-2xl border border-surface-border bg-surface-raised/85 shadow-[0_1px_2px_rgba(15,40,70,0.04)] backdrop-blur-sm;
+  }
+
+  .card-elevated {
+    @apply card shadow-[0_18px_40px_-24px_rgba(13,66,120,0.45)];
+  }
+
+  /* Gradient hairline used for hero and pricing highlights. */
+  .ring-brand-soft {
+    @apply ring-1 ring-brand-400/30;
   }
 
   .card-hover {
@@ -66,7 +85,7 @@ body::before {
   }
 
   .btn-primary {
-    @apply btn bg-gradient-to-r from-brand-500 to-cyan-400 text-slate-950 shadow-lg shadow-brand-500/25 hover:from-brand-400 hover:to-cyan-300;
+    @apply btn bg-gradient-to-r from-brand-600 via-brand-500 to-sky-400 text-white shadow-lg shadow-brand-500/30 hover:from-brand-500 hover:via-sky-500 hover:to-sky-300 active:translate-y-px;
   }
 
   .btn-secondary {
@@ -94,7 +113,11 @@ body::before {
   }
 
   .badge-premium {
-    @apply inline-flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-2.5 py-1 text-xs font-semibold text-amber-500 dark:text-amber-300;
+    @apply inline-flex items-center gap-1 rounded-full border border-brand-400/50 bg-brand-100/70 px-2.5 py-1 text-xs font-semibold text-brand-700 dark:border-brand-400/40 dark:bg-brand-500/15 dark:text-brand-200;
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-br from-brand-700 via-brand-500 to-sky-400 bg-clip-text text-transparent dark:from-brand-200 dark:via-sky-300 dark:to-brand-400;
   }
 
   .link {
@@ -129,7 +152,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid #818cf8;
+  outline: 2px solid #3b98f6;
   outline-offset: 2px;
 }
 

@@ -1,12 +1,14 @@
 import cron from 'node-cron';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { buildApp } from './app.js';
 import { getEnv, isProduction } from './config/env.js';
 import { connectDB, disconnectDB, getDb } from './db/client.js';
-import { userStats, users } from './db/schema/index.js';
+import { invoices, payments, userStats, users } from './db/schema/index.js';
 import { hashPassword } from './lib/passwords.js';
 import { randomReferralCode } from './lib/tokens.js';
-import { ensureDefaultPlans, expireSubscriptions } from './services/subscription.service.js';
+import { ensureDefaultPlans, expireSubscriptions, issueInvoice } from './services/subscription.service.js';
+import { reconcilePayments } from './services/webhook.service.js';
+import { checkoutReady } from './services/hyperswitch.client.js';
 import { syncDatasetCatalog } from './services/dataset.service.js';
 import { getSettings } from './services/settings.service.js';
 import { ensureRbac } from './services/rbac.service.js';
@@ -80,6 +82,40 @@ async function main(): Promise<void> {
       }
     }),
   );
+
+  // Payment reconciliation: re-checks pending HyperSwitch payments against the
+  // gateway and repairs drift (missed webhooks, crash between steps, etc).
+  if (env.PAYMENT_RECONCILE_CRON && checkoutReady(env)) {
+    tasks.push(
+      cron.schedule(env.PAYMENT_RECONCILE_CRON, async () => {
+        try {
+          const result = await reconcilePayments(env, 'schedule');
+          if (result.repaired || result.mismatches) app.log.info(result, 'payments.reconciled');
+        } catch (err) {
+          app.log.error({ err }, 'payments.reconcile_failed');
+        }
+      }),
+    );
+  }
+
+  // Backfill invoices for already-paid payments (idempotent, one-shot).
+  void (async () => {
+    try {
+      const db = getDb();
+      const paid = await db
+        .select({ id: payments.id })
+        .from(payments)
+        .where(
+          sql`${payments.status} in ('succeeded', 'partially_refunded') and not exists (
+            select 1 from ${invoices} i where i.payment_id = ${payments.id}
+          )`,
+        )
+        .limit(200);
+      for (const row of paid) await issueInvoice(row.id);
+    } catch (err) {
+      app.log.warn({ err }, 'invoices.backfill_failed');
+    }
+  })();
 
   await app.listen({ port: env.API_PORT, host: env.API_HOST });
   app.log.info(

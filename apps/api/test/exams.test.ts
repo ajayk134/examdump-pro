@@ -85,7 +85,7 @@ describe('exam catalogue and entitlement enforcement', () => {
     const user = await registerVerifiedUser(app);
     const subscribe = await app.inject({
       method: 'POST',
-      url: '/api/subscriptions',
+      url: '/api/payments/mock-activate',
       headers: { cookie: user.cookie },
       payload: { planId: 'all-30' },
     });
@@ -107,7 +107,7 @@ describe('exam catalogue and entitlement enforcement', () => {
     const user = await registerVerifiedUser(app);
     const subscribe = await app.inject({
       method: 'POST',
-      url: '/api/subscriptions',
+      url: '/api/payments/mock-activate',
       headers: { cookie: user.cookie },
       payload: { planId: 'single-30', examKey: '100-890' },
     });

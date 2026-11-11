@@ -303,7 +303,10 @@ export async function adminRoutes(app: FastifyInstance, env: Env): Promise<void>
         name: input.name,
         description: input.description,
         scope: input.scope,
+        examQuota: input.examQuota,
         durationDays: input.durationDays,
+        billingCycle: input.billingCycle,
+        highlight: input.highlight,
         earlyAccess: input.earlyAccess,
         priceMinor: input.priceMinor,
         currency: input.currency,
@@ -327,7 +330,10 @@ export async function adminRoutes(app: FastifyInstance, env: Env): Promise<void>
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.scope !== undefined ? { scope: input.scope } : {}),
+        ...(input.examQuota !== undefined ? { examQuota: input.examQuota } : {}),
         ...(input.durationDays !== undefined ? { durationDays: input.durationDays } : {}),
+        ...(input.billingCycle !== undefined ? { billingCycle: input.billingCycle } : {}),
+        ...(input.highlight !== undefined ? { highlight: input.highlight } : {}),
         ...(input.earlyAccess !== undefined ? { earlyAccess: input.earlyAccess } : {}),
         ...(input.priceMinor !== undefined ? { priceMinor: input.priceMinor } : {}),
         ...(input.features !== undefined ? { features: input.features } : {}),
@@ -424,8 +430,12 @@ export async function adminRoutes(app: FastifyInstance, env: Env): Promise<void>
     const { user: admin } = await requirePermission(request, env, 'payments.refund');
     const { id } = request.params as { id: string };
     const input = parseOrThrow(refundSchema, request.body ?? {});
-    const refund = await refundPayment(id, input.amountMinor, input.reason ?? '', admin.id);
-    return reply.code(201).send({ refund });
+    const outcome = await refundPayment(env, id, input.amountMinor, input.reason ?? '', admin);
+    return reply.code(outcome.processed ? 201 : 502).send({
+      refund: outcome.refund,
+      processed: outcome.processed,
+      message: outcome.message,
+    });
   });
 
   app.get('/refunds', async (request, reply) => {

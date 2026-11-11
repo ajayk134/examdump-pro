@@ -100,7 +100,7 @@ export function ProgressBar({ value, className }: { value: number; className?: s
   return (
     <div className={cn('h-2 w-full overflow-hidden rounded-full bg-surface-overlay', className)} role="progressbar" aria-valuenow={clamped} aria-valuemin={0} aria-valuemax={100}>
       <div
-        className="h-full rounded-full bg-gradient-to-r from-brand-500 to-cyan-400 transition-all"
+        className="h-full rounded-full bg-gradient-to-r from-brand-600 to-sky-400 transition-all"
         style={{ width: `${clamped}%` }}
       />
     </div>
@@ -115,14 +115,32 @@ export function PremiumBadge() {
   return <span className="badge-premium">★ Premium</span>;
 }
 
-export function Alert({ tone = 'info', children }: { tone?: 'info' | 'error' | 'success' | 'warning'; children: ReactNode }) {
+export function Alert({
+  tone = 'info',
+  title,
+  children,
+  action,
+}: {
+  tone?: 'info' | 'error' | 'success' | 'warning';
+  title?: string;
+  children: ReactNode;
+  action?: ReactNode;
+}) {
   const styles = {
     info: 'border-brand-400/30 bg-brand-500/10 text-content-secondary',
     error: 'border-rose-400/40 bg-rose-500/10 text-rose-600 dark:text-rose-300',
     success: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
     warning: 'border-amber-400/40 bg-amber-500/10 text-amber-700 dark:text-amber-300',
   }[tone];
-  return <div className={cn('rounded-xl border px-4 py-3 text-sm', styles)} role={tone === 'error' ? 'alert' : 'status'}>{children}</div>;
+  return (
+    <div className={cn('rounded-xl border px-4 py-3 text-sm', styles)} role={tone === 'error' ? 'alert' : 'status'}>
+      {title ? <p className="mb-1 font-semibold">{title}</p> : null}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>{children}</div>
+        {action}
+      </div>
+    </div>
+  );
 }
 
 export function LinkButton({
@@ -156,7 +174,7 @@ export function Avatar({ name, src, size = 36 }: { name: string; src?: string; s
   }
   return (
     <span
-      className="inline-flex items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-cyan-400 font-semibold text-slate-950"
+      className="inline-flex items-center justify-center rounded-full bg-gradient-to-br from-brand-600 to-sky-400 font-semibold text-white"
       style={{ width: size, height: size, fontSize: size * 0.38 }}
       aria-hidden
     >
@@ -184,7 +202,7 @@ export function Tabs<T extends string>({
           onClick={() => onChange(tab.id)}
           className={cn(
             'rounded-lg px-3 py-1.5 text-sm font-medium transition',
-            value === tab.id ? 'bg-brand-500 text-slate-950 shadow' : 'text-content-secondary hover:text-content-primary',
+            value === tab.id ? 'bg-brand-500 text-white shadow' : 'text-content-secondary hover:text-content-primary',
           )}
         >
           {tab.label}

@@ -1,4 +1,4 @@
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { applyMigrations } from '../src/db/apply-migrations.js';
 import { resolve } from 'node:path';
 import { DatasetClient } from '@examdump/data-client';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
@@ -91,6 +91,7 @@ export async function createTestContext(): Promise<TestContext> {
     ADMIN_PASSWORD: 'AdminPass123',
     PAYMENTS_ENABLED: 'false',
     ALLOW_MOCK_PAYMENTS: 'true',
+    PAYMENT_PROVIDER: 'mock',
     ENABLE_DATASET_SYNC: 'false',
     RATE_LIMIT_MAX: '100000',
     LOG_LEVEL: 'silent',
@@ -102,7 +103,7 @@ export async function createTestContext(): Promise<TestContext> {
   await sql`drop schema if exists public cascade`;
   await sql`drop schema if exists drizzle cascade`;
   await sql`create schema public`;
-  await migrate(getDb(), { migrationsFolder: resolve(process.cwd(), 'src/db/migrations') });
+  await applyMigrations(sql, resolve(process.cwd(), 'src/db/migrations'));
 
   await ensureRbac();
   await ensureDefaultPlans();
@@ -165,7 +166,7 @@ export async function createTestContext(): Promise<TestContext> {
     }),
   );
 
-  const app = await buildApp({ env, logger: false });
+  const app = await buildApp({ env, logger: process.env.TEST_LOGS === "1" });
 
   return {
     app,
@@ -250,7 +251,7 @@ export async function subscribeUser(
 ): Promise<void> {
   const response = await app.inject({
     method: 'POST',
-    url: '/api/subscriptions',
+    url: '/api/payments/mock-activate',
     headers: { cookie },
     payload: { planId, ...(examKey ? { examKey } : {}) },
   });

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { getEnv } from '../config/env.js';
 import { connectDB, disconnectDB, getDb } from './client.js';
 import {
+  announcements,
   coupons,
   emailTemplates,
   featureFlags,
@@ -16,11 +17,15 @@ import { ensureRbac } from '../services/rbac.service.js';
 import { syncDatasetCatalog } from '../services/dataset.service.js';
 
 const FEATURE_FLAGS = [
-  { key: 'ai_explanations', enabled: true, description: 'AI question explanations for premium users.' },
+  { key: 'ai_explanations', enabled: true, description: 'NVIDIA powered explanations and tutoring.' },
   { key: 'leaderboard', enabled: true, description: 'Public leaderboard.' },
   { key: 'referrals', enabled: true, description: 'Referral rewards programme.' },
   { key: 'mock_exams', enabled: true, description: 'Timed mock exams.' },
   { key: 'early_access', enabled: true, description: 'Early-access content for eligible plans.' },
+  { key: 'hyperswitch_checkout', enabled: true, description: 'Live card/UPI checkout via HyperSwitch.' },
+  { key: 'support_tickets', enabled: true, description: 'Support centre and ticketing.' },
+  { key: 'announcements', enabled: true, description: 'Site-wide announcement banners.' },
+  { key: 'invoices', enabled: true, description: 'Downloadable invoices for every payment.' },
 ];
 
 const EMAIL_TEMPLATES = [
@@ -82,15 +87,36 @@ async function seed(): Promise<void> {
 
   await db
     .insert(coupons)
+    .values([
+      {
+        code: 'WELCOME20',
+        description: '20% off your first subscription',
+        percentOff: 20,
+        maxRedemptions: 0,
+        active: true,
+      },
+      {
+        code: 'LAUNCH10',
+        description: '10% launch offer across all passes',
+        percentOff: 10,
+        maxRedemptions: 1000,
+        active: true,
+      },
+    ])
+    .onConflictDoNothing();
+  console.log('Coupons WELCOME20 / LAUNCH10 ready');
+
+  await db
+    .insert(announcements)
     .values({
-      code: 'WELCOME20',
-      description: '20% off your first subscription',
-      percentOff: 20,
-      maxRedemptions: 0,
+      title: 'Welcome to ExamDump Pro',
+      body: 'Every exam now includes 5 free questions. Unlock unlimited practice with a pass from ₹499.',
+      level: 'info',
+      audience: 'all',
       active: true,
     })
     .onConflictDoNothing();
-  console.log('Demo coupon WELCOME20 ready');
+  console.log('Announcement ready');
 
   if (env.ADMIN_EMAIL && env.ADMIN_PASSWORD) {
     const email = env.ADMIN_EMAIL.toLowerCase();

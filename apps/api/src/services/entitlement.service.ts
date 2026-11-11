@@ -128,15 +128,33 @@ export async function resolveEntitlements(
     );
 
   const sources: EntitlementSource[] = [
-    ...activeSubs.map((s) => ({
-      type: 'subscription' as const,
-      id: s.id,
-      scope: s.scope,
-      examKey: s.examKey,
-      providerId: s.providerId,
-      earlyAccess: s.earlyAccess,
-      expiresAt: s.currentPeriodEnd,
-    })),
+    ...activeSubs.flatMap<EntitlementSource>((s) => {
+      // A `multi` subscription unlocks its selection; a `single` unlocks one.
+      const keys = [...new Set([...(s.examKeys ?? []), ...(s.examKey ? [s.examKey] : [])])];
+      if (s.scope === 'all') {
+        return [
+          {
+            type: 'subscription',
+            id: s.id,
+            scope: s.scope,
+            examKey: null,
+            providerId: s.providerId,
+            earlyAccess: s.earlyAccess,
+            expiresAt: s.currentPeriodEnd,
+          },
+        ];
+      }
+      if (keys.length === 0) return [];
+      return keys.map((key) => ({
+        type: 'subscription' as const,
+        id: s.id,
+        scope: s.scope,
+        examKey: key,
+        providerId: s.providerId,
+        earlyAccess: s.earlyAccess,
+        expiresAt: s.currentPeriodEnd,
+      }));
+    }),
     ...grants.map((g) => ({
       type: 'grant' as const,
       id: g.id,
@@ -149,23 +167,28 @@ export async function resolveEntitlements(
   ];
 
   const allAccess = sources.some((s) => s.scope === 'all');
-  const examKeys = [...new Set(sources.filter((s) => s.scope === 'single' && s.examKey).map((s) => s.examKey!))];
+  const examKeys = [
+    ...new Set(sources.filter((s) => s.scope !== 'all' && s.examKey).map((s) => s.examKey!)),
+  ];
   const providerIds = [
-    ...new Set(sources.filter((s) => s.scope === 'single' && s.providerId).map((s) => s.providerId!)),
+    ...new Set(sources.filter((s) => s.scope !== 'all' && s.providerId).map((s) => s.providerId!)),
   ];
   const earlyAccess = sources.some((s) => s.earlyAccess);
   const scopedAccess = examKeys.length > 0 || providerIds.length > 0;
 
+  // Access runs until the furthest-reaching source expires.
   const expiresAt = sources.reduce<Date | null>((latest, s) => {
-    if (s.scope === 'all' && s.expiresAt && (!latest || s.expiresAt > latest)) return s.expiresAt;
+    if (s.expiresAt && (!latest || s.expiresAt > latest)) return s.expiresAt;
     return latest;
   }, null);
 
   if (!allAccess && !scopedAccess) return freeEntitlements(settings);
 
+  const multiAccess = !allAccess && sources.some((s) => s.scope === 'multi');
+
   return {
     plan: 'premium',
-    scope: allAccess ? 'all' : 'single',
+    scope: allAccess ? 'all' : multiAccess ? 'multi' : 'single',
     unlimitedQuestions: true,
     allAccess,
     examKeys,

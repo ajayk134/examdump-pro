@@ -50,10 +50,16 @@ const envSchema = z.object({
   ENABLE_DATASET_SYNC: booleanString,
   DATASET_SYNC_CRON: z.string().default('0 3 * * *'),
 
-  AI_PROVIDER: z.string().default('openai'),
+  /* ---------------- AI (NVIDIA NIM by default) ---------------- */
+  AI_PROVIDER: z.enum(['nvidia', 'openai', 'openai-compatible']).default('nvidia'),
   AI_API_KEY: z.string().optional(),
-  AI_MODEL: z.string().default('gpt-4o-mini'),
-  AI_BASE_URL: z.string().default('https://api.openai.com/v1'),
+  AI_MODEL: z.string().default('meta/llama-3.1-70b-instruct'),
+  AI_BASE_URL: z.string().default('https://integrate.api.nvidia.com/v1'),
+  AI_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  AI_MAX_TOKENS: z.coerce.number().int().positive().default(800),
+  AI_DAILY_LIMIT_FREE: z.coerce.number().int().min(0).default(5),
+  AI_DAILY_LIMIT_PREMIUM: z.coerce.number().int().min(0).default(200),
+  AI_WEB_SEARCH: booleanString,
 
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().optional(),
@@ -63,12 +69,35 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   RATE_LIMIT_WINDOW: z.string().default('1 minute'),
 
+  /* ---------------- Payments: HyperSwitch ---------------- */
   PAYMENTS_ENABLED: booleanString,
   ALLOW_MOCK_PAYMENTS: z
     .string()
     .optional()
-    .transform((v) => v === undefined || v === 'true' || v === '1'),
-  PAYMENT_PROVIDER: z.enum(['mock', 'razorpay', 'stripe', 'manual', 'none']).default('mock'),
+    .transform((v) => v === 'true' || v === '1'),
+  PAYMENT_PROVIDER: z
+    .enum(['mock', 'hyperswitch', 'razorpay', 'stripe', 'manual', 'none'])
+    .default('mock'),
+  /** HyperSwitch router base URL, e.g. https://payments.example.com */
+  HYPERSWITCH_BASE_URL: z.string().optional(),
+  /** Merchant API key (X-API-KEY). */
+  HYPERSWITCH_API_KEY: z.string().optional(),
+  /** Master key; required for admin APIs (oauth keys, connector setup). */
+  HYPERSWITCH_ADMIN_API_KEY: z.string().optional(),
+  HYPERSWITCH_MERCHANT_ID: z.string().optional(),
+  /** Profile id the checkout uses (created by the setup script). */
+  HYPERSWITCH_PROFILE_ID: z.string().optional(),
+  /** Shared secret used to sign outgoing webhooks (HMAC-SHA512 hex). */
+  HYPERSWITCH_WEBHOOK_SECRET: z.string().optional(),
+  HYPERSWITCH_API_VERSION: z.string().default('2022-09-10'),
+  /** Comma separated connector names to try at confirmation time. */
+  HYPERSWITCH_CONNECTORS: z.string().default('stripe,razorpay'),
+  /** Publicly reachable URL HyperSwitch posts webhooks to. */
+  PAYMENT_WEBHOOK_URL: z.string().optional(),
+  /** Reconciliation job schedule (cron). Empty disables it. */
+  PAYMENT_RECONCILE_CRON: z.string().default('*/30 * * * *'),
+  /** Timeout for gateway HTTP calls in ms. */
+  PAYMENT_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),

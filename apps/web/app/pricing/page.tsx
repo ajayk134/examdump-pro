@@ -4,15 +4,27 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth, useToast } from '@/components/providers';
 import { get, post } from '@/lib/api';
-import type { AccessGrant, Entitlements, Exam, Paginated, Payment, Plan, Subscription, User } from '@/lib/types';
+import type {
+  AccessGrant,
+  CheckoutSession,
+  Entitlements,
+  Exam,
+  Paginated,
+  Plan,
+  PlanQuote,
+  Payment,
+  Subscription,
+  User,
+} from '@/lib/types';
 import { Alert, EmptyState, PremiumBadge, Spinner } from '@/components/ui';
-import { IconCheck, IconSparkles } from '@/components/icons';
+import { IconCheck, IconSparkles, IconX } from '@/components/icons';
 import { formatDate, formatMoneyMinor } from '@/lib/format';
 
 interface PlansResponse {
   plans: Plan[];
   paymentsEnabled: boolean;
   mockPayments: boolean;
+  freeQuestionsPerExam: number;
   currency: string;
 }
 
@@ -26,274 +38,530 @@ interface MeResponse {
   mockPayments: boolean;
 }
 
+const FREE_FEATURES = [
+  '5 questions per exam, every exam',
+  '1 timed mock exam per day',
+  '20 random practice questions per day',
+  'Progress tracking and streaks',
+];
+
 export default function PricingPage() {
   const { user, loading, refresh } = useAuth();
   const { toast } = useToast();
+
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
-  const [mockPayments, setMockPayments] = useState(true);
-  const [coupon, setCoupon] = useState('');
-  const [couponMsg, setCouponMsg] = useState('');
+  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
+  const [, setMockPayments] = useState(true);
+  const [freeQuestions, setFreeQuestions] = useState(5);
+
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [coupon, setCoupon] = useState('');
+  const [quote, setQuote] = useState<PlanQuote | null>(null);
+  const [quoting, setQuoting] = useState(false);
   const [busy, setBusy] = useState(false);
+
   const [examQuery, setExamQuery] = useState('');
   const [examResults, setExamResults] = useState<Exam[]>([]);
-  const [exam, setExam] = useState<Exam | null>(null);
+  const [examSearching, setExamSearching] = useState(false);
+  const [selectedExams, setSelectedExams] = useState<Exam[]>([]);
 
-  const singlePlans = useMemo(() => (plans ?? []).filter((p) => p.scope === 'single'), [plans]);
-  const needsExam = useMemo(
-    () => plans?.some((p) => p.scope === 'single' && p.id === selectedPlan),
-    [plans, selectedPlan],
-  );
+  const plan = useMemo(() => plans?.find((p) => p.id === selectedPlan) ?? null, [plans, selectedPlan]);
+  const quota = plan?.scope === 'all' ? 0 : plan?.scope === 'multi' ? plan.examQuota || 3 : 1;
+  const needsExams = plan ? plan.scope !== 'all' : false;
 
   const load = useCallback(async () => {
     const data = await get<PlansResponse>('/subscriptions/plans');
     setPlans(data.plans);
+    setPaymentsEnabled(data.paymentsEnabled);
     setMockPayments(data.mockPayments);
-    if (user) {
-      const mine = await get<MeResponse>('/subscriptions/me');
-      setMe(mine);
-    }
+    setFreeQuestions(data.freeQuestionsPerExam ?? 5);
+    if (user) setMe(await get<MeResponse>('/subscriptions/me'));
   }, [user]);
 
   useEffect(() => {
     void load().catch((err) => toast((err as Error).message, 'error'));
   }, [load, toast]);
 
+  // Live server-side quote whenever the plan / exams / coupon change.
   useEffect(() => {
-    if (!examQuery.trim()) {
+    if (!selectedPlan) {
+      setQuote(null);
+      return;
+    }
+    if (needsExams && selectedExams.length === 0) {
+      setQuote(null);
+      return;
+    }
+    let cancelled = false;
+    setQuoting(true);
+    const timer = setTimeout(() => {
+      void post<PlanQuote>('/payments/quote', {
+        planId: selectedPlan,
+        examKeys: selectedExams.map((e) => e.key),
+        ...(coupon.trim() ? { couponCode: coupon.trim() } : {}),
+      })
+        .then((data) => {
+          if (!cancelled) setQuote(data);
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setQuote(null);
+            toast((err as Error).message, 'error');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setQuoting(false);
+        });
+    }, 280);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [selectedPlan, selectedExams, coupon, needsExams, toast]);
+
+  useEffect(() => {
+    if (!needsExams || examQuery.trim().length < 2) {
       setExamResults([]);
       return;
     }
+    let cancelled = false;
+    setExamSearching(true);
     const timer = setTimeout(() => {
-      get<Paginated<Exam>>(`/exams/search?q=${encodeURIComponent(examQuery)}&pageSize=6`)
-        .then((r) => setExamResults(r.items))
-        .catch(() => setExamResults([]));
+      void get<Paginated<Exam>>(`/exams?search=${encodeURIComponent(examQuery.trim())}&pageSize=8`)
+        .then((data) => {
+          if (!cancelled) setExamResults(data.items);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (!cancelled) setExamSearching(false);
+        });
     }, 250);
-    return () => clearTimeout(timer);
-  }, [examQuery]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [examQuery, needsExams]);
 
-  const validateCoupon = async (planId: string) => {
-    if (!coupon.trim()) {
-      setCouponMsg('');
+  function toggleExam(exam: Exam) {
+    setSelectedExams((current) => {
+      if (current.some((e) => e.key === exam.key)) return current.filter((e) => e.key !== exam.key);
+      if (quota > 0 && current.length >= quota) {
+        toast(`This pass unlocks up to ${quota} exam${quota > 1 ? 's' : ''}.`, 'error');
+        return current;
+      }
+      return [...current, exam];
+    });
+  }
+
+  async function startCheckout() {
+    if (!user) {
+      window.location.href = `/login?next=${encodeURIComponent('/pricing')}`;
       return;
     }
-    try {
-      const result = await post<{ valid: boolean; message: string; percentOff: number }>('/coupons/validate', { code: coupon, planId });
-      setCouponMsg(result.valid ? `${result.percentOff}% discount applied.` : result.message);
-    } catch (err) {
-      setCouponMsg((err as Error).message);
-    }
-  };
-
-  const subscribe = async (plan: Plan) => {
-    if (!user) return;
-    if (plan.scope === 'single' && !exam) {
-      setSelectedPlan(plan.id);
-      toast('Choose the exam you want to unlock first.', 'info');
+    if (!selectedPlan) return;
+    if (needsExams && selectedExams.length === 0) {
+      toast('Choose an exam to unlock first.', 'error');
       return;
     }
-    setSelectedPlan(plan.id);
     setBusy(true);
     try {
-      const result = await post<{ user: User; note: string }>('/subscriptions', {
-        planId: plan.id,
-        ...(plan.scope === 'single' && exam ? { examKey: exam.key, providerId: exam.providerId } : {}),
-        couponCode: coupon.trim() || undefined,
+      if (paymentsEnabled) {
+        const session = await post<CheckoutSession>('/payments/checkout', {
+          planId: selectedPlan,
+          examKeys: selectedExams.map((e) => e.key),
+          ...(coupon.trim() ? { couponCode: coupon.trim() } : {}),
+          requestId: `web_${Date.now().toString(36)}`,
+        });
+        if (session.checkoutUrl) {
+          window.location.href = session.checkoutUrl;
+          return;
+        }
+        toast('Checkout could not be opened. Please try again.', 'error');
+        return;
+      }
+
+      // No gateway configured: only ever allowed off production, and the API
+      // labels the resulting payment as simulated.
+      await post('/payments/mock-activate', {
+        planId: selectedPlan,
+        examKeys: selectedExams.map((e) => e.key),
+        ...(coupon.trim() ? { couponCode: coupon.trim() } : {}),
       });
-      if (result.user) refresh();
-      toast('Access activated. Enjoy unlimited practise!', 'success');
-      await load();
-    } catch (err) {
-      toast((err as Error).message, 'error');
-    } finally {
-      setBusy(false);
-      setSelectedPlan(null);
-    }
-  };
-
-  const cancel = async () => {
-    if (!me?.subscription) return;
-    setBusy(true);
-    try {
-      await post(`/subscriptions/${me.subscription.id}/cancel`);
-      toast('Subscription will end at the current period.', 'info');
+      toast('Plan activated (test mode - no payment was taken).', 'success');
+      await refresh();
       await load();
     } catch (err) {
       toast((err as Error).message, 'error');
     } finally {
       setBusy(false);
     }
-  };
+  }
 
-  if (loading || !plans) return <Spinner label="Loading plans..." />;
+  const activePlanId = me?.subscription?.planId ?? null;
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-8">
-      <header className="text-center">
-        <p className="mx-auto mb-3 inline-flex items-center gap-1.5 rounded-full border border-brand-400/30 bg-brand-500/10 px-3 py-1 text-xs font-semibold text-brand-500 dark:text-brand-300">
-          <IconSparkles width={14} height={14} /> Simple, honest pricing in ₹
+    <div className="space-y-12">
+      <header className="mx-auto max-w-3xl text-center">
+        <span className="badge mx-auto mb-4">Pricing</span>
+        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+          Pass once. Practice <span className="text-gradient">without limits</span>.
+        </h1>
+        <p className="mt-3 text-content-secondary">
+          Every exam has {freeQuestions} free questions. Unlock full question banks, timed mocks, AI
+          explanations and analytics with a pass that fits how many exams you are taking.
         </p>
-        <h1 className="text-4xl font-black tracking-tight">Invest in passing first time</h1>
-        <p className="mx-auto mt-3 max-w-xl text-content-muted">
-          Start free with 5 questions per exam. Pick one exam or unlock everything for as long as you need.
-        </p>
+        {me?.entitlements.expiresAt ? (
+          <p className="mt-3 text-sm text-content-muted">
+            Your current access runs until{' '}
+            <strong className="text-content-primary">{formatDate(me.entitlements.expiresAt)}</strong>.
+          </p>
+        ) : null}
       </header>
 
-      {mockPayments && !me?.paymentsEnabled ? (
-        <Alert tone="info">
-          Payment processing is not connected yet. Checkout is <b>simulated</b> — no charge will be made, but access activates instantly so you can test the full experience.
+      {!paymentsEnabled ? (
+        <Alert tone="warning" title="Live payments are not enabled on this environment">
+          Card/UPI checkout needs the payment gateway keys configured on the server. Until then plan
+          activation is simulated for testing only and no money is charged.
         </Alert>
       ) : null}
 
-      {me?.subscription ? (
-        <div className="card flex flex-wrap items-center justify-between gap-3 p-5">
-          <div>
-            <p className="flex items-center gap-2 font-semibold">Current access <PremiumBadge /></p>
-            <p className="mt-1 text-sm text-content-muted">
-              {me.subscription.scope === 'all' ? 'All exams' : me.subscription.examKey} · {me.subscription.planId} · ends {formatDate(me.subscription.currentPeriodEnd)}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link href="/profile" className="btn-secondary">Manage</Link>
-            {!me.subscription.cancelAtPeriodEnd ? (
-              <button onClick={cancel} className="btn-ghost" disabled={busy}>Cancel</button>
-            ) : (
-              <span className="badge">Cancels at period end</span>
-            )}
-          </div>
+      {loading || !plans ? (
+        <div className="flex justify-center py-16">
+          <Spinner />
         </div>
-      ) : null}
-
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        {plans.map((plan) => {
-          const highlight = plan.id === 'all-365';
-          return (
-            <div key={plan.id} className={`card relative flex flex-col p-6 ${highlight ? 'border-brand-400/60 ring-1 ring-brand-400/30' : ''}`}>
-              {highlight ? (
-                <span className="absolute -top-3 left-6 rounded-full bg-gradient-to-r from-brand-500 to-cyan-400 px-3 py-1 text-xs font-bold text-slate-950">Best value</span>
-              ) : null}
-              {plan.earlyAccess ? (
-                <span className="badge-premium mb-2 self-start text-xs">Early access</span>
-              ) : null}
-              <h2 className="text-lg font-bold">{plan.name}</h2>
-              <p className="mt-1 min-h-10 text-sm text-content-muted">{plan.description}</p>
-              <div className="mt-4 flex items-end gap-1">
-                <span className="text-3xl font-black tracking-tight">{formatMoneyMinor(plan.priceMinor, plan.currency)}</span>
-                <span className="mb-1 text-sm text-content-muted">/ {plan.durationDays} days</span>
-              </div>
-              <ul className="mt-5 flex flex-1 flex-col gap-2 text-sm">
-                {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-start gap-2">
-                    <IconCheck width={16} height={16} className="mt-0.5 text-emerald-500" />
-                    <span className="text-content-secondary">{feature}</span>
-                  </li>
-                ))}
-              </ul>
-              {user ? (
+      ) : (
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
+          <PlanCard
+            id="free"
+            name="Free"
+            price="₹0"
+            cadence="forever"
+            description={`${freeQuestions} questions per exam, unlimited browsing.`}
+            features={FREE_FEATURES}
+            active={!me?.entitlements.allAccess && (me?.entitlements.examKeys.length ?? 0) === 0}
+            current={!me?.subscription}
+            cta={
+              <Link href={user ? '/browse' : '/register'} className="btn-secondary w-full">
+                {user ? 'Browse exams' : 'Start free'}
+              </Link>
+            }
+          />
+          {plans.map((p) => (
+            <PlanCard
+              key={p.id}
+              id={p.id}
+              name={p.name}
+              price={formatMoneyMinor(p.priceMinor, p.currency)}
+              cadence={p.durationDays >= 365 ? 'per year' : `per ${p.durationDays} days`}
+              description={p.description}
+              features={p.features}
+              highlight={p.highlight}
+              badge={p.badge ?? undefined}
+              active={activePlanId === p.id}
+              current={activePlanId === p.id}
+              cta={
                 <button
-                  onClick={() => subscribe(plan)}
-                  className={`mt-6 w-full py-3 ${highlight ? 'btn-primary' : 'btn-secondary'}`}
-                  disabled={busy || (me?.subscription?.planId === plan.id && !me.subscription.cancelAtPeriodEnd)}
+                  type="button"
+                  className={p.highlight ? 'btn-primary w-full' : 'btn-secondary w-full'}
+                  onClick={() => {
+                    setSelectedPlan(p.id);
+                    setSelectedExams([]);
+                    setExamQuery('');
+                    setQuote(null);
+                  }}
                 >
-                  {me?.subscription?.planId === plan.id && !me.subscription.cancelAtPeriodEnd
-                    ? 'Current plan'
-                    : busy && selectedPlan === plan.id
-                      ? 'Activating...'
-                      : 'Choose plan'}
+                  {activePlanId === p.id ? 'Renew or extend' : 'Choose ' + p.name.split('·')[0]!.trim()}
                 </button>
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      {plan ? (
+        <section className="card-elevated animate-fade-in p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold">Configure your {plan.name}</h2>
+              <p className="mt-1 text-sm text-content-secondary">
+                {plan.scope === 'all'
+                  ? 'Every exam in the catalogue is unlocked for the whole period.'
+                  : plan.scope === 'multi'
+                    ? `Pick up to ${plan.examQuota || 3} exams. You can change them later.`
+                    : 'Pick the one exam this pass unlocks.'}
+              </p>
+            </div>
+            <button type="button" className="btn-ghost" onClick={() => setSelectedPlan(null)}>
+              <IconX className="h-4 w-4" /> Close
+            </button>
+          </div>
+
+          {needsExams ? (
+            <div className="mt-5 space-y-3">
+              <label className="label" htmlFor="exam-search">
+                Search exams
+              </label>
+              <input
+                id="exam-search"
+                className="input"
+                placeholder="e.g. AWS Solutions Architect, AZ-104, CCNA"
+                value={examQuery}
+                onChange={(e) => setExamQuery(e.target.value)}
+              />
+              {selectedExams.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {selectedExams.map((e) => (
+                    <button
+                      key={e.key}
+                      type="button"
+                      className="badge border-brand-400/50 bg-brand-100/60 text-brand-800 hover:bg-brand-200/60 dark:bg-brand-500/15 dark:text-brand-200"
+                      onClick={() => toggleExam(e)}
+                      title="Remove"
+                    >
+                      {e.code} · {e.providerTitle}
+                      <IconX className="h-3 w-3" />
+                    </button>
+                  ))}
+                </div>
               ) : (
-                <Link href="/register" className={`mt-6 w-full py-3 text-center ${highlight ? 'btn-primary' : 'btn-secondary'}`}>Create account</Link>
+                <p className="text-xs text-content-muted">
+                  {quota > 0 ? `0 of ${quota} selected` : 'No exams selected yet'}
+                </p>
+              )}
+              {examQuery.trim().length >= 2 ? (
+                <div className="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-surface-border p-2">
+                  {examSearching && examResults.length === 0 ? (
+                    <div className="flex justify-center py-6">
+                      <Spinner />
+                    </div>
+                  ) : examResults.length === 0 ? (
+                    <p className="px-2 py-6 text-center text-sm text-content-muted">No exams matched.</p>
+                  ) : (
+                    examResults.map((e) => {
+                      const picked = selectedExams.some((s) => s.key === e.key);
+                      return (
+                        <button
+                          key={e.key}
+                          type="button"
+                          onClick={() => toggleExam(e)}
+                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
+                            picked
+                              ? 'bg-brand-100/70 text-brand-900 dark:bg-brand-500/15 dark:text-brand-100'
+                              : 'hover:bg-surface-overlay'
+                          }`}
+                        >
+                          <span>
+                            <strong className="font-semibold">{e.code}</strong>{' '}
+                            <span className="text-content-secondary">{e.title}</span>
+                            <span className="ml-2 text-xs text-content-muted">{e.providerTitle}</span>
+                          </span>
+                          <span className="text-xs text-content-muted">{e.questionCount} q</span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+            <div>
+              <label className="label" htmlFor="coupon">
+                Coupon code (optional)
+              </label>
+              <input
+                id="coupon"
+                className="input uppercase"
+                placeholder="SAVE20"
+                value={coupon}
+                onChange={(e) => setCoupon(e.target.value.toUpperCase())}
+              />
+            </div>
+            <div className="text-right">
+              {quoting ? (
+                <Spinner />
+              ) : quote ? (
+                <>
+                  <p className="text-2xl font-bold">{formatMoneyMinor(quote.totalMinor, quote.currency)}</p>
+                  {quote.discountMinor > 0 ? (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                      {formatMoneyMinor(quote.discountMinor, quote.currency)} off with {quote.couponCode}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-content-muted">Inclusive of all taxes</p>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-content-muted">Select exams to see the total</p>
               )}
             </div>
-          );
-        })}
-      </div>
-
-      {singlePlans.length > 0 ? (
-        <div className="card p-5">
-          <label className="label" htmlFor="exam-picker">Unlocking a single exam? Choose it here</label>
-          <input
-            id="exam-picker"
-            className="input"
-            placeholder="Search exams (e.g. 200-301, AWS)..."
-            value={examQuery}
-            onChange={(e) => setExamQuery(e.target.value)}
-          />
-          {exam ? (
-            <p className="mt-2 text-sm text-emerald-500">Selected: <b>{exam.title}</b> ({exam.code})</p>
-          ) : null}
-          {examResults.length > 0 ? (
-            <ul className="mt-3 divide-y divide-surface-border">
-              {examResults.map((e) => (
-                <li key={`${e.providerId}-${e.key}`} className="flex items-center justify-between py-2 text-sm">
-                  <span>{e.title} <span className="text-content-muted">· {e.providerTitle} · {e.questionCount} Q</span></span>
-                  <button className="btn-ghost text-xs" onClick={() => { setExam(e); setExamResults([]); setExamQuery(e.title); }}>Select</button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {needsExam && !exam ? <p className="mt-2 text-xs text-amber-500">Select an exam above to continue.</p> : null}
-        </div>
-      ) : null}
-
-      <div className="card p-5">
-        <label htmlFor="coupon" className="label">Have a coupon?</label>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input id="coupon" className="input" value={coupon} onChange={(e) => setCoupon(e.target.value.toUpperCase())} placeholder="WELCOME20" />
-          <button className="btn-secondary" onClick={() => plans[0] && validateCoupon(plans[0].id)} disabled={!coupon.trim()}>Apply</button>
-        </div>
-        {couponMsg ? <p className="mt-2 text-sm text-content-secondary">{couponMsg}</p> : null}
-      </div>
-
-      {me?.payments && me.payments.length > 0 ? (
-        <div className="card p-5">
-          <h2 className="mb-3 text-lg font-semibold">Payment history</h2>
-          <ul className="divide-y divide-surface-border">
-            {me.payments.map((payment) => (
-              <li key={payment.id} className="flex items-center justify-between py-2.5 text-sm">
-                <div>
-                  <p className="font-medium">{payment.description}</p>
-                  <p className="text-xs text-content-muted">{formatDate(payment.createdAt)} · {payment.providerRef}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold">{formatMoneyMinor(payment.amountMinor, payment.currency)}</p>
-                  <p className="text-xs text-content-muted">{payment.status}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {me?.grants && me.grants.length > 0 ? (
-        <div className="card p-5">
-          <h2 className="mb-3 text-lg font-semibold">Granted access</h2>
-          <ul className="divide-y divide-surface-border">
-            {me.grants.map((grant) => (
-              <li key={grant.id} className="flex items-center justify-between py-2 text-sm">
-                <span>{grant.scope === 'all' ? 'All exams' : grant.examKey} · {grant.source}</span>
-                <span className="text-xs text-content-muted">{grant.expiresAt ? `expires ${formatDate(grant.expiresAt)}` : 'no expiry'}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        {[
-          { q: 'Can I buy just one exam?', a: 'Yes. Choose the One Exam plan and pick the exam you are preparing for.' },
-          { q: 'Do you charge my card today?', a: 'No payment provider is connected yet. Checkout is simulated while we finish payment integration.' },
-          { q: 'Is my progress saved?', a: 'Yes. Your attempts, bookmarks, notes and analytics are stored securely in your account.' },
-        ].map((item) => (
-          <div key={item.q} className="card p-5">
-            <h3 className="font-semibold">{item.q}</h3>
-            <p className="mt-2 text-sm text-content-muted">{item.a}</p>
           </div>
-        ))}
-      </div>
 
-      {!user ? <EmptyState title="Create a free account to get started" action={<Link href="/register" className="btn-primary">Sign up free</Link>} /> : null}
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={busy || !quote || (needsExams && selectedExams.length === 0)}
+              onClick={() => void startCheckout()}
+            >
+              <IconSparkles className="h-4 w-4" />
+              {paymentsEnabled ? 'Continue to payment' : 'Activate (test mode)'}
+            </button>
+            {!paymentsEnabled ? (
+              <span className="text-xs text-content-muted">No charge is made in test mode.</span>
+            ) : (
+              <span className="text-xs text-content-muted">
+                Cards, UPI and netbanking via HyperSwitch.
+              </span>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {me ? (
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold">Your access</h2>
+          {me.subscriptions.length === 0 ? (
+            <EmptyState title="No active pass" description="Choose a pass above to unlock full exam access." />
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {me.subscriptions.map((s) => (
+                <div key={s.id} className="card p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">{s.planId}</p>
+                      <p className="text-xs text-content-muted">
+                        {s.scope === 'all'
+                          ? 'All exams'
+                          : (s.examKeys && s.examKeys.length > 0
+                              ? s.examKeys.join(', ')
+                              : (s.examKey ?? 'One exam'))}
+                      </p>
+                    </div>
+                    {s.status === 'active' ? <PremiumBadge /> : <span className="badge">{s.status}</span>}
+                  </div>
+                  <p className="mt-2 text-sm text-content-secondary">
+                    {s.cancelAtPeriodEnd ? 'Access ends' : 'Renews'} on {formatDate(s.currentPeriodEnd)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {me.payments.length > 0 ? (
+            <div className="card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-surface-overlay text-left text-xs uppercase tracking-wide text-content-muted">
+                  <tr>
+                    <th className="px-4 py-2">Date</th>
+                    <th className="px-4 py-2">Description</th>
+                    <th className="px-4 py-2">Status</th>
+                    <th className="px-4 py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {me.payments.slice(0, 10).map((p) => (
+                    <tr key={p.id} className="border-t border-surface-border">
+                      <td className="px-4 py-2 text-content-secondary">{formatDate(p.createdAt)}</td>
+                      <td className="px-4 py-2">{p.description || 'Subscription'}</td>
+                      <td className="px-4 py-2">
+                        <span className="badge">{p.status}</span>
+                      </td>
+                      <td className="px-4 py-2 text-right font-medium">
+                        {formatMoneyMinor(p.amountMinor, p.currency)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="border-t border-surface-border px-4 py-3 text-right">
+                <Link href="/profile#invoices" className="link text-sm">
+                  View invoices
+                </Link>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      <section className="card p-6">
+        <h2 className="text-lg font-semibold">Common questions</h2>
+        <dl className="mt-4 grid gap-5 md:grid-cols-2">
+          {[
+            {
+              q: 'How do exam slots work on the Multi-Exam Pass?',
+              a: 'Pick up to three exams at checkout. You can move a slot to a different exam at any time from your profile without losing the remaining days.',
+            },
+            {
+              q: 'What happens when my pass ends?',
+              a: 'Your account falls back to the free tier: 5 questions per exam, one mock per day, and all your history, bookmarks and notes are kept.',
+            },
+            {
+              q: 'Can I upgrade mid-cycle?',
+              a: 'Yes. Buying a bigger pass immediately supersedes the overlapping access and starts a fresh period from the purchase date.',
+            },
+            {
+              q: 'Do you offer refunds?',
+              a: 'Refunds are handled by our team. Contact support with your payment reference from the profile page and we will review it.',
+            },
+          ].map((item) => (
+            <div key={item.q}>
+              <dt className="font-medium">{item.q}</dt>
+              <dd className="mt-1 text-sm text-content-secondary">{item.a}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+    </div>
+  );
+}
+
+function PlanCard(props: {
+  id: string;
+  name: string;
+  price: string;
+  cadence: string;
+  description: string;
+  features: string[];
+  cta: React.ReactNode;
+  highlight?: boolean;
+  badge?: string;
+  active?: boolean;
+  current?: boolean;
+}) {
+  return (
+    <div
+      className={`card relative flex flex-col p-5 ${
+        props.highlight ? 'border-brand-400/70 ring-2 ring-brand-400/30' : ''
+      }`}
+    >
+      {props.badge ? (
+        <span className="absolute -top-3 left-5 rounded-full bg-brand-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow">
+          {props.badge}
+        </span>
+      ) : null}
+      <p className="text-sm font-semibold uppercase tracking-wide text-content-muted">{props.name}</p>
+      <p className="mt-2 text-2xl font-bold">{props.price}</p>
+      <p className="text-xs text-content-muted">{props.cadence}</p>
+      <p className="mt-3 text-sm text-content-secondary">{props.description}</p>
+      <ul className="mt-4 flex-1 space-y-2 text-sm">
+        {props.features.map((f) => (
+          <li key={f} className="flex gap-2">
+            <IconCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
+            <span className="text-content-secondary">{f}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-5">
+        {props.current ? (
+          <p className="mb-2 text-center text-xs font-medium text-brand-600 dark:text-brand-300">
+            Current plan
+          </p>
+        ) : null}
+        {props.cta}
+      </div>
     </div>
   );
 }

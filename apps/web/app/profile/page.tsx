@@ -5,11 +5,11 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth, useTheme, useToast } from '@/components/providers';
 import { apiBase, del, get, patch, post } from '@/lib/api';
-import type { User } from '@/lib/types';
+import type { Entitlements, Invoice, Payment, Plan, Subscription, User } from '@/lib/types';
 import { Alert, Avatar, PremiumBadge, Spinner, Tabs } from '@/components/ui';
-import { formatDate, formatDateTime } from '@/lib/format';
+import { formatDate, formatDateTime, formatMoneyMinor } from '@/lib/format';
 
-type Tab = 'profile' | 'preferences' | 'security' | 'data';
+type Tab = 'profile' | 'billing' | 'preferences' | 'security' | 'data';
 
 interface SessionRow {
   id: string;
@@ -48,6 +48,7 @@ export default function ProfilePage() {
       <Tabs
         tabs={[
           { id: 'profile', label: 'Profile' },
+          { id: 'billing', label: 'Billing' },
           { id: 'preferences', label: 'Preferences' },
           { id: 'security', label: 'Security' },
           { id: 'data', label: 'Data & account' },
@@ -57,6 +58,7 @@ export default function ProfilePage() {
       />
 
       {tab === 'profile' ? <ProfileForm user={user} onSaved={refresh} /> : null}
+      {tab === 'billing' ? <BillingPanel /> : null}
       {tab === 'preferences' ? <PreferencesForm user={user} onSaved={refresh} theme={theme} setTheme={setTheme} /> : null}
       {tab === 'security' ? <SecurityPanel onLogout={logout} /> : null}
       {tab === 'data' ? <DataPanel onLogout={logout} router={router} /> : null}
@@ -302,6 +304,183 @@ function DataPanel({ onLogout, router }: { onLogout: () => Promise<void>; router
           <button onClick={deleteAccount} className="btn-danger">Delete account</button>
         </div>
       </div>
+    </div>
+  );
+}
+interface BillingMe {
+  subscription: Subscription | null;
+  subscriptions: Subscription[];
+  payments: Payment[];
+  invoices: Invoice[];
+  entitlements: Entitlements;
+  paymentsEnabled: boolean;
+}
+
+function BillingPanel() {
+  const { toast } = useToast();
+  const [data, setData] = useState<BillingMe | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = async () => {
+    const [me, planList] = await Promise.all([
+      get<BillingMe>('/subscriptions/me'),
+      get<{ plans: Plan[] }>('/subscriptions/plans'),
+    ]);
+    setData(me);
+    setPlans(planList.plans);
+  };
+
+  useEffect(() => {
+    void load().catch((err) => toast((err as Error).message, 'error'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const cancel = async (subscriptionId: string) => {
+    setBusy(subscriptionId);
+    try {
+      await post(`/subscriptions/${subscriptionId}/cancel`, {});
+      toast('Your pass will end at the current period.', 'success');
+      await load();
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const resume = async (subscriptionId: string) => {
+    setBusy(subscriptionId);
+    try {
+      await post(`/subscriptions/${subscriptionId}/resume`, {});
+      toast('Renewal restored.', 'success');
+      await load();
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (!data) return <Spinner label="Loading billing…" />;
+
+  const planName = (id: string) => plans.find((p) => p.id === id)?.name ?? id;
+
+  return (
+    <div className="space-y-5">
+      <section className="card p-5">
+        <h2 className="text-base font-semibold">Current access</h2>
+        {data.entitlements.plan === 'premium' ? (
+          <p className="mt-1 text-sm text-content-secondary">
+            {data.entitlements.scope === 'all'
+              ? 'All exams unlocked'
+              : data.entitlements.scope === 'multi'
+                ? `Unlocked exams: ${data.entitlements.examKeys.join(', ')}`
+                : `Unlocked exam: ${data.entitlements.examKeys[0] ?? '—'}`}
+            {data.entitlements.expiresAt ? ` · until ${formatDate(data.entitlements.expiresAt)}` : ''}
+          </p>
+        ) : (
+          <p className="mt-1 text-sm text-content-secondary">
+            You are on the free tier. <Link href="/pricing" className="link">See passes</Link>
+          </p>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold">Subscriptions</h2>
+        {data.subscriptions.length === 0 ? (
+          <p className="text-sm text-content-muted">No subscriptions yet.</p>
+        ) : (
+          data.subscriptions.map((s) => (
+            <div key={s.id} className="card flex flex-wrap items-center justify-between gap-3 p-4">
+              <div>
+                <p className="font-medium">{planName(s.planId)}</p>
+                <p className="text-xs text-content-muted">
+                  {s.status} · {s.cancelAtPeriodEnd ? 'ends' : 'renews'} {formatDate(s.currentPeriodEnd)}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                {s.status === 'active' && !s.cancelAtPeriodEnd ? (
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    disabled={busy === s.id}
+                    onClick={() => void cancel(s.id)}
+                  >
+                    {busy === s.id ? 'Working…' : 'Cancel at period end'}
+                  </button>
+                ) : null}
+                {s.status === 'active' && s.cancelAtPeriodEnd ? (
+                  <button
+                    type="button"
+                    className="btn-primary text-xs"
+                    disabled={busy === s.id}
+                    onClick={() => void resume(s.id)}
+                  >
+                    Resume
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
+      <section className="space-y-3" id="invoices">
+        <h2 className="text-base font-semibold">Invoices</h2>
+        {data.invoices.length === 0 ? (
+          <p className="text-sm text-content-muted">No invoices yet.</p>
+        ) : (
+          <div className="card divide-y divide-surface-border overflow-hidden">
+            {data.invoices.map((inv) => (
+              <Link
+                key={inv.id}
+                href={`/invoices/${inv.id}`}
+                className="flex items-center justify-between gap-3 px-4 py-3 text-sm hover:bg-surface-overlay"
+              >
+                <span>
+                  <span className="font-mono text-xs text-content-muted">{inv.number}</span>
+                  <span className="ml-3">{inv.planName}</span>
+                </span>
+                <span className="flex items-center gap-3">
+                  <span className="text-content-secondary">{formatDate(inv.issuedAt)}</span>
+                  <span className="font-medium">{formatMoneyMinor(inv.totalMinor, inv.currency)}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold">Payments</h2>
+        {data.payments.length === 0 ? (
+          <p className="text-sm text-content-muted">No payments recorded.</p>
+        ) : (
+          <div className="card divide-y divide-surface-border overflow-hidden">
+            {data.payments.map((p) => (
+              <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                <span>
+                  <span className="font-mono text-xs text-content-muted">{p.providerRef}</span>
+                  <span className="ml-3">{p.description || 'Subscription'}</span>
+                </span>
+                <span className="flex items-center gap-3">
+                  <span className="badge">{p.status}</span>
+                  <span className="font-medium">{formatMoneyMinor(p.amountMinor - p.refundedMinor, p.currency)}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <p className="text-xs text-content-muted">
+        Need a refund or an invoice correction?{' '}
+        <Link href="/support" className="link">
+          Open a support ticket
+        </Link>{' '}
+        with your payment reference.
+      </p>
     </div>
   );
 }

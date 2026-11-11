@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   boolean,
   index,
@@ -32,7 +33,11 @@ export const plans = pgTable(
     description: text('description').notNull().default(''),
     scope: accessScopeEnum('scope').notNull().default('single'),
     durationDays: integer('duration_days').notNull().default(30),
+    /** How many exams a `multi` plan may unlock at once (0 = unlimited). */
+    examQuota: integer('exam_quota').notNull().default(0),
+    billingCycle: billingCycleEnum('billing_cycle').notNull().default('fixed'),
     earlyAccess: boolean('early_access').notNull().default(false),
+    highlight: boolean('highlight').notNull().default(false),
     priceMinor: integer('price_minor').notNull().default(0),
     currency: text('currency').notNull().default('INR'),
     features: jsonb('features').$type<string[]>().notNull().default([]),
@@ -60,6 +65,8 @@ export const subscriptions = pgTable(
     examKey: text('exam_key'),
     providerId: text('provider_id'),
     examTitle: text('exam_title'),
+    /** Exams unlocked by a `multi` plan (max 3 by product rule). */
+    examKeys: jsonb('exam_keys').$type<string[]>().notNull().default([]),
     priceMinor: integer('price_minor').notNull().default(0),
     currency: text('currency').notNull().default('INR'),
     couponCode: text('coupon_code'),
@@ -125,13 +132,26 @@ export const payments = pgTable(
     status: paymentStatusEnum('status').notNull().default('succeeded'),
     provider: paymentProviderEnum('provider').notNull().default('mock'),
     providerRef: text('provider_ref').notNull().default(''),
+    /** HyperSwitch payment id (pay_...). */
+    providerPaymentId: text('provider_payment_id'),
+    /** HyperSwitch attempt id (attempt_...). */
+    providerAttemptId: text('provider_attempt_id'),
+    /** Client secret used by the hosted checkout. */
+    clientSecret: text('client_secret'),
+    /** Our idempotent order reference sent to the gateway. */
+    orderRef: text('order_ref'),
+    failureReason: text('failure_reason'),
     description: text('description').notNull().default(''),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
     createdAt,
     updatedAt,
   },
   (t) => [
     index('payments_user_created_idx').on(t.userId, t.createdAt),
     index('payments_status_idx').on(t.status),
+    uniqueIndex('payments_order_ref_unique').on(t.orderRef).where(sql`${t.orderRef} is not null`),
+    index('payments_provider_payment_idx').on(t.providerPaymentId),
   ],
 );
 
@@ -218,6 +238,92 @@ export const referrals = pgTable(
   ],
 );
 
+/**
+ * Every inbound gateway webhook is persisted before processing so that
+ * deliveries are auditable, replay-safe (unique on provider + event id) and can
+ * be re-processed when a handler fails.
+ */
+export const webhookEvents = pgTable(
+  'webhook_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    provider: text('provider').notNull(),
+    eventId: text('event_id').notNull(),
+    eventType: text('event_type').notNull(),
+    signatureValid: boolean('signature_valid').notNull().default(false),
+    payloadHash: text('payload_hash').notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+    status: text('status').notNull().default('received'),
+    note: text('note').notNull().default(''),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+    createdAt,
+  },
+  (t) => [
+    uniqueIndex('webhook_events_provider_event_unique').on(t.provider, t.eventId),
+    index('webhook_events_created_idx').on(t.createdAt),
+  ],
+);
+
+/** Gateway reconciliation snapshots (payments/refunds pulled from HyperSwitch). */
+export const reconciliationRuns = pgTable(
+  'reconciliation_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    provider: text('provider').notNull().default('hyperswitch'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    checked: integer('checked').notNull().default(0),
+    repaired: integer('repaired').notNull().default(0),
+    mismatches: integer('mismatches').notNull().default(0),
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    triggeredBy: text('triggered_by').notNull().default('schedule'),
+  },
+  (t) => [index('reconciliation_runs_started_idx').on(t.startedAt)],
+);
+
+/** Monotonic invoice counter (one row). */
+export const invoiceSequences = pgTable('invoice_sequences', {
+  id: text('id').primaryKey().default('default'),
+  lastNumber: integer('last_number').notNull().default(0),
+  updatedAt,
+});
+
+/** GST-style receipts issued for every successful payment. */
+export const invoices = pgTable(
+  'invoices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    number: text('number').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    paymentId: uuid('payment_id')
+      .notNull()
+      .references(() => payments.id, { onDelete: 'cascade' }),
+    subscriptionId: uuid('subscription_id').references(() => subscriptions.id, { onDelete: 'set null' }),
+    subtotalMinor: integer('subtotal_minor').notNull().default(0),
+    discountMinor: integer('discount_minor').notNull().default(0),
+    taxMinor: integer('tax_minor').notNull().default(0),
+    totalMinor: integer('total_minor').notNull().default(0),
+    currency: text('currency').notNull().default('INR'),
+    status: text('status').notNull().default('paid'),
+    lines: jsonb('lines')
+      .$type<Array<{ description: string; amountMinor: number; quantity: number }>>()
+      .notNull()
+      .default([]),
+    issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt,
+  },
+  (t) => [
+    uniqueIndex('invoices_number_unique').on(t.number),
+    uniqueIndex('invoices_payment_unique').on(t.paymentId),
+    index('invoices_user_idx').on(t.userId, t.issuedAt),
+  ],
+);
+
+export type Invoice = typeof invoices.$inferSelect;
+export type WebhookEvent = typeof webhookEvents.$inferSelect;
+export type ReconciliationRun = typeof reconciliationRuns.$inferSelect;
 export type Plan = typeof plans.$inferSelect;
 export type NewPlan = typeof plans.$inferInsert;
 export type Subscription = typeof subscriptions.$inferSelect;

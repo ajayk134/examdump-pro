@@ -97,7 +97,7 @@ export default function HomePage() {
         <div className="grid gap-6 md:grid-cols-3">
           {steps.map((step, index) => (
             <div key={step.title} className="relative rounded-2xl border border-surface-border bg-surface-base/50 p-6">
-              <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-brand-500 to-cyan-400 font-bold text-slate-950">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-brand-600 to-sky-400 font-bold text-white">
                 {index + 1}
               </span>
               <h3 className="mt-4 font-semibold">{step.title}</h3>

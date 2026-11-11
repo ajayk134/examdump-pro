@@ -15,20 +15,31 @@ afterAll(async () => {
 });
 
 describe('subscriptions, coupons and payments (INR)', () => {
-  it('lists the four INR plans and indicates mock payment mode', async () => {
+  it('lists the five INR plans with the agreed pricing', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/subscriptions/plans' });
     expect(response.statusCode).toBe(200);
     const body = response.json() as {
-      plans: Array<{ id: string; priceMinor: number; currency: string; scope: string }>;
-      mockPayments: boolean;
+      plans: Array<{ id: string; priceMinor: number; currency: string; scope: string; examQuota: number }>;
+      paymentsEnabled: boolean;
       currency: string;
+      freeQuestionsPerExam: number;
     };
-    expect(body.plans).toHaveLength(4);
-    expect(body.plans.map((p) => p.id).sort()).toEqual(['all-30', 'all-365', 'single-30', 'single-30-early']);
+    expect(body.plans.map((p) => p.id).sort()).toEqual([
+      'all-30',
+      'all-365',
+      'multi-30',
+      'single-30',
+    ]);
     expect(body.plans.every((p) => p.currency === 'INR')).toBe(true);
-    expect(body.plans.find((p) => p.id === 'single-30')?.priceMinor).toBe(50_000);
-    expect(body.plans.find((p) => p.id === 'all-365')?.priceMinor).toBe(250_000);
-    expect(body.mockPayments).toBe(true);
+    const price = (id: string) => body.plans.find((p) => p.id === id)?.priceMinor;
+    expect(price('single-30')).toBe(49_900); // ₹499
+    expect(price('multi-30')).toBe(99_900); // ₹999
+    expect(price('all-30')).toBe(149_900); // ₹1,499
+    expect(price('all-365')).toBe(499_900); // ₹4,999
+    expect(body.plans.find((p) => p.id === 'multi-30')?.examQuota).toBe(3);
+    // Live payments are disabled in tests (no gateway credentials).
+    expect(body.paymentsEnabled).toBe(false);
+    expect(body.freeQuestionsPerExam).toBe(5);
   });
 
   it('rejects invalid coupons', async () => {
@@ -45,7 +56,7 @@ describe('subscriptions, coupons and payments (INR)', () => {
     const user = await registerVerifiedUser(app);
     const response = await app.inject({
       method: 'POST',
-      url: '/api/subscriptions',
+      url: '/api/payments/mock-activate',
       headers: { cookie: user.cookie },
       payload: { planId: 'single-30' },
     });
@@ -74,7 +85,7 @@ describe('subscriptions, coupons and payments (INR)', () => {
 
     const subscribe = await app.inject({
       method: 'POST',
-      url: '/api/subscriptions',
+      url: '/api/payments/mock-activate',
       headers: { cookie: user.cookie },
       payload: { planId: 'all-30', couponCode: 'SAVE25' },
     });
@@ -86,10 +97,10 @@ describe('subscriptions, coupons and payments (INR)', () => {
     };
     expect(body.subscription.status).toBe('active');
     expect(body.subscription.scope).toBe('all');
-    expect(body.subscription.discountMinor).toBe(37_500);
-    expect(body.subscription.priceMinor).toBe(112_500);
-    expect(body.payment.amountMinor).toBe(112_500);
-    expect(body.payment.discountMinor).toBe(37_500);
+    expect(body.subscription.discountMinor).toBe(37_475);
+    expect(body.subscription.priceMinor).toBe(112_425);
+    expect(body.payment.amountMinor).toBe(112_425);
+    expect(body.payment.discountMinor).toBe(37_475);
     expect(body.payment.currency).toBe('INR');
     expect(body.user).toMatchObject({ plan: 'premium', premiumActive: true });
 
@@ -117,10 +128,9 @@ describe('subscriptions, coupons and payments (INR)', () => {
       payload: { code: 'ONCE', percentOff: 10, maxRedemptions: 0, active: true },
     });
     const user = await registerVerifiedUser(app);
-    await subscribeUser(app, user.cookie, 'all-30');
     const couponAgainst = await app.inject({
       method: 'POST',
-      url: '/api/subscriptions',
+      url: '/api/payments/mock-activate',
       headers: { cookie: user.cookie },
       payload: { planId: 'all-30', couponCode: 'ONCE' },
     });

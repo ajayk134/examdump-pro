@@ -1,15 +1,25 @@
 /**
- * Migration runner backed by drizzle-kit generated SQL.
+ * Migration runner.
+ *
+ * Drizzle generated SQL lives in `src/db/migrations` and is applied in journal
+ * order. Two things differ from the stock runner:
+ *
+ *  1. `ALTER TYPE ... ADD VALUE` cannot run inside a transaction block on
+ *     PostgreSQL, so statements are executed one by one (each DDL statement in
+ *     this project is additive and idempotent-safe). Enum values are guarded by
+ *     a duplicate check.
+ *  2. Progress is recorded in the same `drizzle.__drizzle_migrations` table
+ *     Drizzle uses, so `drizzle-kit` stays in sync.
  *
  * Usage:
  *   DATABASE_URL=postgres://... npm run migrate -w @examdump/api
- *   (or) doppler run -- npm run migrate -w @examdump/api
+ *   doppler run -- npm run migrate -w @examdump/api
  */
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import postgres from 'postgres';
 import { getEnv } from '../config/env.js';
-import { connectDB, disconnectDB, getDb } from '../db/client.js';
+import { applyMigrations } from '../db/apply-migrations.js';
 
 async function run(): Promise<void> {
   const env = getEnv();
@@ -21,15 +31,19 @@ async function run(): Promise<void> {
   ].filter((p): p is string => Boolean(p));
 
   const folder = candidates.find((p) => existsSync(p));
-  if (!folder) {
-    throw new Error(`Could not locate migrations folder. Tried: ${candidates.join(', ')}`);
-  }
+  if (!folder) throw new Error(`Could not locate migrations folder. Tried: ${candidates.join(', ')}`);
 
-  await connectDB({ url: env.DATABASE_URL, ssl: env.DATABASE_SSL, max: 1 });
-  console.log(`Applying migrations from ${folder} ...`);
-  await migrate(getDb(), { migrationsFolder: folder });
-  console.log('Migrations complete.');
-  await disconnectDB();
+  const sql = postgres(env.DATABASE_URL, { max: 1, onnotice: () => {} });
+  try {
+    const result = await applyMigrations(sql, folder);
+    console.log(
+      result.applied.length === 0
+        ? 'Database is up to date.'
+        : `Migrations complete (${result.applied.length} applied).`,
+    );
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
 }
 
 run().catch((err) => {

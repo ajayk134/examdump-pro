@@ -20,10 +20,13 @@ import { notificationRoutes } from './routes/notifications.js';
 import { leaderboardRoutes } from './routes/leaderboard.js';
 import { aiRoutes } from './routes/ai.js';
 import { subscriptionRoutes } from './routes/subscriptions.js';
+import { paymentRoutes } from './routes/payments.js';
 import { couponRoutes } from './routes/coupons.js';
 import { referralRoutes } from './routes/referrals.js';
 import { adminRoutes } from './routes/admin.js';
+import { adminOpsRoutes } from './routes/admin-ops.js';
 import { healthRoutes } from './routes/health.js';
+import { supportRoutes } from './routes/support.js';
 
 export interface BuildAppOptions {
   env?: Env;
@@ -58,11 +61,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   app.removeAllContentTypeParsers();
-  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
     if (!body || (typeof body === 'string' && body.trim().length === 0)) {
       done(null, {});
       return;
     }
+    // Keep the exact bytes: webhook signatures are computed over the raw body.
+    (req as unknown as { rawBody?: string }).rawBody = body as string;
     try {
       done(null, JSON.parse(body as string));
     } catch {
@@ -165,6 +170,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(
     async (api) => {
       await api.register(async (r) => healthRoutes(r, env));
+      await api.register(async (r) => supportRoutes(r, env), { prefix: '/support' });
       await api.register(async (r) => authRoutes(r, env), { prefix: '/auth' });
       await api.register(async (r) => userRoutes(r, env), { prefix: '/users' });
       await api.register(async (r) => examRoutes(r, env), { prefix: '/exams' });
@@ -176,9 +182,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       await api.register(async (r) => leaderboardRoutes(r, env), { prefix: '/leaderboard' });
       await api.register(async (r) => aiRoutes(r, env), { prefix: '/ai' });
       await api.register(async (r) => subscriptionRoutes(r, env), { prefix: '/subscriptions' });
+      await api.register(async (r) => paymentRoutes(r, env), { prefix: '/payments' });
       await api.register(async (r) => couponRoutes(r, env), { prefix: '/coupons' });
       await api.register(async (r) => referralRoutes(r, env), { prefix: '/referrals' });
       await api.register(async (r) => adminRoutes(r, env), { prefix: '/admin' });
+      await api.register(async (r) => adminOpsRoutes(r, env), { prefix: '/admin-ops' });
     },
     { prefix: '/api' },
   );

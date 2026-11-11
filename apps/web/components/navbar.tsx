@@ -28,6 +28,7 @@ const primaryNav = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/leaderboard', label: 'Leaderboard' },
   { href: '/pricing', label: 'Pricing' },
+  { href: '/support', label: 'Support' },
 ];
 
 export function Navbar() {
@@ -102,9 +103,9 @@ export function Navbar() {
     <header className="sticky top-0 z-50 border-b border-surface-border/70 bg-surface-base/80 backdrop-blur-xl">
       <nav className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6" aria-label="Main">
         <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-cyan-400 text-lg text-slate-950">E</span>
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-600 to-sky-400 text-lg text-white shadow-lg shadow-brand-500/25">E</span>
           <span className="hidden text-lg sm:block">
-            ExamDump <span className="bg-gradient-to-r from-brand-400 to-cyan-300 bg-clip-text text-transparent">Pro</span>
+            ExamDump <span className="bg-gradient-to-r from-brand-500 to-sky-400 bg-clip-text text-transparent dark:from-brand-300 dark:to-sky-300">Pro</span>
           </span>
         </Link>
 
@@ -215,6 +216,7 @@ export function Navbar() {
                       <MenuLink href="/notes" icon={<IconBook />} label="Notes" />
                       <MenuLink href="/history" icon={<IconHistory />} label="History" />
                       <MenuLink href="/referrals" icon={<IconTrophy />} label="Referrals" />
+                      <MenuLink href="/support" icon={<IconBook />} label="Support" />
                       <MenuLink href="/profile" icon={<IconSettings />} label="Settings" />
                       {user.role === 'admin' ? <MenuLink href="/admin" icon={<IconShield />} label="Admin panel" /> : null}
                     </div>

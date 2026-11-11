@@ -15,7 +15,7 @@ export function AuthShell({
   return (
     <div className="mx-auto flex max-w-md flex-col gap-5 py-8">
       <div className="text-center">
-        <Link href="/" className="mx-auto mb-5 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-cyan-400 text-xl font-black text-slate-950">
+        <Link href="/" className="mx-auto mb-5 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-brand-600 to-sky-400 text-xl font-black text-white">
           E
         </Link>
         <h1 className="text-2xl font-bold tracking-tight">{title}</h1>

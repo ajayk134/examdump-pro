@@ -127,7 +127,7 @@ describe('attempts, grading and analytics', () => {
     const user = await registerVerifiedUser(app);
     await app.inject({
       method: 'POST',
-      url: '/api/subscriptions',
+      url: '/api/payments/mock-activate',
       headers: { cookie: user.cookie },
       payload: { planId: 'all-30' },
     });
