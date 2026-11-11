@@ -187,18 +187,17 @@ describe('AI tutor chat', () => {
     expect(orphans.length).toBe(0);
   });
 
-  it('rejects chatting about an exam the plan does not cover', async () => {
-    const { userId, cookie: cookies } = await registerVerifiedUser(app);
-    // No subscription: the free preview is capped at 5 questions per exam.
+  it('allows an account without a plan to open a grounded conversation', async () => {
+    // The tutor is basic doubt clearing: it must never be locked behind a plan.
+    const { cookie: cookies } = await registerVerifiedUser(app);
     const created = await app.inject({
       method: 'POST',
       url: '/api/ai/chat/conversations',
       headers: { cookie: cookies },
-      payload: { provider: 'cisco', exam: '200-301', questionId: 'Question #: 900' },
+      payload: { provider: 'cisco', exam: '200-301', questionId: 'Question #: 2' },
     });
-    expect(created.statusCode).toBe(403);
-    expect(created.json().error.code).toBe('FORBIDDEN');
-    void userId;
+    expect([200, 201]).toContain(created.statusCode);
+    expect(created.json().conversation.id).toBeTruthy();
   });
 
   it('streams an SSE response even when the provider is unavailable', async () => {

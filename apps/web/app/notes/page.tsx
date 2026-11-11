@@ -38,14 +38,14 @@ export default function NotesPage() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
       <header>
-        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight"><IconNote className="text-brand-400" /> Notes</h1>
+        <h1 className="heading-1 flex items-center gap-2"><IconNote className="text-brand-400" /> Notes</h1>
         <p className="mt-1 text-content-muted">Your personal study notes.</p>
       </header>
       {error ? <Alert tone="error">{error}</Alert> : null}
       {!items ? (
         <Spinner />
       ) : items.length === 0 ? (
-        <EmptyState title="No notes yet" description="Add a note from any question to build your own study guide." action={<Link href="/browse" className="btn-primary">Browse exams</Link>} />
+        <EmptyState title="No notes yet" description="Add a note from any question to build your own study guide." action={<Link href="/exams" className="btn-primary">Browse exams</Link>} />
       ) : (
         <ul className="flex flex-col gap-3">
           {items.map((note) => (

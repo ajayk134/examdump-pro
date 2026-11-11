@@ -6,7 +6,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { get } from '@/lib/api';
 import type { Exam } from '@/lib/types';
 import { AiChat } from '@/components/ai-chat';
-import { Alert, Spinner } from '@/components/ui';
+import { Alert, PageHeader, Spinner } from '@/components/ui';
 import { IconSearch, IconSparkles } from '@/components/icons';
 
 const POPULAR = ['cisco', 'aws', 'microsoft', 'comptia', 'google', 'pmi'];
@@ -50,7 +50,7 @@ function AskInner() {
             ← All conversations
           </Link>
         </div>
-        <div className="card flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="surface flex min-h-0 flex-1 flex-col overflow-hidden">
           <AiChat
             key={`${provider}:${exam}:${questionId ?? ''}`}
             providerId={provider}
@@ -69,14 +69,14 @@ function AskInner() {
         <span className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-sky-400 text-white shadow-lg shadow-brand-500/25">
           <IconSparkles width={26} height={26} />
         </span>
-        <h1 className="text-3xl font-bold tracking-tight text-content-primary">Ask the AI tutor</h1>
+        <h1 className="display-2 text-balance">Ask the AI tutor</h1>
         <p className="mx-auto mt-2 max-w-md text-sm text-content-secondary">
           Understand any concept, unpack a tricky question, or get a study plan. Grounded in the exam you
           choose.
         </p>
       </header>
 
-      <div className="card p-5">
+      <div className="surface p-4 sm:p-5">
         <label htmlFor="ask-search" className="label">
           Which exam are you studying for?
         </label>
@@ -88,7 +88,7 @@ function AskInner() {
           />
           <input
             id="ask-search"
-            className="input !pl-10"
+            className="input pl-10"
             placeholder="Search by exam code, name or vendor…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -105,7 +105,7 @@ function AskInner() {
                 <li key={`${item.providerId}:${item.key}`}>
                   <Link
                     href={`/ask?provider=${encodeURIComponent(item.providerId)}&exam=${encodeURIComponent(item.key)}`}
-                    className="flex items-center justify-between gap-3 rounded-lg px-2 py-2.5 transition hover:bg-surface-overlay"
+                    className="flex items-center justify-between gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-surface-overlay"
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-semibold text-content-primary">
@@ -127,7 +127,7 @@ function AskInner() {
               {POPULAR.map((slug) => (
                 <Link
                   key={slug}
-                  href={`/providers/${encodeURIComponent(slug)}`}
+                  href={`/exams/${encodeURIComponent(slug)}`}
                   className="badge transition hover:border-brand-400/60 hover:text-content-primary"
                 >
                   {slug}

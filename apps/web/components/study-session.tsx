@@ -1,35 +1,57 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { get } from '@/lib/api';
 import type { QuestionsResponse } from '@/lib/types';
 import { QuestionCard } from './question-card';
-import { Alert, ProgressBar, Skeleton } from './ui';
-import { IconArrowRight, IconChart, IconCheck, IconMessage, IconRefresh } from './icons';
-import { cn, formatNumber } from '@/lib/format';
-
-const PAGE_SIZE = 10;
-const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+import {
+  Badge,
+  EmptyIcon,
+  EmptyState,
+  ErrorState,
+  ProgressBar,
+  ProgressRing,
+  Skeleton,
+  Drawer,
+} from './ui';
+import {
+  IconArrowLeft,
+  IconArrowRight,
+  IconCheck,
+  IconChart,
+  IconGrid,
+  IconRefresh,
+  IconX,
+} from './icons';
+import { cn } from '@/lib/format';
+import { clearAutosave, loadAutosave, saveAutosave } from '@/lib/local-store';
 
 type Mode = 'practice' | 'random';
 
-export function StudySession({
-  providerId,
-  examKey,
-  mode,
-}: {
-  providerId: string;
-  examKey: string;
-  mode: Mode;
-}) {
+interface AutosaveState {
+  index: number;
+  answered: string[];
+}
+
+export function StudySession({ providerId, examKey, mode }: { providerId: string; examKey: string; mode: Mode }) {
+  const router = useRouter();
+  const autosaveKey = `${providerId}/${examKey}/${mode}`;
+
   const [data, setData] = useState<QuestionsResponse | null>(null);
   const [error, setError] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE);
-  /** Ids of questions the learner has completed on this page. */
-  const [answered, setAnswered] = useState<Set<string>>(new Set());
   const [reloadKey, setReloadKey] = useState(0);
+
+  const [index, setIndex] = useState(0);
+  const [answered, setAnswered] = useState<Set<string>>(new Set());
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [direction, setDirection] = useState<'next' | 'prev'>('next');
+  const [restored, setRestored] = useState(false);
+
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+
+  /* ---------------- load ---------------- */
 
   useEffect(() => {
     let cancelled = false;
@@ -49,251 +71,326 @@ export function StudySession({
     };
   }, [providerId, examKey, mode, reloadKey]);
 
-  // Reset progress when the exam or mode changes.
+  /* ---------------- autosave restore ---------------- */
+
   useEffect(() => {
-    setAnswered(new Set());
-    setPage(1);
-  }, [providerId, examKey, mode]);
+    const saved = loadAutosave<AutosaveState>(autosaveKey);
+    if (saved) {
+      setIndex(Math.max(0, saved.index));
+      setAnswered(new Set(saved.answered));
+      setRestored(true);
+    } else {
+      setIndex(0);
+      setAnswered(new Set());
+    }
+  }, [autosaveKey]);
 
-  const totalPages = useMemo(
-    () => (data ? Math.max(1, Math.ceil(data.questions.length / pageSize)) : 1),
-    [data, pageSize],
+  useEffect(() => {
+    if (!data) return;
+    saveAutosave<AutosaveState>(autosaveKey, { index, answered: [...answered] });
+  }, [data, autosaveKey, index, answered]);
+
+  /* ---------------- derived ---------------- */
+
+  const questions = data?.questions ?? [];
+  const total = questions.length;
+  const current = questions[index];
+  const doneCount = answered.size;
+  const progress = total ? (doneCount / total) * 100 : 0;
+
+  const go = useCallback(
+    (next: number, dir: 'next' | 'prev') => {
+      if (total === 0) return;
+      const clamped = Math.max(0, Math.min(total - 1, next));
+      setDirection(dir);
+      setIndex(clamped);
+      // Bring the new card into view on mobile where the header is sticky.
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    },
+    [total],
   );
 
-  const visible = useMemo(
-    () => (data ? data.questions.slice((page - 1) * pageSize, page * pageSize) : []),
-    [data, page, pageSize],
-  );
+  const next = useCallback(() => go(index + 1, 'next'), [go, index]);
+  const prev = useCallback(() => go(index - 1, 'prev'), [go, index]);
 
-  const markAnswered = useCallback((id: string) => {
-    setAnswered((prev) => {
-      if (prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
-  }, []);
+  /* ---------------- keyboard ---------------- */
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (paletteOpen) return;
+      const target = e.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      if (e.key === 'ArrowRight' || e.key === 'j') next();
+      if (e.key === 'ArrowLeft' || e.key === 'k') prev();
+      if (e.key === 'g') setPaletteOpen((v) => !v);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [next, prev, paletteOpen]);
+
+  /* ---------------- swipe ---------------- */
+
+  function onTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0];
+    if (!t) return;
+    touchStart.current = { x: t.clientX, y: t.clientY };
+  }
+
+  function onTouchEnd(e: React.TouchEvent) {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    // Only treat as a swipe when it is mostly horizontal and long enough.
+    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+    if (dx < 0) next();
+    else prev();
+  }
+
+  /* ---------------- states ---------------- */
 
   if (error) {
     return (
-      <Alert tone="error">
-        {error}{' '}
-        <Link href="/browse" className="link">
-          Back to browse
-        </Link>
-      </Alert>
+      <div className="mx-auto max-w-lg py-6">
+        <ErrorState
+          title="Could not load questions"
+          description={error}
+          onRetry={() => setReloadKey((k) => k + 1)}
+        />
+        <div className="mt-4 flex justify-center">
+          <Link href={`/exams/${encodeURIComponent(providerId)}`} className="btn-secondary btn-sm">
+            Back to exam
+          </Link>
+        </div>
+      </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="flex flex-col gap-4">
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-72 w-full" />
-        <Skeleton className="h-72 w-full" />
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-3 flex items-center justify-between">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-8 w-24 rounded-lg" />
+        </div>
+        <Skeleton className="mb-3 h-1.5 w-full rounded-full" />
+        <div className="surface p-4">
+          <Skeleton className="mb-3 h-4 w-24" />
+          <Skeleton className="mb-2 h-5 w-full" />
+          <Skeleton className="mb-5 h-5 w-4/5" />
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="mb-2.5 h-12 w-full rounded-xl" />
+          ))}
+        </div>
       </div>
     );
   }
 
-  const limited = data.entitlement.isLimited;
-  const progress = data.questions.length
-    ? Math.round((answered.size / data.questions.length) * 100)
-    : 0;
+  if (total === 0) {
+    return (
+      <div className="mx-auto max-w-lg">
+        <EmptyState
+          icon={<EmptyIcon name="book" />}
+          title="No questions available"
+          description="This exam has no questions unlocked yet. Try a different exam or check back after the next sync."
+          action={
+            <Link href="/exams" className="btn-primary btn-sm">
+              Browse exams
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Header */}
-      <header className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <Link
-              href={`/providers/${encodeURIComponent(providerId)}`}
-              className="text-sm text-content-muted transition hover:text-content-primary"
-            >
-              ← {data.provider.title}
-            </Link>
-            <h1 className="mt-1 truncate text-2xl font-bold tracking-tight text-content-primary sm:text-3xl">
-              {data.exam.code}
-            </h1>
-            <p className="mt-0.5 text-sm text-content-secondary">{data.exam.title}</p>
-            <p className="mt-1 text-xs text-content-muted">
-              {formatNumber(data.entitlement.totalQuestions)} questions ·{' '}
-              {formatNumber(data.entitlement.accessibleQuestions)} available ·{' '}
-              {mode === 'random' ? 'shuffled practice' : 'practice mode'}
-            </p>
-          </div>
+    <div className="mx-auto w-full max-w-3xl">
+      {/* ---------- Header: progress + palette trigger ---------- */}
+      <header className="sticky top-14 z-30 -mx-3.5 mb-3 border-b border-surface-border/60 bg-surface-base/92 px-3.5 py-2 backdrop-blur-lg sm:top-16 sm:mx-0 sm:rounded-xl sm:border sm:px-3">
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/exams/${encodeURIComponent(providerId)}/${encodeURIComponent(examKey)}`}
+            className="icon-btn -ml-1 shrink-0"
+            aria-label="Back to exam"
+          >
+            <IconArrowLeft />
+          </Link>
 
-          <nav className="flex flex-wrap gap-2" aria-label="Study mode">
-            <Link
-              href={`/study?provider=${encodeURIComponent(providerId)}&exam=${encodeURIComponent(examKey)}&mode=practice`}
-              className={mode === 'practice' ? 'btn-primary' : 'btn-secondary'}
-              aria-current={mode === 'practice' ? 'page' : undefined}
-            >
-              Practice
-            </Link>
-            <Link
-              href={`/study?provider=${encodeURIComponent(providerId)}&exam=${encodeURIComponent(examKey)}&mode=mock`}
-              className="btn-secondary"
-            >
-              Mock test
-            </Link>
-            <Link
-              href={`/ask?provider=${encodeURIComponent(providerId)}&exam=${encodeURIComponent(examKey)}`}
-              className="btn-secondary"
-            >
-              <IconMessage width={16} height={16} /> Ask AI
-            </Link>
-          </nav>
-        </div>
-
-        {/* Session progress */}
-        <div className="card flex flex-col gap-2 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-            <span className="font-medium text-content-primary">
-              Session progress
-            </span>
-            <span className="text-content-muted">
-              {answered.size} of {data.questions.length} attempted · {progress}%
-            </span>
-          </div>
-          <ProgressBar value={progress} />
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => setReloadKey((k) => k + 1)}
-              className="btn-ghost !px-2.5 !py-1.5 text-xs"
-            >
-              <IconRefresh width={14} height={14} /> Reshuffle
-            </button>
-            <button
-              type="button"
-              onClick={() => setAnswered(new Set())}
-              className="btn-ghost !px-2.5 !py-1.5 text-xs"
-              disabled={answered.size === 0}
-            >
-              Reset progress
-            </button>
-            <Link
-              href={`/study?provider=${encodeURIComponent(providerId)}&exam=${encodeURIComponent(examKey)}&mode=random`}
-              className={cn(
-                'btn-ghost !px-2.5 !py-1.5 text-xs',
-                mode === 'random' && 'bg-brand-500/10 text-brand-700 dark:text-brand-200',
-              )}
-            >
-              Shuffle mode
-            </Link>
-            <div className="ml-auto flex items-center gap-1.5 text-xs text-content-muted">
-              <label htmlFor="page-size">Per page</label>
-              <select
-                id="page-size"
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setPage(1);
-                }}
-                className="rounded-lg border border-surface-border bg-surface-base px-2 py-1 text-xs text-content-primary"
-              >
-                {PAGE_SIZE_OPTIONS.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <p className="truncate text-[0.8125rem] font-semibold">
+                Question {index + 1}
+                <span className="text-content-muted"> / {total}</span>
+              </p>
+              {restored ? (
+                <Badge tone="accent" className="hidden sm:inline-flex">
+                  Resumed
+                </Badge>
+              ) : null}
             </div>
+            <div className="mt-1 flex items-center gap-2">
+              <ProgressBar value={progress} className="h-1" label="Session progress" />
+              <span className="numeric shrink-0 text-[0.6875rem] font-semibold text-content-muted">
+                {doneCount}/{total}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              className="icon-btn"
+              aria-label="Open question palette"
+            >
+              <IconGrid />
+            </button>
+            <Link
+              href={`/study?provider=${encodeURIComponent(providerId)}&exam=${encodeURIComponent(examKey)}&mode=practice&reload=1`}
+              onClick={() => clearAutosave(autosaveKey)}
+              className="icon-btn"
+              aria-label="Restart session"
+            >
+              <IconRefresh />
+            </Link>
           </div>
         </div>
       </header>
 
-      {limited ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-              Free preview: first {data.entitlement.accessibleQuestions} questions
-            </p>
-            <p className="text-xs text-content-secondary">
-              {formatNumber(data.entitlement.lockedQuestions)} more questions are locked. Premium unlocks the
-              full exam, mock tests and AI explanations.
-            </p>
+      {/* ---------- Card ---------- */}
+      <div
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        className="touch-pan-y"
+        key={`${current?.id ?? index}-${index}`}
+      >
+        <div className={cn('animate-pop', direction === 'prev' && 'origin-top')}>
+          {current ? (
+            <QuestionCard
+              question={current}
+              index={index}
+              providerId={providerId}
+              examKey={examKey}
+              answered={answered.has(current.id)}
+              onAnswered={() => setAnswered((prev) => new Set(prev).add(current.id))}
+            />
+          ) : null}
+        </div>
+      </div>
+
+      {/* ---------- Bottom navigation ---------- */}
+      <nav
+        className="mt-3 flex items-center justify-between gap-2"
+        aria-label="Question navigation"
+      >
+        <button type="button" onClick={prev} disabled={index === 0} className="btn-secondary flex-1 sm:flex-none">
+          <IconArrowLeft className="h-4 w-4" />
+          Previous
+        </button>
+
+        <span className="caption hidden shrink-0 sm:block">Swipe or use ← →</span>
+
+        {index === total - 1 ? (
+          <button
+            type="button"
+            onClick={() => router.push(`/history`)}
+            className="btn-primary flex-1 sm:flex-none"
+          >
+            Finish
+            <IconCheck className="h-4 w-4" />
+          </button>
+        ) : (
+          <button type="button" onClick={next} className="btn-primary flex-1 sm:flex-none">
+            Next
+            <IconArrowRight className="h-4 w-4" />
+          </button>
+        )}
+      </nav>
+
+      {/* ---------- Session summary ---------- */}
+      {doneCount > 0 && doneCount === total ? (
+        <div className="surface mt-4 flex items-center gap-3 p-4">
+          <ProgressRing value={100} size={52} tone="success">
+            <IconCheck className="h-5 w-5 text-positive" />
+          </ProgressRing>
+          <div className="min-w-0 flex-1">
+            <p className="heading-3">Session complete</p>
+            <p className="caption">You answered all {total} questions in this session.</p>
           </div>
-          <Link href="/pricing" className="btn-primary shrink-0">
-            Unlock everything <IconArrowRight width={16} height={16} />
+          <Link href="/dashboard" className="btn-primary btn-sm shrink-0">
+            <IconChart className="h-4 w-4" />
+            Analytics
           </Link>
         </div>
       ) : null}
 
-      {data.questions.length === 0 ? (
-        <Alert tone="warning">No questions are available for this exam yet.</Alert>
-      ) : null}
-
-      <div className="flex flex-col gap-4">
-        {visible.map((question, i) => (
-          <QuestionCard
-            key={question.id}
-            question={question}
-            index={(page - 1) * pageSize + i + 1}
-            providerId={providerId}
-            examKey={examKey}
-            onAnswered={() => markAnswered(question.id)}
-            answered={answered.has(question.id)}
-          />
-        ))}
-      </div>
-
-      {totalPages > 1 ? (
-        <nav
-          className="flex items-center justify-between gap-2 rounded-xl border border-surface-border bg-surface-raised/70 px-3 py-2.5"
-          aria-label="Pagination"
-        >
-          <button
-            className="btn-secondary !px-3 !py-1.5 text-xs"
-            onClick={() => {
-              setPage((p) => Math.max(1, p - 1));
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            disabled={page === 1}
-          >
-            Previous
+      {/* ---------- Palette ---------- */}
+      <Drawer open={paletteOpen} onClose={() => setPaletteOpen(false)} title="Question palette" side="bottom">
+        <div className="flex items-center justify-between border-b border-surface-border px-4 py-3">
+          <div>
+            <p className="heading-3">Question palette</p>
+            <p className="caption mt-0.5">
+              {doneCount} answered · {total - doneCount} remaining
+            </p>
+          </div>
+          <button type="button" onClick={() => setPaletteOpen(false)} className="icon-btn" aria-label="Close palette">
+            <IconX />
           </button>
-          <span className="text-xs text-content-muted sm:text-sm">
-            Page {page} of {totalPages}
-          </span>
-          <button
-            className="btn-secondary !px-3 !py-1.5 text-xs"
-            onClick={() => {
-              setPage((p) => Math.min(totalPages, p + 1));
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            disabled={page === totalPages}
-          >
-            Next
-          </button>
-        </nav>
-      ) : null}
+        </div>
 
-      {/* Next-step rail */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Link
-          href={`/study?provider=${encodeURIComponent(providerId)}&exam=${encodeURIComponent(examKey)}&mode=mock`}
-          className="card card-hover flex items-center gap-3 p-4"
-        >
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-300">
-            <IconCheck width={18} height={18} />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-semibold text-content-primary">Ready to simulate?</span>
-            <span className="block text-xs text-content-muted">Sit a timed mock test under exam conditions.</span>
-          </span>
-        </Link>
-        <Link href="/dashboard" className="card card-hover flex items-center gap-3 p-4">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-300">
-            <IconChart width={18} height={18} />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-semibold text-content-primary">Review your analytics</span>
-            <span className="block text-xs text-content-muted">See weak topics and accuracy by subject.</span>
-          </span>
-        </Link>
-      </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="grid grid-cols-7 gap-1.5 sm:grid-cols-10">
+            {questions.map((q, i) => {
+              const isDone = answered.has(q.id);
+              const isCurrent = i === index;
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => {
+                    go(i, i > index ? 'next' : 'prev');
+                    setPaletteOpen(false);
+                  }}
+                  aria-label={`Go to question ${i + 1}${isDone ? ' (answered)' : ''}`}
+                  aria-current={isCurrent ? 'true' : undefined}
+                  className={cn(
+                    'numeric grid aspect-square place-items-center rounded-lg text-xs font-bold transition-all',
+                    isCurrent
+                      ? 'bg-accent text-white shadow-sm'
+                      : isDone
+                        ? 'bg-positive/15 text-positive'
+                        : 'bg-surface-inset text-content-muted hover:bg-surface-overlay',
+                  )}
+                >
+                  {i + 1}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="border-t border-surface-border p-3">
+          <div className="mb-2 flex items-center justify-center gap-4 text-[0.6875rem] text-content-muted">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded bg-accent" /> Current
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded bg-positive/60" /> Answered
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded bg-surface-inset" /> Remaining
+            </span>
+          </div>
+          <button type="button" onClick={() => setPaletteOpen(false)} className="btn-secondary btn-block">
+            Close
+          </button>
+        </div>
+      </Drawer>
     </div>
   );
 }

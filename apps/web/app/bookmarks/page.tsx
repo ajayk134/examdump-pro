@@ -38,14 +38,14 @@ export default function BookmarksPage() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
       <header>
-        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight"><IconBookmark className="text-amber-400" /> Bookmarks</h1>
+        <h1 className="heading-1 flex items-center gap-2"><IconBookmark className="text-amber-400" /> Bookmarks</h1>
         <p className="mt-1 text-content-muted">Questions you saved for later.</p>
       </header>
       {error ? <Alert tone="error">{error}</Alert> : null}
       {!items ? (
         <Spinner />
       ) : items.length === 0 ? (
-        <EmptyState title="No bookmarks yet" description="Tap the bookmark icon on any question to save it here." action={<Link href="/browse" className="btn-primary">Browse exams</Link>} />
+        <EmptyState title="No bookmarks yet" description="Tap the bookmark icon on any question to save it here." action={<Link href="/exams" className="btn-primary">Browse exams</Link>} />
       ) : (
         <ul className="flex flex-col gap-2">
           {items.map((bookmark) => (

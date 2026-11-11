@@ -11,7 +11,7 @@ import { requireAuth } from '../lib/guards.js';
 import { parseOrThrow } from '../lib/validation.js';
 import { badRequest } from '../lib/errors.js';
 import { getDatasetClient } from '../services/dataset.service.js';
-import { canAccessExam, resolveEntitlements } from '../services/entitlement.service.js';
+import { resolveEntitlements } from '../services/entitlement.service.js';
 import { getSettings, getFeatureFlags } from '../services/settings.service.js';
 import { assertWithinQuota, getDailyUsage, incrementUsage } from '../services/usage.service.js';
 import {
@@ -30,6 +30,7 @@ import {
   buildHintMessages,
   chat,
   offlineExplanation,
+  streamChat,
 } from '../services/ai.service.js';
 
 export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
@@ -42,7 +43,7 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
     const settings = await getSettings(env);
     const entitlements = await resolveEntitlements(auth.user, settings);
     const usage = await getDailyUsage(auth.user.id);
-    const limit = entitlements.plan === 'premium' ? env.AI_DAILY_LIMIT_PREMIUM : env.AI_DAILY_LIMIT_FREE;
+    const limit = aiDailyLimit(env, entitlements.plan);
     const flags = await getFeatureFlags();
     const flagOn = flags.get('ai_explanations')?.enabled ?? true;
     return reply.send({
@@ -74,7 +75,6 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
 
     const settings = await getSettings(env);
     const entitlements = await resolveEntitlements(user, settings);
-    const unlimited = canAccessExam(entitlements, input.exam, input.provider);
 
     const { question, exam, provider } = await getDatasetClient(env).getQuestion(
       input.provider,
@@ -82,23 +82,8 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
       input.questionId,
     );
 
-    const limit = entitlements.plan === 'premium' ? env.AI_DAILY_LIMIT_PREMIUM : env.AI_DAILY_LIMIT_FREE;
+    const limit = aiDailyLimit(env, entitlements.plan);
     await assertWithinQuota(user.id, [{ field: 'aiExplanations', limit, label: 'AI explanation' }]);
-
-    // Free preview: the first N questions of an exam are explainable so the
-    // free tier still demonstrates the feature; anything else requires access.
-    const freeWindow = entitlements.questionsPerExam ?? 5;
-    const allowedByPreview = await isWithinFreePreview(env, input.provider, input.exam, input.questionId, freeWindow);
-    if (!unlimited && !allowedByPreview) {
-      return reply.code(402).send({
-        error: {
-          code: 'UPGRADE_REQUIRED',
-          message: 'AI explanations for this question need a plan. Unlock the exam to continue.',
-        },
-        questionId: question.id,
-        upgradeUrl: '/pricing',
-      });
-    }
 
     try {
       const result = await chat(env, {
@@ -137,19 +122,99 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
     }
   });
 
+  /**
+   * Streaming variant of /explain.
+   *
+   * Explanations are the longest AI output in the product, so they stream so
+   * the learner can start reading immediately and can cancel mid-answer. The
+   * same grounding is used as the non-streaming route: the question is rebuilt
+   * from the private dataset server-side, never from client input.
+   */
+  app.post(
+    '/explain/stream',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { user } = await requireAuth(request, env);
+      const input = parseOrThrow(aiExplainSchema, request.body);
+
+      if (!aiConfigured(env)) {
+        return reply.code(503).send({
+          error: { code: 'AI_NOT_CONFIGURED', message: 'AI assistance is not configured on this server.' },
+        });
+      }
+
+      const settings = await getSettings(env);
+      const entitlements = await resolveEntitlements(user, settings);
+      const limit = aiDailyLimit(env, entitlements.plan);
+      await assertWithinQuota(user.id, [{ field: 'aiExplanations', limit, label: 'AI explanation' }]);
+
+      const { question, exam, provider } = await getDatasetClient(env).getQuestion(
+        input.provider,
+        input.exam,
+        input.questionId,
+      );
+
+      reply.hijack();
+      const res = reply.raw;
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      res.flushHeaders?.();
+      res.socket?.setNoDelay(true);
+
+      const send = async (payload: unknown): Promise<void> => {
+        if (res.writableEnded || res.destroyed) return;
+        const ok = res.write(`data: ${JSON.stringify(payload)}\n\n`);
+        if (!ok) {
+          await new Promise<void>((resolve) => {
+            const done = () => {
+              res.off('drain', done);
+              res.off('close', done);
+              resolve();
+            };
+            res.once('drain', done);
+            res.once('close', done);
+          });
+        }
+      };
+
+      let terminated = false;
+      try {
+        for await (const chunk of streamChat(env, {
+          messages: buildExplanationMessages(question, {
+            examTitle: exam.title,
+            examCode: exam.code,
+            providerTitle: provider.title,
+            learnerChoice: input.choice,
+          }),
+          maxTokens: env.AI_MAX_TOKENS,
+          temperature: 0.25,
+        })) {
+          if (chunk.type === 'done' || chunk.type === 'error') terminated = true;
+          await send(chunk);
+        }
+      } catch (err) {
+        request.log.error({ err }, 'ai.explain.stream_failed');
+        terminated = true;
+        await send({ type: 'error', message: 'The AI tutor is temporarily unavailable.' });
+      } finally {
+        if (!terminated && !res.writableEnded && !res.destroyed) await send({ type: 'done' });
+        if (!res.writableEnded) res.end();
+        if (!res.destroyed) await incrementUsage(user.id, 'aiExplanations', 1).catch(() => undefined);
+      }
+    },
+  );
+
   /** A short nudge that never reveals the correct option. */
   app.post('/hint', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { user } = await requireAuth(request, env);
     const input = parseOrThrow(aiExplainSchema, request.body);
     const settings = await getSettings(env);
     const entitlements = await resolveEntitlements(user, settings);
-    const unlimited = canAccessExam(entitlements, input.exam, input.provider);
-    const freeWindow = entitlements.questionsPerExam ?? 5;
-    if (!unlimited && !(await isWithinFreePreview(env, input.provider, input.exam, input.questionId, freeWindow))) {
-      return reply.code(402).send({
-        error: { code: 'UPGRADE_REQUIRED', message: 'Hints for this question need a plan.' },
-      });
-    }
+    // Hints are part of basic doubt clearing: open to every signed-in account.
 
     const { question, exam, provider } = await getDatasetClient(env).getQuestion(
       input.provider,
@@ -160,7 +225,7 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
       return reply.send({ hint: question.explanation?.slice(0, 220) || 'Review the key terms in the question stem.', degraded: true });
     }
 
-    const limit = entitlements.plan === 'premium' ? env.AI_DAILY_LIMIT_PREMIUM : env.AI_DAILY_LIMIT_FREE;
+    const limit = aiDailyLimit(env, entitlements.plan);
     await assertWithinQuota(user.id, [{ field: 'aiExplanations', limit, label: 'AI hint' }]);
 
     try {
@@ -188,7 +253,7 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
     const settings = await getSettings(env);
     const entitlements = await resolveEntitlements(user, settings);
 
-    const limit = entitlements.plan === 'premium' ? env.AI_DAILY_LIMIT_PREMIUM : env.AI_DAILY_LIMIT_FREE;
+    const limit = aiDailyLimit(env, entitlements.plan);
     await assertWithinQuota(user.id, [{ field: 'aiExplanations', limit, label: 'AI assistant message' }]);
 
     let context = '';
@@ -198,11 +263,6 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
         input.exam,
         input.questionId,
       );
-      const unlimited = canAccessExam(entitlements, input.exam, input.provider);
-      const freeWindow = entitlements.questionsPerExam ?? 5;
-      if (!unlimited && !(await isWithinFreePreview(env, input.provider, input.exam, input.questionId, freeWindow))) {
-        throw badRequest('Unlock this exam to ask the assistant about it.');
-      }
       context = [
         `Exam: ${exam.code} - ${exam.title} (${provider.title})`,
         `Question: ${question.stemText}`,
@@ -404,4 +464,13 @@ async function isWithinFreePreview(
   } catch {
     return false;
   }
+}
+
+/**
+ * Daily tutor allowance. The AI tutor is intentionally available to every
+ * registered account: the per-plan limits only differ so that paying accounts
+ * get a higher fair-use ceiling, never so that free accounts are locked out.
+ */
+export function aiDailyLimit(env: Env, plan: string): number {
+  return plan === 'free' ? env.AI_DAILY_LIMIT_FREE : Math.max(env.AI_DAILY_LIMIT_FREE, env.AI_DAILY_LIMIT_PREMIUM);
 }

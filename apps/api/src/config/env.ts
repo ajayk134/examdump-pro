@@ -53,11 +53,13 @@ const envSchema = z.object({
   /* ---------------- AI (NVIDIA NIM by default) ---------------- */
   AI_PROVIDER: z.enum(['nvidia', 'openai', 'openai-compatible']).default('nvidia'),
   AI_API_KEY: z.string().optional(),
-  AI_MODEL: z.string().default('meta/llama-3.1-70b-instruct'),
+  AI_MODEL: z.string().default('nvidia/nemotron-3-ultra-550b-a55b'),
   AI_BASE_URL: z.string().default('https://integrate.api.nvidia.com/v1'),
   AI_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
-  AI_MAX_TOKENS: z.coerce.number().int().positive().default(800),
-  AI_DAILY_LIMIT_FREE: z.coerce.number().int().min(0).default(5),
+  AI_MAX_TOKENS: z.coerce.number().int().positive().default(1400),
+  // The tutor is available to every registered account regardless of plan;
+  // this allowance is generous on purpose and only exists as fair use.
+  AI_DAILY_LIMIT_FREE: z.coerce.number().int().min(0).default(75),
   AI_DAILY_LIMIT_PREMIUM: z.coerce.number().int().min(0).default(200),
   AI_WEB_SEARCH: booleanString,
 

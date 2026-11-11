@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/providers';
 import { get } from '@/lib/api';
 import type { DashboardData } from '@/lib/types';
-import { Alert, EmptyState, PremiumBadge, ProgressBar, Spinner, StatCard } from '@/components/ui';
+import { Alert, EmptyState, PageHeader, PremiumBadge, ProgressBar, ProgressRing, Skeleton, Spinner, StatCard } from '@/components/ui';
 import { Donut, LineChart, WeakTopicsList } from '@/components/charts';
 import {
   IconBook,
@@ -53,21 +53,34 @@ export default function DashboardPage() {
   }
 
   if (error) return <Alert tone="error">{error}</Alert>;
-  if (!data) return <Spinner label="Crunching your stats…" />;
+  if (!data)
+    return (
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-8 w-1/2" />
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-20 rounded-2xl" />
+          ))}
+        </div>
+        <div className="grid gap-3 lg:grid-cols-3">
+          <Skeleton className="h-56 rounded-2xl lg:col-span-2" />
+          <Skeleton className="h-56 rounded-2xl" />
+        </div>
+      </div>
+    );
 
   const { stats, performance, weakTopics, recommendations, recentAttempts, progress } = data;
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Welcome back, {user.name.split(' ')[0]}</h1>
-          <p className="mt-1 text-content-muted">Here is how your preparation is going.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {user.premiumActive ? <PremiumBadge /> : <Link href="/pricing" className="btn-primary">Upgrade to Premium</Link>}
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="Dashboard"
+        title={`Welcome back, ${user.name.split(' ')[0]}`}
+        description="Here is how your preparation is going."
+        actions={
+          user.premiumActive ? <PremiumBadge /> : <Link href="/pricing" className="btn-primary btn-sm">Upgrade</Link>
+        }
+      />
 
       {!user.emailVerified ? (
         <Alert tone="warning">
@@ -77,7 +90,7 @@ export default function DashboardPage() {
 
       {/* Quick actions */}
       <section aria-label="Quick actions" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Link href="/ask" className="card card-hover flex items-center gap-2.5 p-3">
+        <Link href="/ask" className="surface surface-interactive flex items-center gap-2.5 p-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-sky-400 text-white">
             <IconSparkles width={16} height={16} />
           </span>
@@ -86,7 +99,7 @@ export default function DashboardPage() {
             <span className="block truncate text-[11px] text-content-muted">Clear a doubt</span>
           </span>
         </Link>
-        <Link href="/browse" className="card card-hover flex items-center gap-2.5 p-3">
+        <Link href="/exams" className="surface surface-interactive flex items-center gap-2.5 p-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-300">
             <IconBook width={16} height={16} />
           </span>
@@ -95,7 +108,7 @@ export default function DashboardPage() {
             <span className="block truncate text-[11px] text-content-muted">Pick an exam</span>
           </span>
         </Link>
-        <Link href="/bookmarks" className="card card-hover flex items-center gap-2.5 p-3">
+        <Link href="/bookmarks" className="surface surface-interactive flex items-center gap-2.5 p-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-300">
             <IconBookmark width={16} height={16} />
           </span>
@@ -104,7 +117,7 @@ export default function DashboardPage() {
             <span className="block truncate text-[11px] text-content-muted">Saved questions</span>
           </span>
         </Link>
-        <Link href="/history" className="card card-hover flex items-center gap-2.5 p-3">
+        <Link href="/history" className="surface surface-interactive flex items-center gap-2.5 p-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
             <IconHistory width={16} height={16} />
           </span>
@@ -123,10 +136,10 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-3">
-        <div className="card p-5 lg:col-span-2">
+        <div className="surface p-5 lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold">Performance</h2>
+              <h2 className="heading-2">Performance</h2>
               <p className="text-sm text-content-muted">Daily accuracy over the last 30 days</p>
             </div>
             <div className="hidden items-center gap-3 sm:flex">
@@ -136,17 +149,17 @@ export default function DashboardPage() {
           <LineChart data={performance} />
         </div>
 
-        <div className="card p-5">
-          <h2 className="mb-3 text-lg font-semibold">Weak topics</h2>
+        <div className="surface p-5">
+          <h2 className="heading-2 mb-3">Weak topics</h2>
           <WeakTopicsList topics={weakTopics} />
-          <Link href="/browse" className="btn-secondary mt-4 w-full">Practise weak areas</Link>
+          <Link href="/exams" className="btn-secondary mt-4 w-full">Practise weak areas</Link>
         </div>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <div className="card p-5">
+        <div className="surface p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Recommended for you</h2>
+            <h2 className="heading-2">Recommended for you</h2>
             <IconSparkles className="text-brand-400" />
           </div>
           {recommendations.length === 0 ? (
@@ -171,9 +184,9 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="card p-5">
+        <div className="surface p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Recent attempts</h2>
+            <h2 className="heading-2">Recent attempts</h2>
             <Link href="/history" className="text-sm text-brand-500 hover:underline dark:text-brand-300">View all</Link>
           </div>
           {recentAttempts.length === 0 ? (
@@ -201,8 +214,8 @@ export default function DashboardPage() {
       </section>
 
       {progress.length > 0 ? (
-        <section className="card p-5">
-          <h2 className="mb-3 text-lg font-semibold">Your exams</h2>
+        <section className="surface p-5">
+          <h2 className="heading-2 mb-3">Your exams</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {progress.map((item) => {
               const accuracy = item.questionsSeen ? Math.round((item.questionsCorrect / item.questionsSeen) * 100) : 0;

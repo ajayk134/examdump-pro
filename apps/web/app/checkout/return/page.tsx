@@ -137,7 +137,7 @@ function CheckoutReturn() {
               <Link href="/dashboard" className="btn-primary">
                 Go to dashboard
               </Link>
-              <Link href="/browse" className="btn-secondary">
+              <Link href="/exams" className="btn-secondary">
                 Start practising
               </Link>
               {invoice ? (

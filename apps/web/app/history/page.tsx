@@ -29,14 +29,14 @@ export default function HistoryPage() {
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-5">
       <header>
-        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight"><IconHistory className="text-brand-400" /> Practice history</h1>
+        <h1 className="heading-1 flex items-center gap-2"><IconHistory className="text-brand-400" /> Practice history</h1>
         <p className="mt-1 text-content-muted">Every attempt, score and session.</p>
       </header>
       {error ? <Alert tone="error">{error}</Alert> : null}
       {!data ? (
         <Spinner />
       ) : data.items.length === 0 ? (
-        <EmptyState title="No attempts yet" description="Start practising to build your history." action={<Link href="/browse" className="btn-primary">Browse exams</Link>} />
+        <EmptyState title="No attempts yet" description="Start practising to build your history." action={<Link href="/exams" className="btn-primary">Browse exams</Link>} />
       ) : (
         <>
           <div className="card overflow-x-auto p-0">

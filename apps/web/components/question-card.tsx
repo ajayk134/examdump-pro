@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Question } from '@/lib/types';
 import { QuestionContent } from './question-content';
 import { useAuth, useToast } from './providers';
-import { del, get, post } from '@/lib/api';
+import { del, get, post, streamPost } from '@/lib/api';
 import { cn } from '@/lib/format';
 import { Drawer } from './ui';
 import { AiChat } from './ai-chat';
-import { IconBookmark, IconMessage, IconNote, IconSparkles, IconCheck, IconX } from './icons';
+import { IconBookmark, IconMessage, IconNote, IconSparkles, IconCheck, IconX, IconStop } from './icons';
+import { Markdown } from './markdown';
 
 interface Props {
   question: Question;
@@ -32,6 +33,8 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
   const [noteSaving, setNoteSaving] = useState(false);
   const [aiText, setAiText] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const aiAbort = useRef<AbortController | null>(null);
   const [hintText, setHintText] = useState('');
   const [hintLoading, setHintLoading] = useState(false);
   const [aiRemaining, setAiRemaining] = useState<number | null>(null);
@@ -148,29 +151,74 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
     }
   };
 
+  /**
+   * Stream an AI explanation. Text appears progressively, the request can be
+   * cancelled mid-flight, and any failure can be retried without losing the
+   * question state.
+   */
   const explain = async () => {
     if (!user) {
       toast('Sign in to use the AI tutor.', 'info');
       return;
     }
+    aiAbort.current?.abort();
+    const controller = new AbortController();
+    aiAbort.current = controller;
+
     setAiLoading(true);
     setAiText('');
+    setAiError('');
+
+    let received = false;
     try {
-      const data = await post<{ explanation: string; degraded?: boolean; remaining?: number }>('/ai/explain', {
-        provider: providerId,
-        exam: examKey,
-        questionId: question.id,
-        choice: selected,
-      });
-      setAiText(data.explanation);
-      if (typeof data.remaining === 'number') setAiRemaining(data.remaining);
-      else setAiRemaining((prev) => (prev === null ? prev : Math.max(0, prev - 1)));
-      if (data.degraded) setAiEnabled(false);
+      await streamPost(
+        '/ai/explain/stream',
+        { provider: providerId, exam: examKey, questionId: question.id, choice: selected },
+        {
+          onDelta: (text) => {
+            received = true;
+            setAiText((prev) => prev + text);
+          },
+          onDone: () => {
+            setAiRemaining((prev) => (prev === null ? prev : Math.max(0, prev - 1)));
+          },
+          onError: (message) => {
+            setAiError(message);
+          },
+        },
+        controller.signal,
+      );
     } catch (err) {
-      toast((err as Error).message, 'error');
+      if ((err as Error).name !== 'AbortError') {
+        setAiError((err as Error).message);
+      }
     } finally {
       setAiLoading(false);
+      aiAbort.current = null;
     }
+
+    // Fall back to the non-streaming endpoint if the stream produced nothing.
+    if (!received && !controller.signal.aborted) {
+      try {
+        const data = await post<{ explanation: string; degraded?: boolean; remaining?: number }>('/ai/explain', {
+          provider: providerId,
+          exam: examKey,
+          questionId: question.id,
+          choice: selected,
+        });
+        setAiText(data.explanation);
+        setAiError('');
+        if (typeof data.remaining === 'number') setAiRemaining(data.remaining);
+        if (data.degraded) setAiEnabled(false);
+      } catch (err) {
+        setAiError((err as Error).message);
+      }
+    }
+  };
+
+  const stopExplain = () => {
+    aiAbort.current?.abort();
+    setAiLoading(false);
   };
 
   const requestHint = async () => {
@@ -203,41 +251,53 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
   const choiceClass = (key: string) => {
     const isSelected = selected.includes(key);
     if (!revealed) {
-      return isSelected ? 'border-brand-400 bg-brand-500/10' : 'border-surface-border hover:border-brand-400/60 hover:bg-surface-overlay';
+      return isSelected
+        ? 'border-accent bg-accent/10 ring-1 ring-accent/30'
+        : 'border-surface-border-strong hover:border-accent/50 hover:bg-surface-overlay active:bg-surface-overlay';
     }
     const isAnswer = correct.includes(key);
-    if (isAnswer) return 'border-emerald-400/70 bg-emerald-500/10';
-    if (isSelected && !isAnswer) return 'border-rose-400/70 bg-rose-500/10';
-    return 'border-surface-border opacity-80';
+    if (isAnswer) return 'border-positive/60 bg-positive/10';
+    if (isSelected && !isAnswer) return 'border-negative/60 bg-negative/10';
+    return 'border-surface-border opacity-70';
   };
 
   return (
-    <article className="card p-5 sm:p-6" aria-label={`Question ${index ?? ''}`}>
-      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="rounded-lg bg-surface-overlay px-2.5 py-1 text-xs font-semibold text-content-secondary">
-            Q{question.number ?? index ?? ''}
+    <article className="surface p-4 sm:p-5" aria-label={`Question ${index !== undefined ? index + 1 : ''}`}>
+      <header className="mb-3.5 flex flex-wrap items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="badge font-mono text-content-secondary">
+            Q{question.number ?? (index !== undefined ? index + 1 : '')}
           </span>
-          {question.type === 'multiple' ? <span className="badge">Multiple answers</span> : null}
-          {question.type === 'dragdrop' ? <span className="badge">Drag & drop / visual</span> : null}
-          {question.stemImages.length > 0 ? <span className="badge">{question.stemImages.length} image{question.stemImages.length > 1 ? 's' : ''}</span> : null}
+          {question.type === 'multiple' ? <span className="badge">Multi-select</span> : null}
+          {question.type === 'dragdrop' ? <span className="badge">Visual</span> : null}
+          {question.stemImages.length > 0 ? (
+            <span className="badge">
+              {question.stemImages.length} image{question.stemImages.length > 1 ? 's' : ''}
+            </span>
+          ) : null}
           {answered ? (
-            <span className="badge border-emerald-400/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
-              <IconCheck width={12} height={12} /> Done
+            <span className="badge badge-success">
+              <IconCheck width={11} height={11} /> Done
             </span>
           ) : null}
         </div>
-        <div className="flex items-center gap-1">
-          <button onClick={toggleBookmark} className={cn('btn-ghost h-9 w-9 !px-0', bookmarked && 'text-amber-400')} aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark question'} aria-pressed={bookmarked}>
-            <IconBookmark />
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={toggleBookmark}
+            className={cn('icon-btn', bookmarked && 'text-accent')}
+            aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark question'}
+            aria-pressed={bookmarked}
+          >
+            <IconBookmark className={bookmarked ? 'fill-current' : undefined} />
           </button>
-          <button onClick={loadNote} className="btn-ghost h-9 w-9 !px-0" aria-label="Add note">
+          <button type="button" onClick={loadNote} className="icon-btn" aria-label="Add a note">
             <IconNote />
           </button>
         </div>
       </header>
 
-      <div className="text-[15px] leading-relaxed text-content-primary">
+      <div className="text-[0.9375rem] leading-relaxed text-content-primary sm:text-[0.9375rem]">
         <QuestionContent items={question.stem} />
       </div>
 
@@ -253,7 +313,7 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
                   disabled={revealed}
                   aria-pressed={isSelected}
                   className={cn(
-                    'flex w-full items-start gap-3 rounded-xl border p-3.5 text-left text-sm transition disabled:cursor-default',
+                    'flex w-full items-start gap-3 rounded-xl border p-3 text-left text-sm transition-all duration-150 disabled:cursor-default sm:p-3.5',
                     choiceClass(choice.key),
                   )}
                 >
@@ -294,18 +354,21 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
               {!revealed ? (
                 <button onClick={requestHint} className="btn-ghost" disabled={hintLoading}>
                   <IconSparkles width={16} height={16} />
-                  {hintLoading ? 'Thinking…' : 'Get a hint'}
+                  {hintLoading ? 'Thinking…' : 'Hint'}
                 </button>
               ) : null}
-              <button onClick={explain} className="btn-ghost" disabled={aiLoading}>
-                <IconSparkles width={16} height={16} /> {aiLoading ? 'Thinking…' : 'AI explain'}
-              </button>
+              {aiLoading ? (
+                <button onClick={stopExplain} className="btn-secondary">
+                  <IconStop width={16} height={16} /> Stop
+                </button>
+              ) : (
+                <button onClick={explain} className="btn-ghost">
+                  <IconSparkles width={16} height={16} /> {aiText ? 'Explain again' : 'AI explain'}
+                </button>
+              )}
               <button onClick={() => setChatOpen(true)} className="btn-secondary">
                 <IconMessage width={16} height={16} /> Ask AI
               </button>
-              {aiRemaining !== null ? (
-                <span className="text-xs text-content-muted">{aiRemaining} AI credits left today</span>
-              ) : null}
             </>
           ) : null}
           {revealed && correct ? (
@@ -318,8 +381,8 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
 
       {revealed ? (
         <div className="mt-5 space-y-4 border-t border-surface-border pt-4">
-          <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/5 p-4">
-            <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-300">
+          <div className="rounded-xl border border-positive/30 bg-positive/[0.06] p-3.5 sm:p-4">
+            <p className="text-[0.8125rem] font-semibold text-positive">
               Suggested answer: {question.answerText || correct || 'See explanation'}
             </p>
             {question.explanation ? <div className="prose-answer mt-2 text-sm text-content-secondary"><QuestionContent items={[{ type: 'text', value: question.explanation }]} /></div> : null}
@@ -358,10 +421,40 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
         </div>
       ) : null}
 
-      {aiText ? (
-        <div className="mt-4 rounded-xl border border-brand-400/30 bg-brand-500/5 p-4">
-          <p className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-brand-500 dark:text-brand-300"><IconSparkles width={16} height={16} /> AI explanation</p>
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-content-secondary">{aiText}</p>
+      {aiText || aiLoading || aiError ? (
+        <div className="mt-4 rounded-xl border border-accent/30 bg-accent/[0.05] p-3.5 sm:p-4">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-[0.8125rem] font-semibold text-accent">
+              <IconSparkles width={15} height={15} /> AI explanation
+              {aiLoading ? <span className="font-normal text-content-muted">· thinking…</span> : null}
+            </p>
+            {aiRemaining !== null ? (
+              <span className="numeric text-[0.6875rem] text-content-muted">{aiRemaining} left today</span>
+            ) : null}
+          </div>
+
+          {aiText ? (
+            <div className="answer-prose">
+              <Markdown content={aiText} />
+              {aiLoading ? <span className="caret" aria-hidden="true" /> : null}
+            </div>
+          ) : aiLoading ? (
+            <div className="space-y-2" aria-live="polite" aria-busy="true">
+              <span className="sr-only">Generating explanation</span>
+              <div className="skeleton h-3.5 w-full" />
+              <div className="skeleton h-3.5 w-11/12" />
+              <div className="skeleton h-3.5 w-3/4" />
+            </div>
+          ) : null}
+
+          {aiError ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <p className="text-xs text-negative">{aiError}</p>
+              <button type="button" onClick={explain} className="btn-secondary btn-sm">
+                Retry
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

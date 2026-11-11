@@ -242,7 +242,7 @@ export default function PricingPage() {
             active={!me?.entitlements.allAccess && (me?.entitlements.examKeys.length ?? 0) === 0}
             current={!me?.subscription}
             cta={
-              <Link href={user ? '/browse' : '/register'} className="btn-secondary w-full">
+              <Link href={user ? '/exams' : '/register'} className="btn-secondary w-full">
                 {user ? 'Browse exams' : 'Start free'}
               </Link>
             }
@@ -283,7 +283,7 @@ export default function PricingPage() {
         <section className="card-elevated animate-fade-in p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="text-lg font-semibold">Configure your {plan.name}</h2>
+              <h2 className="heading-2">Configure your {plan.name}</h2>
               <p className="mt-1 text-sm text-content-secondary">
                 {plan.scope === 'all'
                   ? 'Every exam in the catalogue is unlocked for the whole period.'
@@ -422,7 +422,7 @@ export default function PricingPage() {
 
       {me ? (
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold">Your access</h2>
+          <h2 className="heading-2">Your access</h2>
           {me.subscriptions.length === 0 ? (
             <EmptyState title="No active pass" description="Choose a pass above to unlock full exam access." />
           ) : (

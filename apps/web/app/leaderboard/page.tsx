@@ -28,7 +28,7 @@ export default function LeaderboardPage() {
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight"><IconTrophy className="text-amber-400" /> Leaderboard</h1>
+          <h1 className="heading-1 flex items-center gap-2"><IconTrophy className="text-amber-400" /> Leaderboard</h1>
           <p className="mt-1 text-content-muted">Top learners by correct answers.</p>
         </div>
         <Tabs tabs={[{ id: 'all', label: 'All time' }, { id: 'month', label: 'This month' }]} value={period} onChange={setPeriod} />

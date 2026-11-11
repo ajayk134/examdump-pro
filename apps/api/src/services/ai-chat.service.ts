@@ -11,9 +11,9 @@ import { getDb } from '../db/client.js';
 import { aiConversations, aiMessages, users } from '../db/schema/index.js';
 import type { Env } from '../config/env.js';
 import type { User } from '../db/schema/index.js';
-import { notFound, forbidden } from '../lib/errors.js';
+import { notFound } from '../lib/errors.js';
 import { getDatasetClient } from '../services/dataset.service.js';
-import { canAccessExam, resolveEntitlements } from '../services/entitlement.service.js';
+import { resolveEntitlements } from '../services/entitlement.service.js';
 import { getSettings } from '../services/settings.service.js';
 import { assertWithinQuota, incrementUsage } from '../services/usage.service.js';
 import {
@@ -102,12 +102,8 @@ export async function createConversation(
   user: User,
   input: { provider: string; exam: string; questionId?: string },
 ): Promise<{ conversation: ConversationSummary; suggestions: string[] }> {
-  const settings = await getSettings(env);
-  const entitlements = await resolveEntitlements(user, settings);
-  if (!canAccessExam(entitlements, input.exam, input.provider)) {
-    throw forbidden('Unlock this exam to ask the AI tutor about its questions.');
-  }
-
+  // The tutor is open to every signed-in account. Exam access no longer gates
+  // doubt clearing; only per-account fair-use limits apply.
   const context = await loadTutorContext(env, {
     providerId: input.provider,
     examKey: input.exam,
@@ -250,17 +246,7 @@ export async function* sendMessage(
   const settings = await getSettings(env);
   const [freshUser] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
   const entitlements = await resolveEntitlements(freshUser ?? user, settings);
-
-  if (
-    conversation.examKey &&
-    conversation.providerId &&
-    !canAccessExam(entitlements, conversation.examKey, conversation.providerId)
-  ) {
-    yield { type: 'error', message: 'Your plan no longer covers this exam.' };
-    return;
-  }
-
-  const limit = entitlements.plan === 'premium' ? env.AI_DAILY_LIMIT_PREMIUM : env.AI_DAILY_LIMIT_FREE;
+  const limit = entitlements.plan === 'free' ? env.AI_DAILY_LIMIT_FREE : env.AI_DAILY_LIMIT_PREMIUM;
   try {
     await assertWithinQuota(user.id, [{ field: 'aiExplanations', limit, label: 'AI tutor message' }]);
   } catch (err) {

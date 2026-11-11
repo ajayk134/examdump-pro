@@ -17,7 +17,7 @@ function StudyInner() {
     return (
       <div className="mx-auto max-w-lg">
         <Alert tone="warning">No exam selected. Pick one from the catalogue.</Alert>
-        <Link href="/browse" className="btn-primary mt-4">Browse exams</Link>
+        <Link href="/exams" className="btn-primary mt-4">Browse exams</Link>
       </div>
     );
   }

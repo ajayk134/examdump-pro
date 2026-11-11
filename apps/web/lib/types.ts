@@ -387,3 +387,25 @@ export interface AiConversationDetail extends AiConversation {
   messages: ChatMessage[];
   suggestions: string[];
 }
+
+/** Response shape of GET /api/exams/:providerId/:examKey */
+export interface ExamDetail {
+  provider: { id: string; title: string; slug: string };
+  exam: {
+    key: string;
+    code: string;
+    title: string;
+    questionCount: number;
+    providerId: string;
+    providerTitle: string;
+  };
+  catalog?: unknown;
+  entitlement: {
+    plan: string;
+    scope: string;
+    accessibleQuestions: number;
+    totalQuestions: number;
+    lockedQuestions: number;
+    isLimited: boolean;
+  };
+}

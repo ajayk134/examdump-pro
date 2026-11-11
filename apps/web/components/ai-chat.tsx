@@ -429,11 +429,11 @@ export function AiChat({
                 ) : null}
                 <div className={cn('min-w-0 max-w-[92%]', message.role === 'user' && 'max-w-[85%]')}>
                   {message.role === 'user' ? (
-                    <div className="rounded-2xl rounded-br-md bg-brand-600 px-3.5 py-2.5 text-sm leading-relaxed text-white shadow-sm">
+                    <div className="rounded-2xl rounded-br-md bg-gradient-to-br from-brand-600 to-brand-500 px-3.5 py-2.5 text-sm leading-relaxed text-white shadow-sm">
                       {message.content}
                     </div>
                   ) : (
-                    <div className="rounded-2xl rounded-bl-md border border-surface-border bg-surface-raised px-3.5 py-2.5 shadow-sm">
+                    <div className="rounded-2xl rounded-bl-md border border-surface-border bg-surface-raised px-3.5 py-2.5 shadow-xs">
                       {message.content ? (
                         <Markdown content={message.content} className="text-sm" />
                       ) : message.error ? null : (
@@ -443,10 +443,10 @@ export function AiChat({
                         </span>
                       )}
                       {message.pending && message.content ? (
-                        <span className="ml-0.5 inline-block h-3.5 w-[2px] animate-pulse bg-brand-400 align-middle" />
+                        <span className="caret ml-0.5 align-middle" aria-hidden="true" />
                       ) : null}
                       {message.error ? (
-                        <p className="mt-1 rounded-lg bg-rose-500/10 px-2 py-1.5 text-xs text-rose-600 dark:text-rose-300">
+                        <p className="mt-1 rounded-lg bg-negative/10 px-2 py-1.5 text-xs text-negative">
                           {message.error}
                         </p>
                       ) : null}
@@ -476,12 +476,12 @@ export function AiChat({
                         </button>
                       ) : null}
                       {copiedId === message.id ? (
-                        <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                        <span className="text-[11px] font-medium text-positive">
                           Copied
                         </span>
                       ) : null}
                       {message.degraded ? (
-                        <span className="text-[11px] text-amber-600 dark:text-amber-400">
+                        <span className="text-[11px] text-caution">
                           offline explanation
                         </span>
                       ) : null}
@@ -509,7 +509,7 @@ export function AiChat({
               type="button"
               disabled={streaming}
               onClick={() => void send(s)}
-              className="rounded-full border border-surface-border bg-surface-overlay px-3 py-1.5 text-xs font-medium text-content-secondary transition hover:border-brand-400/60 hover:text-content-primary disabled:opacity-50"
+              className="chip text-[0.75rem]"
             >
               {s}
             </button>
@@ -519,7 +519,7 @@ export function AiChat({
 
       {/* Composer */}
       <form onSubmit={onSubmit} className="border-t border-surface-border p-3">
-        <div className="flex items-end gap-2 rounded-2xl border border-surface-border bg-surface-base/80 p-2 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-400/25">
+        <div className="flex items-end gap-1.5 rounded-2xl border border-surface-border-strong bg-surface-base p-1.5 transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
           <textarea
             ref={inputRef}
             value={input}
@@ -560,7 +560,7 @@ export function AiChat({
         {!anchored && !conversationId ? (
           <p className="mt-1.5 px-1 text-[11px] text-content-muted">
             Pick an exam to ground the tutor:{' '}
-            <Link href="/browse" className="link">
+            <Link href="/exams" className="link">
               browse exams
             </Link>
           </p>

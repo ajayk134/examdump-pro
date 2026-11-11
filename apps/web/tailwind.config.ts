@@ -1,5 +1,12 @@
 import type { Config } from 'tailwindcss';
 
+/**
+ * ExamDump Pro "Aurora" theme.
+ *
+ * Semantic tokens (surface/content/accent) are driven by CSS custom properties
+ * in globals.css so light and dark stay in lockstep. Raw palette ramps remain
+ * available for gradients and one-off accents.
+ */
 const config: Config = {
   darkMode: 'class',
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}', './lib/**/*.{ts,tsx}'],
@@ -40,22 +47,45 @@ const config: Config = {
           raised: 'rgb(var(--surface-raised) / <alpha-value>)',
           overlay: 'rgb(var(--surface-overlay) / <alpha-value>)',
           sunken: 'rgb(var(--surface-sunken) / <alpha-value>)',
+          inset: 'rgb(var(--surface-inset) / <alpha-value>)',
           border: 'rgb(var(--surface-border) / <alpha-value>)',
+          'border-strong': 'rgb(var(--surface-border-strong) / <alpha-value>)',
         },
         content: {
           primary: 'rgb(var(--content-primary) / <alpha-value>)',
           secondary: 'rgb(var(--content-secondary) / <alpha-value>)',
           muted: 'rgb(var(--content-muted) / <alpha-value>)',
         },
+        accent: 'rgb(var(--accent) / <alpha-value>)',
+        positive: 'rgb(var(--success) / <alpha-value>)',
+        caution: 'rgb(var(--warning) / <alpha-value>)',
+        negative: 'rgb(var(--danger) / <alpha-value>)',
+      },
+      borderRadius: {
+        '4xl': '2rem',
+      },
+      boxShadow: {
+        xs: 'var(--shadow-xs)',
+        sm: 'var(--shadow-sm)',
+        md: 'var(--shadow-md)',
+        lg: 'var(--shadow-lg)',
+        glow: 'var(--shadow-glow)',
+      },
+      maxWidth: {
+        '8xl': '90rem',
+      },
+      transitionTimingFunction: {
+        smooth: 'cubic-bezier(0.22, 1, 0.36, 1)',
       },
       keyframes: {
-        'fade-in': { '0%': { opacity: '0', transform: 'translateY(6px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
-        'pulse-ring': { '0%': { boxShadow: '0 0 0 0 rgba(99,102,241,.5)' }, '100%': { boxShadow: '0 0 0 12px rgba(99,102,241,0)' } },
+        'fade-in': {
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
         shimmer: { '100%': { transform: 'translateX(100%)' } },
       },
       animation: {
-        'fade-in': 'fade-in .4s ease both',
-        'pulse-ring': 'pulse-ring 1.5s ease-out infinite',
+        'fade-in': 'fade-in .32s cubic-bezier(.22,1,.36,1) both',
       },
     },
   },

@@ -48,10 +48,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </a>
           <Navbar />
           <AnnouncementBanner />
-          <main id="main" className="mx-auto min-h-[calc(100vh-4rem)] w-full max-w-7xl px-4 py-8 sm:px-6">
+          <main
+            id="main"
+            className="has-bottom-nav mx-auto min-h-[calc(100dvh-3.5rem)] w-full max-w-7xl px-3.5 py-5 sm:px-6 sm:py-7 lg:pb-10"
+          >
             {children}
           </main>
-          <Footer />
+          <div className="hidden lg:block">
+            <Footer />
+          </div>
         </AppProviders>
       </body>
     </html>

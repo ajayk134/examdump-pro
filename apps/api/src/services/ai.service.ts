@@ -38,10 +38,22 @@ export class AiError extends Error {
   }
 }
 
-/** Models known to be served by NVIDIA NIM's hosted endpoint. */
+/**
+ * Models verified against NVIDIA NIM's hosted endpoint (benchmarked on Cisco
+ * and CompTIA practice questions: first-token latency, streamed frame count,
+ * answer accuracy and usable output length).
+ *
+ * Note: `deepseek-ai/deepseek-v4.1-flash` and `z-ai/glm-5.3-flash` are listed
+ * by GET /v1/models but do not currently serve traffic (connections hang with
+ * no response), so they are deliberately excluded. Reasoning-heavy models such
+ * as `minimaxai/minimax-m3.1-flash` spend most of the token budget on hidden
+ * reasoning and stream little visible text, so they are used only as a last
+ * resort for non-streaming calls.
+ */
 const NVIDIA_FALLBACK_MODELS = [
   'nvidia/nemotron-3-ultra-550b-a55b',
   'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+  'minimaxai/minimax-m3.1-flash',
   'meta/llama-3.2-90b-vision-instruct',
 ];
 
