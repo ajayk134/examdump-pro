@@ -1,7 +1,12 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: { index: 'src/index.ts', migrate: 'src/scripts/migrate.ts' },
+  entry: {
+    index: 'src/index.ts',
+    migrate: 'src/scripts/migrate.ts',
+    // Shipped so a fresh deployment can seed plans/flags/coupons reliably.
+    seed: 'src/db/seed.ts',
+  },
   format: ['esm'],
   target: 'node20',
   platform: 'node',
