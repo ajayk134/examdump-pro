@@ -63,6 +63,23 @@ function transportKey(env: Env): string {
   return [env.SMTP_HOST, env.SMTP_PORT, env.SMTP_SECURE, env.SMTP_USER].join('|');
 }
 
+/**
+ * Hostname announced in EHLO, derived from the public site host.
+ *
+ * Without this nodemailer falls back to the machine hostname, which inside a
+ * container is a random id (e.g. `e5c9b7b726ba`). Receiving servers record it
+ * verbatim in the Received header and Gmail renders it as `[127.0.0.1]`, which
+ * looks like a direct-to-MX injection attempt. Announcing our real public
+ * hostname is accurate and removes that signal.
+ */
+export function ehloName(env: Env): string {
+  try {
+    return new URL(env.PUBLIC_WEB_URL).hostname;
+  } catch {
+    return env.SMTP_HOST ?? 'localhost';
+  }
+}
+
 export function mailConfigured(env: Env): boolean {
   return Boolean(env.MAIL_ENABLED && env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
 }
@@ -84,13 +101,18 @@ function getTransporter(env: Env): Transporter | null {
     secure: env.SMTP_SECURE,
     requireTLS: !env.SMTP_SECURE,
     auth: { user: env.SMTP_USER as string, pass: env.SMTP_PASS as string },
+    name: ehloName(env),
     connectionTimeout: env.MAIL_TIMEOUT_MS,
     greetingTimeout: env.MAIL_TIMEOUT_MS,
     socketTimeout: env.MAIL_TIMEOUT_MS,
     pool: true,
     maxConnections: 2,
     maxMessages: 50,
-    // Gmail adds its own Message-ID; let nodemailer generate ours.
+    /**
+     * Gmail rewrites Message-ID for otherwise-unidentified mail. We set an
+     * explicit Message-ID derived from the queue row so a retry is recognisable
+     * as the same message, so no special handling is needed here.
+     */
     tls: { minVersion: 'TLSv1.2' },
   });
   cachedTransport = { key, transporter };

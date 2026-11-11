@@ -61,6 +61,7 @@ import {
   notifyWelcome,
 } from '../src/services/mail/notify.service.js';
 import { buildMailHeaders } from '../src/services/mail/headers.js';
+import { ehloName } from '../src/services/mail/mail.service.js';
 import { auditSenderIdentity } from '../src/services/mail/deliverability.js';
 
 let ctx: TestContext;
@@ -756,5 +757,21 @@ describe('message id stability', () => {
     // The transport builds `<rowId@senderHost>`; the id itself is stable and
     // unique, which is what makes a retry recognisable as the same message.
     expect(row?.id).toBe(first.id);
+  });
+});
+
+describe('smarthost EHLO identity', () => {
+  it('announces the public site host rather than a container id', () => {
+    // A container hostname is random per-run (e.g. e5c9b7b726ba). If we leak it
+    // into EHLO, Gmail records it as [127.0.0.1] in the Received header, which
+    // looks like direct-to-MX injection.
+    const name = ehloName({ ...offlineEnv(), PUBLIC_WEB_URL: 'https://examtopicspro.duckdns.org' } as Env);
+    expect(name).toBe('examtopicspro.duckdns.org');
+    expect(name).not.toMatch(/^[0-9a-f]{12}$/);
+  });
+
+  it('falls back to the smtp host when the public url is unusable', () => {
+    const name = ehloName({ ...offlineEnv(), PUBLIC_WEB_URL: 'not-a-url', SMTP_HOST: 'smtp.gmail.com' } as Env);
+    expect(name).toBe('smtp.gmail.com');
   });
 });
