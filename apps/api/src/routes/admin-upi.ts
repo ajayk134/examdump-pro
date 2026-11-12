@@ -12,12 +12,18 @@
  *
  * Every mutating route is audited. Read routes expose no credentials: the Gmail
  * refresh token and client secret never leave the server.
+ *
+ * Authorization is per route rather than a blanket admin check:
+ *   payments.read    - overview, order/notification/refund listings, order detail
+ *   payments.manage  - manual match, observer poll
+ *   payments.refund  - refund request and completion
+ * A role that may review payments therefore cannot move money.
  */
 import type { FastifyInstance } from 'fastify';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Env } from '../config/env.js';
-import { requireAdmin } from '../lib/guards.js';
+import { requirePermission } from '../lib/guards.js';
 import { parseOrThrow } from '../lib/validation.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { getDb } from '../db/client.js';
@@ -49,10 +55,8 @@ const completeRefundSchema = z.object({
 });
 
 export async function adminUpiRoutes(app: FastifyInstance, env: Env): Promise<void> {
-  const guard = async (request: Parameters<typeof requireAdmin>[0]) => requireAdmin(request, env);
-
   app.get('/upi/overview', async (request) => {
-    await guard(request);
+    await requirePermission(request, env, 'payments.read');
     const stats = await upiStats();
     const db = getDb();
     const [observerRow] = await db
@@ -79,14 +83,14 @@ export async function adminUpiRoutes(app: FastifyInstance, env: Env): Promise<vo
   });
 
   app.get('/upi/orders', async (request) => {
-    await guard(request);
+    await requirePermission(request, env, 'payments.read');
     const { limit } = request.query as { limit?: string };
     const rows = await listOrders(Math.min(Number(limit ?? 50) || 50, 200));
     return { orders: rows };
   });
 
   app.get('/upi/notifications', async (request) => {
-    await guard(request);
+    await requirePermission(request, env, 'payments.read');
     const { limit } = request.query as { limit?: string };
     const rows = await listNotifications(Math.min(Number(limit ?? 50) || 50, 200));
     return {
@@ -108,7 +112,7 @@ export async function adminUpiRoutes(app: FastifyInstance, env: Env): Promise<vo
   });
 
   app.post('/upi/notifications/:id/match', async (request) => {
-    const auth = await guard(request);
+    const auth = await requirePermission(request, env, 'payments.manage');
     const { id } = request.params as { id: string };
     const input = parseOrThrow(matchSchema, request.body);
 
@@ -127,7 +131,7 @@ export async function adminUpiRoutes(app: FastifyInstance, env: Env): Promise<vo
   });
 
   app.post('/upi/orders/:id/refund', async (request) => {
-    const auth = await guard(request);
+    const auth = await requirePermission(request, env, 'payments.refund');
     const { id } = request.params as { id: string };
     const input = parseOrThrow(refundSchema, request.body);
 
@@ -147,7 +151,7 @@ export async function adminUpiRoutes(app: FastifyInstance, env: Env): Promise<vo
   });
 
   app.post('/upi/refunds/:id/complete', async (request) => {
-    const auth = await guard(request);
+    const auth = await requirePermission(request, env, 'payments.refund');
     const { id } = request.params as { id: string };
     const input = parseOrThrow(completeRefundSchema, request.body);
 
@@ -164,7 +168,7 @@ export async function adminUpiRoutes(app: FastifyInstance, env: Env): Promise<vo
   });
 
   app.get('/upi/refunds', async (request) => {
-    await guard(request);
+    await requirePermission(request, env, 'payments.read');
     const db = getDb();
     const rows = await db.select().from(upiRefunds).orderBy(desc(upiRefunds.createdAt)).limit(100);
     return { refunds: rows };
@@ -172,7 +176,7 @@ export async function adminUpiRoutes(app: FastifyInstance, env: Env): Promise<vo
 
   /** Force an immediate poll. Useful after wiring credentials, or on suspicion. */
   app.post('/upi/observer/poll', async (request) => {
-    const auth = await guard(request);
+    const auth = await requirePermission(request, env, 'payments.manage');
     const result = await pollGmailOnce(env);
     await recordAudit({
       actorId: auth.user.id,
@@ -187,7 +191,7 @@ export async function adminUpiRoutes(app: FastifyInstance, env: Env): Promise<vo
 
   /** Resolve a single order, for the detail drawer. */
   app.get('/upi/orders/:id', async (request) => {
-    await guard(request);
+    await requirePermission(request, env, 'payments.read');
     const { id } = request.params as { id: string };
     const order = await getOrderById(id);
     if (!order) throw notFound('Order not found');
