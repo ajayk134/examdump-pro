@@ -397,6 +397,41 @@ describe('timestamp-bound ingest signature', () => {
     const res = await post(body, { 'x-upi-signature': signWithTimestamp(ts, body), 'x-upi-timestamp': ts });
     expect(res.statusCode).toBe(400);
   });
+
+  it('refuses a request whose raw bytes were not captured', async () => {
+    /*
+     * Regression: the route used `request.rawBody ?? ''`, so a request that
+     * reached the handler without captured bytes would be hashed as an empty
+     * string instead of being refused. The empty-body signature below is exactly
+     * what that fallback would have accepted.
+     *
+     * A request with no body is answered by the JSON content-type parser before
+     * the handler runs (empty payload -> `{}`, rawBody never set), so it exits
+     * through schema validation. That is still a refusal, which is the property
+     * under test: nothing is hashed, nothing is stored, no 2xx. The raw-body rule
+     * itself is covered directly in `payments.test.ts` against `requireRawBody`.
+     */
+    const emptySignature = createHmac('sha256', SECRET).update('').digest('hex');
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/upi/ingest/sms',
+      headers: { 'x-upi-signature': emptySignature },
+      payload: '',
+    });
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+
+    const rows = await getDb().select().from(upiNotifications);
+    expect(rows.length).toBe(0);
+  });
+
+  it('refuses an oversized body before hashing it', async () => {
+    // A public endpoint must not HMAC an attacker-chosen megabyte of bytes.
+    const body = { text: 'x'.repeat(9 * 1024) };
+    const ts = String(Date.now());
+    const res = await post(body, { 'x-upi-signature': signWithTimestamp(ts, body), 'x-upi-timestamp': ts });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: { message: string } }).error.message).toMatch(/too large/i);
+  });
 });
 
 

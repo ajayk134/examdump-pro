@@ -16,11 +16,12 @@
  * to settle is to present notification text that survives the same matching the
  * Gmail observer goes through.
  */
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { Env } from '../config/env.js';
 import { badRequest, unauthorized } from '../lib/errors.js';
+import { requireRawBody } from './payments.js';
 import { ingestNotification } from '../services/upi/order.service.js';
 
 const ingestSchema = z.object({
@@ -43,6 +44,15 @@ const ingestSchema = z.object({
 
 /** How far a bridge-supplied timestamp may drift from server time. */
 const MAX_TIMESTAMP_SKEW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Largest body we will hash and parse.
+ *
+ * The global `bodyLimit` is 1 MB, which is far more than any bank alert needs.
+ * Reading the signature over a megabyte of attacker-chosen bytes buys nothing and
+ * costs CPU on a public endpoint, so these routes cap much lower.
+ */
+const MAX_INGEST_BYTES = 8 * 1024;
 
 /**
  * Reject an implausible bridge timestamp.
@@ -105,18 +115,39 @@ function verifySignature(
   return false;
 }
 
+/**
+ * Read the exact request bytes, or refuse.
+ *
+ * The signature covers the bytes as the bridge sent them. This route used
+ * `request.rawBody ?? ''`, which meant a request whose raw body was not captured
+ * was hashed as an empty string rather than rejected. That is the same unsafe
+ * fallback that was removed from the payment webhooks: it turns a missing input
+ * into a value an attacker can sometimes satisfy, and it would silently weaken
+ * verification if the raw-body content-type parser were ever unregistered.
+ *
+ * `requireRawBody` is shared with the payment webhooks so there is exactly one
+ * implementation of "give me the signed bytes or fail" in the codebase.
+ */
+function signedBytes(request: object): string {
+  const raw = requireRawBody(request as unknown as { rawBody?: unknown });
+  if (Buffer.byteLength(raw, 'utf8') > MAX_INGEST_BYTES) {
+    throw badRequest('Message body is too large to ingest.');
+  }
+  return raw;
+}
+
 export async function upiIngestRoutes(app: FastifyInstance, env: Env): Promise<void> {
   /*
-   * The app already installs a global JSON parser that preserves the raw body
-   * (the payment webhooks depend on it), so the bytes we hash here are exactly
-   * the bytes the sender signed.
+   * The app installs a global JSON parser that retains the raw body, so the bytes
+   * hashed here are the bytes the sender signed — and a request without them is
+   * refused before the parser is even reached.
    */
 
   app.post('/ingest/sms', async (request) => {
     if (!env.UPI_SMS_INGEST_SECRET) {
       throw unauthorized('SMS ingest is not configured.');
     }
-    const rawBody = (request as FastifyRequest & { rawBody?: string }).rawBody ?? '';
+    const rawBody = signedBytes(request);
     const signature = (request.headers['x-upi-signature'] as string | undefined) ?? undefined;
     const signedAt = (request.headers['x-upi-timestamp'] as string | undefined) ?? undefined;
     if (!verifySignature(env, rawBody, signature, signedAt)) {
@@ -145,7 +176,7 @@ export async function upiIngestRoutes(app: FastifyInstance, env: Env): Promise<v
     if (!env.UPI_SMS_INGEST_SECRET) {
       throw unauthorized('Notification ingest is not configured.');
     }
-    const rawBody = (request as FastifyRequest & { rawBody?: string }).rawBody ?? '';
+    const rawBody = signedBytes(request);
     const signature = (request.headers['x-upi-signature'] as string | undefined) ?? undefined;
     const signedAt = (request.headers['x-upi-timestamp'] as string | undefined) ?? undefined;
     if (!verifySignature(env, rawBody, signature, signedAt)) {
