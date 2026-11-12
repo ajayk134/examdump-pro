@@ -126,12 +126,35 @@ over the raw body.
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/api/upi/status` | `{available, autoApprove, payeeName, orderTtlMinutes}` |
+| GET | `/api/upi/status` | `{available, autoApprove, payeeName, orderTtlMinutes, verification}` |
 | POST | `/api/upi/orders` | creates an order with a unique amount |
 | GET | `/api/upi/orders/active` | the caller's live order |
-| GET | `/api/upi/orders/:id` | order detail |
+| GET | `/api/upi/orders/:id` | poll one order (the checkout does this) |
 | POST | `/api/upi/orders/:id/cancel` | cancel |
-| POST | `/api/upi/ingest` | shared-secret alert ingest (`UPI_SMS_INGEST_SECRET`) |
+| POST | `/api/upi/ingest/sms` | shared-secret alert ingest (`UPI_SMS_INGEST_SECRET`) |
+| POST | `/api/upi/ingest/notification` | generic relay ingest, same authentication |
+
+`GET /api/upi/orders/:id` returns a **customer-facing** `status`, not the database
+enum, because the checkout renders it directly and must not need to know the
+schema:
+
+| `status` | Meaning |
+| --- | --- |
+| `pending` | QR is live; nothing has arrived |
+| `processing` | a credit for this exact amount was seen and is being verified |
+| `paid` | settled; the plan is already active |
+| `expired` | the payment window closed |
+| `cancelled` | the payer abandoned the order |
+
+The response also carries `review: {observedAt, amountPaise} | null` while a credit
+is being verified, and `verification: 'automatic_match' | 'reviewed_match'` so the
+page states which confirmation the payer will actually get. The bank reference,
+risk score and reviewer notes are never included.
+
+The ingest routes authenticate by HMAC-SHA256 over the **raw** request body, bound
+to the `X-UPI-Timestamp` header. A request whose exact bytes were not captured is
+refused; the signature is never computed over re-serialised JSON. No endpoint
+accepts a "mark this order paid" instruction.
 
 ### Admin — `admin.ts`, `admin-ops.ts`, `admin-email.ts`, `admin-upi.ts`
 

@@ -28,6 +28,7 @@ export function buildOpenApi(publicWebUrl: string) {
       { name: 'Notes' },
       { name: 'Subscriptions' },
       { name: 'Coupons' },
+      { name: 'UPI' },
       { name: 'Referrals' },
       { name: 'Notifications' },
       { name: 'Leaderboard' },
@@ -119,6 +120,86 @@ export function buildOpenApi(publicWebUrl: string) {
       '/admin/users': { get: { tags: ['Admin'], security: bearer, summary: 'List users', responses: { 200: ok('Users') } } },
       '/admin/settings': { get: { tags: ['Admin'], security: bearer, summary: 'Get settings', responses: { 200: ok('Settings') } }, patch: { tags: ['Admin'], security: bearer, summary: 'Update settings', responses: { 200: ok('Settings updated') } } },
       '/admin/dataset/sync': { post: { tags: ['Admin'], security: bearer, summary: 'Sync dataset catalog from GitHub', responses: { 200: ok('Sync result') } } },
+      /*
+       * UPI. These are documented because the checkout and the SMS bridge are
+       * external consumers: the browser polls the order status and a handset
+       * posts notifications, so both need a stable, published contract.
+       */
+      '/upi/status': {
+        get: {
+          tags: ['UPI'],
+          summary: 'Is UPI collection configured, and how are payments confirmed',
+          responses: { 200: ok('UPI availability') },
+        },
+      },
+      '/upi/orders': {
+        post: {
+          tags: ['UPI'],
+          security: bearer,
+          summary: 'Start a UPI checkout and receive a QR for a unique amount',
+          responses: {
+            200: ok('Order with server-rendered QR and app intents'),
+            400: err('UPI unavailable or the plan has no amount due'),
+            401: err('Unauthorized'),
+          },
+        },
+      },
+      '/upi/orders/active': {
+        get: {
+          tags: ['UPI'],
+          security: bearer,
+          summary: "The caller's live order, if any",
+          responses: { 200: ok('Order or null'), 401: err('Unauthorized') },
+        },
+      },
+      '/upi/orders/{id}': {
+        get: {
+          tags: ['UPI'],
+          security: bearer,
+          summary: 'Poll one order',
+          description:
+            '`status` is customer-facing: pending, processing, paid, expired or cancelled. ' +
+            '`processing` means a matching credit was seen and is being verified.',
+          parameters: [{ in: 'path', name: 'id', required: true, schema: { type: 'string', format: 'uuid' } }],
+          responses: { 200: ok('Order'), 401: err('Unauthorized'), 404: err('Not found') },
+        },
+      },
+      '/upi/orders/{id}/cancel': {
+        post: {
+          tags: ['UPI'],
+          security: bearer,
+          summary: 'Abandon an order',
+          parameters: [{ in: 'path', name: 'id', required: true, schema: { type: 'string', format: 'uuid' } }],
+          responses: { 200: ok('Cancelled'), 401: err('Unauthorized'), 404: err('Not found') },
+        },
+      },
+      '/upi/ingest/sms': {
+        post: {
+          tags: ['UPI'],
+          summary: 'SMS bridge ingest',
+          description:
+            'Authenticated by `X-UPI-Signature`, an HMAC-SHA256 over the raw request body ' +
+            'bound to the `X-UPI-Timestamp` header. Never authenticates a request without ' +
+            'the exact signed bytes. Cannot mark an order paid directly.',
+          responses: {
+            200: ok('Accepted (whether it matched is not disclosed)'),
+            400: err('Oversized body or unusable timestamp'),
+            401: err('Not configured or signature verification failed'),
+          },
+        },
+      },
+      '/upi/ingest/notification': {
+        post: {
+          tags: ['UPI'],
+          summary: 'Generic notification relay ingest',
+          description: 'Same authentication and matching rules as `/upi/ingest/sms`.',
+          responses: {
+            200: ok('Accepted'),
+            400: err('Oversized body or unusable timestamp'),
+            401: err('Not configured or signature verification failed'),
+          },
+        },
+      },
     },
     externalDocs: { url: `${publicWebUrl}/api/docs`, description: 'Full documentation' },
   };
