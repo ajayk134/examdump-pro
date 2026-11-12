@@ -220,10 +220,16 @@ const envSchema = z.object({
   /** Optional label used in IMAP/Gmail search to narrow the mailbox. */
   UPI_GMAIL_LABEL: z.string().default('INBOX'),
   /**
-   * Gmail search expression selecting bank alerts. Defaults to unread mail in
-   * the dedicated payment mailbox; narrow it further with `from:` filters.
+   * Gmail search expression selecting bank alerts.
+   *
+   * Defaults to the whole mailbox, deliberately. The observer holds only
+   * `gmail.readonly` and never marks mail read, so `is:unread` degenerates into
+   * "all mail ever" and — because results come oldest-page-first — silently drops
+   * every new payment once the mailbox holds more than one page of alerts. Add a
+   * `newer_than:` bound if polling cost matters; re-ingestion is deduplicated, so
+   * a wide query is safe. Any `is:unread` / `-is:read` term is stripped at runtime.
    */
-  UPI_GMAIL_QUERY: z.string().default('is:unread'),
+  UPI_GMAIL_QUERY: z.string().default('in:anywhere'),
 });
 
 export type Env = z.infer<typeof envSchema>;

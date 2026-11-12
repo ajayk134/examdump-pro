@@ -1351,3 +1351,74 @@ describe('notification ingestion is idempotent and replay-safe', () => {
     expect(live.length).toBe(1);
   });
 });
+
+/* ------------------------------------------------------------------------ */
+/* Gmail observer query                                                     */
+/* ------------------------------------------------------------------------ */
+
+describe('gmail observer query can never miss newer mail', () => {
+  /**
+   * Regression: the default query was `is:unread`, but the observer holds only
+   * `gmail.readonly` and never marks anything read. In that mailbox every bank
+   * alert stays unread forever, so `is:unread` selects the whole history and the
+   * first page of 25 results is the *oldest* mail. Once more than 25 alerts had
+   * arrived, a new payment never appeared in the result set and was dropped
+   * silently: the money arrives, the order expires.
+   */
+  it('drops an unread-state term, which is not a new-mail filter here', async () => {
+    const { normalizeObserverQuery } = await import('../src/services/upi/gmail-observer.js');
+
+    expect(normalizeObserverQuery('is:unread')).toEqual({ query: 'in:anywhere', widened: true });
+    expect(normalizeObserverQuery('(is:unread) from:alerts@hdfcbank.net')).toEqual({
+      query: 'from:alerts@hdfcbank.net',
+      widened: true,
+    });
+    expect(normalizeObserverQuery('is:unread newer_than:2d')).toEqual({
+      query: 'newer_than:2d',
+      widened: true,
+    });
+  });
+
+  it('leaves a safe query untouched', async () => {
+    const { normalizeObserverQuery } = await import('../src/services/upi/gmail-observer.js');
+
+    expect(normalizeObserverQuery('newer_than:2d from:alerts@hdfcbank.net')).toEqual({
+      query: 'newer_than:2d from:alerts@hdfcbank.net',
+      widened: false,
+    });
+    // A sender that merely contains the word must not be rewritten.
+    expect(normalizeObserverQuery('from:unread.alerts@bank.example')).toEqual({
+      query: 'from:unread.alerts@bank.example',
+      widened: false,
+    });
+  });
+
+  it('falls back to a mailbox-wide search when nothing usable is left', async () => {
+    const { normalizeObserverQuery } = await import('../src/services/upi/gmail-observer.js');
+
+    expect(normalizeObserverQuery(undefined)).toEqual({ query: 'in:anywhere', widened: false });
+    expect(normalizeObserverQuery('   ')).toEqual({ query: 'in:anywhere', widened: false });
+    expect(normalizeObserverQuery('is:unread')).toEqual({ query: 'in:anywhere', widened: true });
+  });
+
+  it('re-reading the same messages is a no-op, so a wide query is safe', async () => {
+    /*
+     * The reason the observer can afford to search the whole mailbox: ingesting an
+     * already-seen alert changes nothing. If this ever stopped being true, widening
+     * the query would become dangerous instead of merely slower.
+     */
+    const user = await makeUser('upi-wide-query@example.com');
+    const order = await makeOrder(user.id, 49900);
+    const text = creditAlertFor(order, '', randomUtr());
+    const at = new Date().toISOString();
+
+    const first = await ingestNotification(env, { source: 'gmail', text, timestamp: at });
+    const second = await ingestNotification(env, { source: 'gmail', text, timestamp: at });
+
+    expect(first.status).toBe('matched');
+    expect(second.status).toBe('duplicate');
+
+    const notifications = await getDb().select().from(upiNotifications);
+    expect(notifications.length).toBe(1);
+  });
+});

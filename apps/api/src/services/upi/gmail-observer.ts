@@ -146,7 +146,55 @@ export interface ObserverRunResult {
   scanned: number;
   ingested: number;
   matched: number;
+  /** Messages whose query only matched because they were unread. */
+  widened: number;
   error?: string;
+}
+
+/**
+ * Gmail search that returns everything still in the mailbox, ignoring read state.
+ *
+ * The observer never marks mail read (readonly scope), so a query that filters on
+ * `is:unread` selects **all** bank alerts ever received in the mailbox, oldest
+ * page first (`maxResults=25` with no page token). Once a mailbox has more than 25
+ * such messages, a new payment never appears in the result set at all, and it is
+ * dropped silently - the payer's money arrives and the order expires.
+ *
+ * The observer therefore always searches the whole mailbox. Re-reading recent
+ * messages costs one API call each and is harmless: `dedupeKey` and the `bank_reference`
+ * unique index make re-ingestion a no-op, so there is no benefit to filtering for
+ * "new" mail and a real risk in doing so.
+ */
+const MAILBOX_WIDE_QUERY = 'in:anywhere';
+
+/**
+ * Turn a configured query into one that cannot miss newer mail.
+ *
+ * Gmail's `newer_than:` is a date bound, which is safe. `is:unread` is not, because
+ * this account never marks anything read, so it degenerates into "everything".
+ * Dropping it is enough: the wall-clock `newer_than:` bound, if the operator set
+ * one, still applies, and dedupe handles the overlap on every poll.
+ */
+export function normalizeObserverQuery(query: string | undefined): { query: string; widened: boolean } {
+  const raw = (query ?? '').trim();
+  if (!raw) return { query: MAILBOX_WIDE_QUERY, widened: false };
+
+  /*
+   * Remove unread-state terms wherever they appear: `is:unread`, `is:unread ` at
+   * the start, inside parentheses, and Gmail's `-is:read` equivalent. Written as
+   * a token filter rather than a broad replace so a sender address that happens
+   * to contain the word is left alone.
+   */
+  const tokens = raw.split(/\s+/);
+  const kept = tokens.filter((token) => {
+    // Strip grouping punctuation before comparing, so `(is:unread)` is recognised
+    // as the unread term rather than treated as an unknown safe token.
+    const bare = token.replace(/^[(]+/, '').replace(/[)]+$/, '').toLowerCase();
+    return bare !== 'is:unread' && bare !== '-is:read';
+  });
+  const normalized = kept.join(' ').trim();
+  if (normalized === raw.trim()) return { query: raw, widened: false };
+  return { query: normalized || MAILBOX_WIDE_QUERY, widened: true };
 }
 
 /**
@@ -157,18 +205,20 @@ export interface ObserverRunResult {
  */
 export async function pollGmailOnce(env: Env): Promise<ObserverRunResult> {
   if (!gmailObserverConfigured(env)) {
-    return { configured: false, scanned: 0, ingested: 0, matched: 0 };
+    return { configured: false, scanned: 0, ingested: 0, matched: 0, widened: 0 };
   }
 
   let scanned = 0;
   let ingested = 0;
   let matched = 0;
+  let widened = 0;
 
   try {
     const token = await getAccessToken(env);
     const authHeaders = { Authorization: `Bearer ${token}` };
 
-    const query = env.UPI_GMAIL_QUERY || 'is:unread';
+    const normalized = normalizeObserverQuery(env.UPI_GMAIL_QUERY);
+    const query = normalized.query;
     const listUrl = `${GMAIL_API}/messages?maxResults=25&q=${encodeURIComponent(query)}`;
     const listResponse = await fetch(listUrl, { headers: authHeaders });
 
@@ -177,6 +227,23 @@ export async function pollGmailOnce(env: Env): Promise<ObserverRunResult> {
       throw new Error('gmail_unauthorized');
     }
     if (!listResponse.ok) throw new Error(`gmail_list_failed:${listResponse.status}`);
+    if (normalized.widened) {
+      widened = 1;
+      /*
+       * Recorded as a warning rather than silently corrected. An operator who
+       * wrote `is:unread` believes new mail is what gets read, and should know
+       * that this account never marks anything read.
+       */
+      console.warn(
+        JSON.stringify({
+          level: 40,
+          msg: 'upi.gmail_query_widened',
+          configured: env.UPI_GMAIL_QUERY,
+          effective: query,
+          reason: 'unread_state_is_not_a_new_message_filter',
+        }),
+      );
+    }
 
     const list = (await listResponse.json()) as { messages?: GmailMessageRef[] };
     const refs = list.messages ?? [];
@@ -218,11 +285,11 @@ export async function pollGmailOnce(env: Env): Promise<ObserverRunResult> {
     }
 
     await recordObserverPoll(OBSERVER_ID, { ok: true, cursor: String(Date.now()) });
-    return { configured: true, scanned, ingested, matched };
+    return { configured: true, scanned, ingested, matched, widened };
   } catch (err) {
     const message = (err as Error).message.slice(0, 300);
     await recordObserverPoll(OBSERVER_ID, { ok: false, error: message });
-    return { configured: true, scanned, ingested, matched, error: message };
+    return { configured: true, scanned, ingested, matched, widened, error: message };
   }
 }
 

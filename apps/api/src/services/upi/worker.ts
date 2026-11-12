@@ -26,7 +26,12 @@ let expiring = false;
 export const upiWorkerState = {
   started: false,
   lastPollAt: null as Date | null,
-  lastPollResult: null as { scanned: number; ingested: number; matched: number } | null,
+  lastPollResult: null as {
+    scanned: number;
+    ingested: number;
+    matched: number;
+    widened: number;
+  } | null,
   lastError: null as string | null,
 };
 
@@ -40,6 +45,7 @@ async function runPoll(env: Env): Promise<void> {
       scanned: result.scanned,
       ingested: result.ingested,
       matched: result.matched,
+      widened: result.widened,
     };
     if (result.error) {
       upiWorkerState.lastError = result.error;

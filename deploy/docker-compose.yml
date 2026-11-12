@@ -131,7 +131,7 @@ services:
       UPI_GOOGLE_REFRESH_TOKEN: ${UPI_GOOGLE_REFRESH_TOKEN:-}
       UPI_SMS_INGEST_SECRET: ${UPI_SMS_INGEST_SECRET:-}
       UPI_GMAIL_LABEL: ${UPI_GMAIL_LABEL:-INBOX}
-      UPI_GMAIL_QUERY: ${UPI_GMAIL_QUERY:-is:unread}
+      UPI_GMAIL_QUERY: ${UPI_GMAIL_QUERY:-in:anywhere}
       # ExamDump Pay adapter selection (see docs/infrastructure/mail-and-pay.md)
       PAYMENT_ADAPTER: ${PAYMENT_ADAPTER:-none}
       PAYMENT_METHODS: ${PAYMENT_METHODS:-upi,card}

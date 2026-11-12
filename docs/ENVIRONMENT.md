@@ -156,7 +156,7 @@ Deliverability guidance: `docs/infrastructure/email-deliverability-audit.md`.
 | `UPI_GMAIL_POLL_SECONDS` | O | — | |
 | `UPI_GMAIL_USER` | O | — | Mailbox receiving bank alerts |
 | `UPI_GMAIL_LABEL` | O | — | Only parse this label |
-| `UPI_GMAIL_QUERY` | O | — | Gmail search filter |
+| `UPI_GMAIL_QUERY` | O | `in:anywhere` | Gmail search filter. `is:unread` is unsafe here: the observer never marks mail read, so it selects the whole mailbox oldest-first and drops new payments |
 | `UPI_GOOGLE_CLIENT_ID` | O | — | OAuth for the observer mailbox |
 | `UPI_GOOGLE_CLIENT_SECRET` | O/S | — | |
 | `UPI_GOOGLE_REFRESH_TOKEN` | O/S | — | Long-lived; rotate if leaked |
