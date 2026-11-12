@@ -53,8 +53,36 @@ All notable changes to ExamDump Pro.
   byte string the provider signed. `requireRawBody` now refuses such a request
   with a 400 instead of substituting different bytes.
 
+- **UPI ingest refuses requests without signed raw bytes.** Both ingest routes
+  read the body with `request.rawBody ?? ''`, the same unsafe fallback removed from
+  the payment webhooks. They now share `requireRawBody`, and refuse bodies over
+  8 KB before hashing.
+- **Abandoning a UPI order closes its payment attempt.** Expiry and cancellation
+  left the `payments` row `pending` forever, so a second checkout could create a
+  second claimable payment for the same plan. Both paths now fail the payment
+  inside the same transaction, guarded on `status = 'pending'`.
+- **The Gmail observer no longer silently misses new payments.** With
+  `gmail.readonly` and no read-marking, the default `is:unread` query selected the
+  whole mailbox oldest-first and stopped returning new alerts once 25 existed. The
+  default is now `in:anywhere`, and any unread term is stripped with a warning.
+
 Each fix is covered by a regression test verified to fail against the previous
 code. Remaining limitations are listed in [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md).
+
+### Added (UPI automation)
+
+- **`processing` state in the checkout.** A UPI order now reports a
+  customer-visible status (`pending`, `processing`, `paid`, `expired`,
+  `cancelled`) instead of the database enum. A credit awaiting verification is
+  reported as `processing` with a redacted summary, so the payer is not left
+  looking at an unchanged QR and paying twice. The checkout polls in that state and
+  refreshes when the tab becomes visible again.
+- **`npm run upi:gmail-oauth`** — a real handshake script for the payment
+  mailbox: prints the consent URL, exchanges the code, refuses a grant wider than
+  `gmail.readonly`, and prints the refresh token once.
+- **[`docs/payments/UPI_SETUP.md`](payments/UPI_SETUP.md)** — the complete manual
+  checklist for enabling real payments, including what remains manual forever.
+- UPI routes added to the OpenAPI document and `API.md`; they were absent.
 
 ## [1.1.0] — 2026
 

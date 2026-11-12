@@ -18,6 +18,7 @@ Start here. Everything is organised by what you are trying to do.
 | Understand auth | [security/AUTHENTICATION.md](security/AUTHENTICATION.md) |
 | Check permissions | [security/AUTHORIZATION.md](security/AUTHORIZATION.md) |
 | Work on payments | [payments/UPI.md](payments/UPI.md), [payments/PAYMENT_SECURITY.md](payments/PAYMENT_SECURITY.md) |
+| Enable real UPI payments | [payments/UPI_SETUP.md](payments/UPI_SETUP.md) |
 | Deploy | [deployment/PRODUCTION.md](deployment/PRODUCTION.md) |
 | Recover from disaster | [deployment/DISASTER_RECOVERY.md](deployment/DISASTER_RECOVERY.md) |
 | Debug production | [operations/TROUBLESHOOTING.md](operations/TROUBLESHOOTING.md) |
@@ -60,6 +61,7 @@ docs/
     DISASTER_RECOVERY.md       scenarios, RTO, rebuild
   payments/
     UPI.md                     unique amounts, matching, limitations
+    UPI_SETUP.md               manual checklist to enable real payments
     PAYMENT_LIFECYCLE.md       both rails, idempotency
     REFUNDS.md                 thresholds and entitlement effects
     RECONCILIATION.md          drift repair

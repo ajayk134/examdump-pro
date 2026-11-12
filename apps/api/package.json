@@ -15,6 +15,7 @@
     "seed": "tsx src/db/seed.ts",
     "sync:dataset": "tsx src/scripts/sync-dataset.ts",
     "migrate": "tsx src/scripts/migrate.ts",
+    "upi:gmail-oauth": "tsx src/scripts/upi-gmail-oauth.ts",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
