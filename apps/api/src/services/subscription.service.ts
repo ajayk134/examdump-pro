@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import {
   DEFAULT_PLAN_DEFINITIONS,
   MULTI_EXAM_QUOTA,
@@ -1282,6 +1282,40 @@ export async function refundPayment(
   const amount = amountMinor ?? remaining;
   if (amount <= 0 || amount > remaining) {
     throw badRequest(`You can refund up to ${(remaining / 100).toFixed(2)} ${payment.currency}.`);
+  }
+
+  // Enforce PAYMENT_MAX_REFUNDS atomically. The count and the amount claim are
+  // evaluated inside a single conditional UPDATE, so two concurrent refunds can
+  // never both observe the same refund count and both proceed. A read-then-write
+  // check here would allow exactly that race.
+  const maxRefunds = env.PAYMENT_MAX_REFUNDS;
+  const [claimed] = await db
+    .update(payments)
+    .set({ updatedAt: new Date() })
+    .where(
+      and(
+        eq(payments.id, paymentId),
+        eq(payments.refundedMinor, payment.refundedMinor),
+        sql`(select count(*) from ${refunds}
+              where ${refunds.paymentId} = ${paymentId}
+                and ${refunds.status} <> 'failed') < ${maxRefunds}`,
+      ),
+    )
+    .returning({ id: payments.id });
+  if (!claimed) {
+    // Either the refunded amount moved under us (a concurrent refund won) or the
+    // refund-count ceiling has been reached.
+    const [countRow] = await db
+      .select({ refundCount: count() })
+      .from(refunds)
+      .where(and(eq(refunds.paymentId, paymentId), ne(refunds.status, 'failed')));
+    const refundCount = countRow?.refundCount ?? 0;
+    if (refundCount >= maxRefunds) {
+      throw badRequest(
+        `This payment has reached the limit of ${maxRefunds} refunds. Further refunds require manual review.`,
+      );
+    }
+    throw conflict('The payment was modified while the refund was being created. Please retry.');
   }
 
   const [refund] = await db
