@@ -506,6 +506,54 @@ describe('orders', () => {
     });
     expect(result.status).not.toBe('matched');
   });
+
+  it('fails the payment row when its order expires', async () => {
+    /*
+     * Regression: expiry closed the order but left its `payments` row `pending`.
+     * Because the checkout reuses an open order of the same price, a second
+     * checkout created a second payment row while the first stayed claimable -
+     * two live payments for one plan, which settlement could reach later.
+     */
+    const user = await makeUser('upi-expire-payment@example.com');
+    const order = await makeOrder(user.id, 49900);
+    await getDb()
+      .update(upiOrders)
+      .set({ expiresAt: new Date(Date.now() - 60_000) })
+      .where(eq(upiOrders.id, order.id));
+
+    await expireStaleOrders();
+
+    const [payment] = await getDb().select().from(payments).where(eq(payments.id, order.paymentId!));
+    expect(payment?.status).toBe('failed');
+    expect(payment?.failureReason).toBe('upi_order_expired');
+  });
+
+  it('fails the payment row when the customer cancels', async () => {
+    const user = await makeUser('upi-cancel-payment@example.com');
+    const order = await makeOrder(user.id, 49900);
+
+    await cancelOrder(order.id, 'cancelled_by_user');
+
+    const [payment] = await getDb().select().from(payments).where(eq(payments.id, order.paymentId!));
+    expect(payment?.status).toBe('failed');
+    expect(payment?.failureReason).toBe('upi_order_cancelled_by_user');
+  });
+
+  it('never rewrites a payment that already settled', async () => {
+    // Expiry must not touch a payment that is no longer `pending`; only the
+    // order's own liveness decides when the *payment attempt* is closed.
+    const user = await makeUser('upi-cancel-settled@example.com');
+    const order = await makeOrder(user.id, 49900);
+    await getDb()
+      .update(payments)
+      .set({ status: 'succeeded' })
+      .where(eq(payments.id, order.paymentId!));
+
+    await cancelOrder(order.id, 'cancelled_by_user');
+
+    const [payment] = await getDb().select().from(payments).where(eq(payments.id, order.paymentId!));
+    expect(payment?.status).toBe('succeeded');
+  });
 });
 
 describe('ingestion and matching', () => {

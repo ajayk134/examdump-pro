@@ -236,20 +236,58 @@ export async function getOrderById(orderId: string): Promise<UpiOrder | null> {
 /** Expire stale pending orders. Called on a timer; safe to run concurrently. */
 export async function expireStaleOrders(now = new Date()): Promise<number> {
   const db = getDb();
-  const expired = await db
-    .update(upiOrders)
-    .set({ status: 'expired', closedReason: 'ttl_elapsed', updatedAt: now })
-    .where(and(inArray(upiOrders.status, ['pending', 'under_review']), lt(upiOrders.expiresAt, now)))
-    .returning({ id: upiOrders.id });
-  return expired.length;
+  /*
+   * The `payments` row is failed in the same statement that expires the order.
+   *
+   * Without this a lapsed checkout left a `pending` payment behind forever, and
+   * the checkout page reuses an open order of the same price - so a second
+   * checkout created a *second* payment row while the first stayed claimable.
+   * Two pending payments for one plan is precisely the state in which a later
+   * credit could grant access to the wrong attempt. Closing both together keeps
+   * "one live order, one live payment" true.
+   *
+   * Only rows still `pending` are touched, so an order whose payment already
+   * settled (which cannot be `pending` here) is never rewritten.
+   */
+  return db.transaction(async (tx) => {
+    const expired = await tx
+      .update(upiOrders)
+      .set({ status: 'expired', closedReason: 'ttl_elapsed', updatedAt: now })
+      .where(and(inArray(upiOrders.status, ['pending', 'under_review']), lt(upiOrders.expiresAt, now)))
+      .returning({ id: upiOrders.id, paymentId: upiOrders.paymentId });
+
+    const paymentIds = expired.map((row) => row.paymentId).filter((id): id is string => Boolean(id));
+    if (paymentIds.length > 0) {
+      await tx
+        .update(payments)
+        .set({ status: 'failed', failureReason: 'upi_order_expired', updatedAt: now })
+        .where(and(inArray(payments.id, paymentIds), eq(payments.status, 'pending')));
+    }
+    return expired.length;
+  });
 }
 
 export async function cancelOrder(orderId: string, reason = 'cancelled_by_user'): Promise<void> {
   const db = getDb();
-  await db
-    .update(upiOrders)
-    .set({ status: 'cancelled', cancelledAt: new Date(), closedReason: reason, updatedAt: new Date() })
-    .where(and(eq(upiOrders.id, orderId), eq(upiOrders.status, 'pending')));
+  /*
+   * Same pairing as expiry: abandoning an order abandons its payment attempt.
+   * A `pending` payment left behind is a row settlement could still reach, so the
+   * order and the payment are closed in one transaction.
+   */
+  await db.transaction(async (tx) => {
+    const [cancelled] = await tx
+      .update(upiOrders)
+      .set({ status: 'cancelled', cancelledAt: new Date(), closedReason: reason, updatedAt: new Date() })
+      .where(and(eq(upiOrders.id, orderId), eq(upiOrders.status, 'pending')))
+      .returning({ paymentId: upiOrders.paymentId });
+
+    if (cancelled?.paymentId) {
+      await tx
+        .update(payments)
+        .set({ status: 'failed', failureReason: `upi_order_${reason}`, updatedAt: new Date() })
+        .where(and(eq(payments.id, cancelled.paymentId), eq(payments.status, 'pending')));
+    }
+  });
 }
 
 /* ---------------------------- notification ingest ------------------------ */
