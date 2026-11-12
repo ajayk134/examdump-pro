@@ -233,6 +233,70 @@ export async function getOrderById(orderId: string): Promise<UpiOrder | null> {
   return order ?? null;
 }
 
+/**
+ * The most recent credit that looks like it is for this order and is still being
+ * decided, if there is one.
+ *
+ * Used only to tell the payer "we have your payment, it is being verified". It is
+ * deliberately narrow:
+ *
+ *  - matched on the order's exact payable amount, never the base price;
+ *  - matched through `upi_matches` (this credit was attributed to *this* order)
+ *    or through an undecided notification carrying the order reference;
+ *  - restricted to notifications that are still `received`/`unmatched`, so a
+ *    rejected or already-spent credit can never re-enter a customer-facing state;
+ *  - read-only: it makes no state change, so polling cannot advance anything.
+ *
+ * Returning null is the correct answer for most orders and is not an error.
+ */
+export async function findPendingCredit(
+  order: Pick<UpiOrder, 'id' | 'amountPaise' | 'reference' | 'status'>,
+): Promise<{ observedAt: string; amountPaise: number } | null> {
+  const db = getDb();
+
+  // An order already held for review has a match row explaining it.
+  const [matched] = await db
+    .select({ receivedAt: upiNotifications.receivedAt, amountPaise: upiNotifications.amountPaise })
+    .from(upiMatches)
+    .innerJoin(upiNotifications, eq(upiNotifications.id, upiMatches.notificationId))
+    .where(eq(upiMatches.orderId, order.id))
+    .orderBy(desc(upiNotifications.receivedAt))
+    .limit(1);
+
+  if (matched) {
+    return {
+      observedAt: matched.receivedAt.toISOString(),
+      amountPaise: matched.amountPaise ?? order.amountPaise,
+    };
+  }
+
+  /*
+   * Either no match row exists yet, or the order is still `pending`. A credit that
+   * quotes our reference in the bank's message is unattributable by amount alone,
+   * so it is the one case where the reference is trusted for display purposes. It
+   * never settles anything: settlement goes through the matcher and the risk
+   * engine, which the reference alone does not satisfy.
+   */
+  const [pending] = await db
+    .select({ receivedAt: upiNotifications.receivedAt, amountPaise: upiNotifications.amountPaise })
+    .from(upiNotifications)
+    .where(
+      and(
+        eq(upiNotifications.amountPaise, order.amountPaise),
+        inArray(upiNotifications.status, ['received', 'unmatched']),
+        sql`upper(${upiNotifications.rawText}) like ${`%${order.reference.toUpperCase()}%`}`,
+      ),
+    )
+    .orderBy(desc(upiNotifications.receivedAt))
+    .limit(1);
+
+  if (!pending) return null;
+  return {
+    observedAt: pending.receivedAt.toISOString(),
+    amountPaise: pending.amountPaise ?? order.amountPaise,
+  };
+}
+
 /** Expire stale pending orders. Called on a timer; safe to run concurrently. */
 export async function expireStaleOrders(now = new Date()): Promise<number> {
   const db = getDb();

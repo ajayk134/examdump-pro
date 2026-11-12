@@ -23,7 +23,14 @@ import { Badge, Card, Spinner } from '@/components/ui';
 interface UpiOrder {
   id: string;
   reference: string;
-  status: 'pending' | 'settled' | 'expired' | 'cancelled' | 'refunded';
+  /**
+   * Customer-visible status, decided by the server:
+   *   pending    - QR is live, nothing has arrived
+   *   processing - a matching credit was seen and is being verified
+   *   paid       - settled; plan already active
+   *   expired / cancelled - the window closed
+   */
+  status: 'pending' | 'processing' | 'paid' | 'expired' | 'cancelled';
   amountPaise: number;
   amountLabel: string;
   /** Quoted plan price, before the per-attempt uniqueness suffix. */
@@ -36,6 +43,10 @@ interface UpiOrder {
   description: string;
   qrSvg: string;
   intents: { id: string; label: string; href: string }[];
+  /** Present when a credit for this order is awaiting verification. */
+  review?: { observedAt: string; amountPaise: number } | null;
+  /** How the server will confirm this payment. Drives the copy below. */
+  verification?: 'automatic_match' | 'reviewed_match';
   expiresAt: string;
   settledAt: string | null;
 }
@@ -46,7 +57,7 @@ interface UpiStatus {
   verification: string;
 }
 
-type Phase = 'loading' | 'ready' | 'settled' | 'expired' | 'unavailable';
+type Phase = 'loading' | 'ready' | 'processing' | 'settled' | 'expired' | 'unavailable';
 
 export default function UpiCheckoutPage() {
   const router = useRouter();
@@ -89,7 +100,15 @@ export default function UpiCheckoutPage() {
         });
         if (cancelled) return;
         setOrder(res.order);
-        setPhase(res.order.status === 'settled' ? 'settled' : 'ready');
+        setPhase(
+          res.order.status === 'paid'
+            ? 'settled'
+            : res.order.status === 'processing'
+              ? 'processing'
+              : res.order.status === 'expired' || res.order.status === 'cancelled'
+                ? 'expired'
+                : 'ready',
+        );
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError && err.status === 401) {
@@ -107,7 +126,7 @@ export default function UpiCheckoutPage() {
 
   /* Countdown to expiry, computed from the server clock offset-free deadline. */
   useEffect(() => {
-    if (!order || phase !== 'ready') return;
+    if (!order || (phase !== 'ready' && phase !== 'processing')) return;
     const tick = () => {
       const ms = new Date(order.expiresAt).getTime() - Date.now();
       const secs = Math.max(0, Math.round(ms / 1000));
@@ -119,28 +138,45 @@ export default function UpiCheckoutPage() {
     return () => clearInterval(timer);
   }, [order, phase]);
 
-  /* Poll until the server says the money arrived. */
+  /*
+   * Poll until the server says the money arrived. Running while `processing` too
+   * is the point: a credit being verified is the likeliest order to settle next,
+   * and without polling here the payer would have to reload to learn that access
+   * was granted.
+   */
   useEffect(() => {
-    if (!order || phase !== 'ready') return;
-    pollRef.current = setInterval(async () => {
+    if (!order || (phase !== 'ready' && phase !== 'processing')) return;
+    const orderId = order.id;
+
+    /** One status read, shared by the interval and the tab-focus refresh. */
+    async function refresh() {
       try {
-        const res = await get<{ order: UpiOrder }>(`/upi/orders/${order.id}`);
-        if (res.order.status === 'settled') {
-          setOrder(res.order);
-          setPhase('settled');
-        } else if (res.order.status === 'expired') {
-          setPhase('expired');
-        } else if (res.order.status === 'cancelled') {
-          setPhase('expired');
-        }
+        const res = await get<{ order: UpiOrder }>(`/upi/orders/${orderId}`);
+        setOrder(res.order);
+        if (res.order.status === 'paid') setPhase('settled');
+        else if (res.order.status === 'processing') setPhase('processing');
+        else if (res.order.status === 'expired' || res.order.status === 'cancelled') setPhase('expired');
       } catch {
         // A transient poll failure is not a payment failure; keep trying.
       }
-    }, 4000);
+    }
+
+    pollRef.current = setInterval(() => void refresh(), 4000);
+
+    /*
+     * A phone that was put down mid-payment stops being polled by the browser
+     * timer, so one refresh happens immediately when the tab is brought back.
+     */
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
     return () => {
+      document.removeEventListener('visibilitychange', onVisible);
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [order, phase]);
+  }, [order?.id, phase]);
 
   async function cancel() {
     if (!order) return;
@@ -227,6 +263,61 @@ export default function UpiCheckoutPage() {
           <Link href="/pricing" className="btn-primary mt-6 inline-flex">
             Choose a plan again
           </Link>
+        </Card>
+      </main>
+    );
+  }
+
+  if (phase === 'processing') {
+    return (
+      <main className="mx-auto w-full max-w-2xl px-4 py-16">
+        <Card className="p-8">
+          <div className="flex items-center gap-3">
+            <Spinner className="h-5 w-5" />
+            <h1 className="text-xl font-semibold text-content-primary">Verifying your payment</h1>
+          </div>
+          <p className="mt-3 text-sm leading-relaxed text-content-secondary">
+            We have received a transfer that matches this order and it is being checked before your
+            plan is switched on. <strong className="text-content-primary">Do not pay again</strong> -
+            a second transfer cannot be matched to the same order and would need a manual refund.
+          </p>
+          <p className="mt-3 text-sm text-content-secondary">
+            This page updates by itself. You can leave it; your plan activates even if you close the
+            tab.
+          </p>
+          {order && (
+            <dl className="mt-6 space-y-2 rounded-xl bg-surface-sunken p-4 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-content-secondary">Amount</dt>
+                <dd className="font-semibold text-content-primary">{order.amountLabel}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-content-secondary">Reference</dt>
+                <dd className="font-mono text-content-primary">{order.reference}</dd>
+              </div>
+              {order.review?.observedAt && (
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-content-secondary">Seen</dt>
+                  <dd className="text-content-primary">
+                    {new Date(order.review.observedAt).toLocaleString('en-IN', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })}
+                  </dd>
+                </div>
+              )}
+            </dl>
+          )}
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link href="/pricing" className="btn-ghost">
+              Back to plans
+            </Link>
+          </div>
+          <p className="mt-6 text-xs leading-relaxed text-content-muted">
+            {order?.verification === 'automatic_match'
+              ? 'Confirmation comes from the bank transfer alert for this account and is matched automatically.'
+              : 'Confirmation comes from the bank transfer alert for this account and is checked by a person before your plan is activated.'}
+          </p>
         </Card>
       </main>
     );

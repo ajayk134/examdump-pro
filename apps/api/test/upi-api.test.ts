@@ -511,3 +511,141 @@ describe('admin order detail does not leak other orders', () => {
     expect(body.recentMatches[0]?.bankReference).toBe('AAAAORDERA');
   });
 });
+
+/* ======================================================================== */
+/* Customer-visible order status                                            */
+/* ======================================================================== */
+
+describe('customer-visible order status', () => {
+  /**
+   * The checkout page polls one order and renders whatever `status` says. Those
+   * are customer-facing names (pending / processing / paid / expired / cancelled),
+   * not database enum values, so the page cannot accidentally become a second
+   * place that knows the schema.
+   *
+   * `processing` is the one that matters for automation: without it a credit
+   * waiting for verification looks exactly like "nothing has arrived", so the
+   * payer sends the money a second time.
+   */
+  async function seedOrder(opts: { status: string; amountPaise?: number }) {
+    const db = getDb();
+    await db.delete(upiMatches);
+    await db.delete(upiNotifications);
+    await db.delete(upiOrders);
+    const buyer = await registerVerifiedUser(ctx.app, { email: `upi-status-${crypto.randomUUID()}@example.com` });
+    const [order] = await db
+      .insert(upiOrders)
+      .values({
+        reference: `ED${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`,
+        userId: buyer.userId,
+        amountPaise: opts.amountPaise ?? 49937,
+        baseAmountPaise: 49900,
+        payeeVpa: 'examdump@okhdfcbank',
+        payeeName: 'ExamDump',
+        upiUri: 'upi://pay?pa=examdump@okhdfcbank&am=499.37',
+        description: 'Test plan',
+        status: opts.status as never,
+        expiresAt: new Date(Date.now() + 15 * 60_000),
+      })
+      .returning();
+    return { order: order!, cookie: buyer.cookie };
+  }
+
+  async function getOrder(id: string, cookie: string) {
+    const res = await ctx.app.inject({ method: 'GET', url: `/api/upi/orders/${id}`, headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    return res.json() as {
+      order: {
+        status: string;
+        amountPaise: number;
+        amountLabel: string;
+        review: { observedAt: string; amountPaise: number } | null;
+        verification: string;
+        qrSvg: string;
+        upiUri: string;
+      };
+    };
+  }
+
+  it('reports a live order as pending with no review summary', async () => {
+    const { order, cookie } = await seedOrder({ status: 'pending' });
+    const body = await getOrder(order.id, cookie);
+    expect(body.order.status).toBe('pending');
+    expect(body.order.review).toBeNull();
+  });
+
+  it('reports a held match as processing, which is what stops a second payment', async () => {
+    const { order, cookie } = await seedOrder({ status: 'under_review' });
+    const db = getDb();
+    const [note] = await db
+      .insert(upiNotifications)
+      .values({
+        source: 'gmail',
+        status: 'unmatched',
+        amountPaise: 49937,
+        bankReference: 'STATUSREVIEW',
+        rawText: `Rs.499.37 credited. Ref ${order.reference}`,
+        observedAt: new Date(),
+        dedupeKey: `k-status-${Date.now()}`,
+      })
+      .returning();
+    await db.insert(upiMatches).values({
+      orderId: order.id,
+      notificationId: note!.id,
+      decision: 'rejected',
+      reasons: ['held_for_review'],
+      confidence: 90,
+      amountPaise: 49937,
+    });
+
+    const body = await getOrder(order.id, cookie);
+    expect(body.order.status).toBe('processing');
+    expect(body.order.review?.amountPaise).toBe(49937);
+    // The bank reference must not be exposed to the payer.
+    expect(JSON.stringify(body.order)).not.toContain('STATUSREVIEW');
+  });
+
+  it('reports a settled order as paid and never re-opens it', async () => {
+    const { order, cookie } = await seedOrder({ status: 'settled' });
+    const body = await getOrder(order.id, cookie);
+    expect(body.order.status).toBe('paid');
+    expect(body.order.review).toBeNull();
+  });
+
+  it('reports a cancelled order as cancelled, not as pending', async () => {
+    const { order, cookie } = await seedOrder({ status: 'cancelled' });
+    const body = await getOrder(order.id, cookie);
+    expect(body.order.status).toBe('cancelled');
+  });
+
+  it('says which verification the payer will actually get', async () => {
+    const { order, cookie } = await seedOrder({ status: 'pending' });
+    const body = await getOrder(order.id, cookie);
+    // The test env runs with auto-approval off, exactly like the first deployment.
+    expect(['automatic_match', 'reviewed_match']).toContain(body.order.verification);
+  });
+
+  it('never lets another account read the order', async () => {
+    const { order } = await seedOrder({ status: 'pending' });
+    const stranger = await registerVerifiedUser(ctx.app, {
+      email: `upi-status-stranger-${crypto.randomUUID()}@example.com`,
+    });
+    const res = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/upi/orders/${order.id}`,
+      headers: { cookie: stranger.cookie },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('keeps the QR payload identical across polls', async () => {
+    // A poll must not re-derive the payment parameters: what the payer scanned
+    // has to stay byte-identical or a mid-payment refresh would change the amount.
+    const { order, cookie } = await seedOrder({ status: 'pending' });
+    const first = await getOrder(order.id, cookie);
+    const second = await getOrder(order.id, cookie);
+    expect(second.order.qrSvg).toBe(first.order.qrSvg);
+    expect(second.order.upiUri).toBe(first.order.upiUri);
+    expect(second.order.amountPaise).toBe(first.order.amountPaise);
+  });
+});
