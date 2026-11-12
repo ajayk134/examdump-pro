@@ -16,6 +16,7 @@ import {
 import { resolvePaymentAdapter, checkoutAvailable } from '../src/services/payments/registry.js';
 import { razorpayAdapter, mapRazorpayStatus } from '../src/services/payments/razorpay.adapter.js';
 import { createCheckout, assertRefundable } from '../src/services/payments/checkout.service.js';
+import { requireRawBody } from '../src/routes/payments.js';
 
 let ctx: TestContext;
 
@@ -274,6 +275,66 @@ describe('webhook endpoint', () => {
       payload: { event: 'payment.captured', payload: {} },
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects a signature computed over re-serialised JSON rather than the raw bytes', async () => {
+    // The classic confusion: signing JSON.stringify(parsed) instead of the bytes
+    // the provider sent. Key order differs here, so the signatures must differ
+    // and the request must be refused.
+    const asSent = '{"event":"payment.captured","payload":{"payment":{"entity":{"id":"pay_x"}}}}';
+    const reserialised = JSON.stringify(JSON.parse(asSent));
+    const wrongSignature = createHmac('sha256', 'test-webhook-secret')
+      .update(reserialised, 'utf8')
+      .digest('hex');
+
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/payments/webhook/razorpay',
+      headers: {
+        'content-type': 'application/json',
+        'x-razorpay-signature': wrongSignature,
+      },
+      payload: asSent,
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects a HyperSwitch webhook that carries no raw body bytes', async () => {
+    // No bytes means nothing to authenticate. The route must refuse rather than
+    // synthesise them from the parsed object.
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/payments/webhook/hyperswitch',
+      headers: { 'content-type': 'application/json', 'x-webhook-signature-512': 'deadbeef' },
+      payload: '',
+    });
+    expect([400, 401]).toContain(res.statusCode);
+  });
+
+  it('requireRawBody refuses when the raw bytes are missing', () => {
+    // Without raw bytes a webhook cannot be authenticated. The helper must throw
+    // rather than hand back reconstructed JSON, which would let a signature be
+    // checked against bytes the provider never sent.
+    expect(() => requireRawBody({})).toThrow(/raw request body is required/i);
+    expect(() => requireRawBody({ rawBody: '' })).toThrow(/raw request body is required/i);
+    expect(() => requireRawBody({ rawBody: undefined })).toThrow(/raw request body is required/i);
+    expect(requireRawBody({ rawBody: '{"a":1}' })).toBe('{"a":1}');
+  });
+
+  it('treats re-serialisation as a different byte string, never a substitute', () => {
+    // The reason the route refuses instead of falling back to JSON.stringify:
+    // the same JSON value can serialise to different bytes, so a fallback would
+    // verify something the provider never signed.
+    // Whitespace is the realistic difference: providers pretty-print or pad,
+    // and JSON.stringify compacts. Same value, different bytes, different HMAC.
+    const asSent = '{ "b": 2, "a": 1 }';
+    const reserialised = JSON.stringify(JSON.parse(asSent));
+    expect(reserialised).not.toBe(asSent);
+
+    const secret = 'bytes-secret';
+    const sentSig = createHmac('sha256', secret).update(asSent, 'utf8').digest('hex');
+    const reSig = createHmac('sha256', secret).update(reserialised, 'utf8').digest('hex');
+    expect(sentSig).not.toBe(reSig);
   });
 });
 

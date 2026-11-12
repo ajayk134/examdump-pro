@@ -42,6 +42,23 @@ import { createCheckout, fetchGatewayStatus, refundableFor } from '../services/p
 import { razorpayAdapter } from '../services/payments/razorpay.adapter.js';
 import { getSettings } from '../services/settings.service.js';
 
+/**
+ * Return the exact request bytes captured before JSON parsing, or refuse.
+ *
+ * Webhook signatures cover the bytes as the provider sent them. Re-serialising
+ * the parsed object yields different bytes (whitespace, key order, number
+ * formatting), so a fallback would either fail confusingly or, worse, verify a
+ * value the provider never signed. When the raw body is absent the request
+ * cannot be authenticated at all, so it is rejected instead of guessed at.
+ */
+export function requireRawBody(request: { rawBody?: unknown }): string {
+  const raw = request.rawBody;
+  if (typeof raw !== 'string' || raw.length === 0) {
+    throw badRequest('Raw request body is required for signature verification.');
+  }
+  return raw;
+}
+
 export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<void> {
   app.get('/methods', async (request, reply) => {
     const auth = await requireAuth(request, env).catch(() => null);
@@ -132,7 +149,7 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
     '/webhook/razorpay',
     { config: { rateLimit: { max: 600, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const raw = (request as unknown as { rawBody?: string }).rawBody ?? JSON.stringify(request.body ?? {});
+      const raw = requireRawBody(request as unknown as { rawBody?: unknown });
       const verified = await razorpayAdapter.verifyWebhook(env, {
         rawBody: raw,
         headers: request.headers as Record<string, string | string[] | undefined>,
@@ -362,7 +379,7 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
     { config: { rateLimit: { max: 600, timeWindow: '1 minute' } } },
     async (request, reply) => {
       const { recordWebhookEvent, processWebhookEvent } = await import('../services/webhook.service.js');
-      const raw = (request as unknown as { rawBody?: string }).rawBody ?? JSON.stringify(request.body ?? {});
+      const raw = requireRawBody(request as unknown as { rawBody?: unknown });
       const signature =
         (request.headers['x-webhook-signature-512'] as string | undefined) ??
         (request.headers['x-webhook-signature'] as string | undefined);
