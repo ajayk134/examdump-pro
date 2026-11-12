@@ -48,11 +48,14 @@ that never happened.
 - The unique settled-match index means a UPI order cannot be settled twice, so it
   cannot be refunded for more than it collected.
 
-> **Known gap — count cap is not enforced.** `PAYMENT_MAX_REFUNDS` is defined in
-> `apps/api/src/config/env.ts` (default 5) but is **not read anywhere else**. The
-> amount arithmetic prevents over-refunding, but nothing limits the *number* of
-> partial refunds. Treat this variable as inert until it is wired up; see
-> [known issues](../../KNOWN_ISSUES.md).
+`PAYMENT_MAX_REFUNDS` (default 5) caps the *number* of partial refunds per
+payment. It is enforced inside a single conditional `UPDATE` that counts settled
+refunds and claims the refund together, so two concurrent refunds cannot both
+pass the check — a read-then-write check would allow exactly that. Failed refunds
+do not consume the allowance because they never moved money. Reaching the cap
+returns a 400; a payment modified concurrently returns a 409.
+
+Regression coverage: `apps/api/test/refund-limit.test.ts`.
 
 ## What a refund does to entitlement
 

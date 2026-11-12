@@ -130,7 +130,7 @@ Deliverability guidance: `docs/infrastructure/email-deliverability-audit.md`.
 | `PAYMENT_HTTP_TIMEOUT_MS` | O | `20000` | |
 | `PAYMENT_WEBHOOK_TOLERANCE_SECONDS` | O | — | Replay window |
 | `PAYMENT_MIN_AMOUNT_MINOR` / `PAYMENT_MAX_AMOUNT_MINOR` | O | — | Minor units (paise) |
-| `PAYMENT_MAX_REFUNDS` | O | — | |
+| `PAYMENT_MAX_REFUNDS` | O | `5` | Max partial refunds per payment; enforced atomically in the refund path |
 | `DEFAULT_CURRENCY` | O | `INR` | |
 | `HYPERSWITCH_BASE_URL` | O | — | |
 | `HYPERSWITCH_API_KEY` | O/S | — | |

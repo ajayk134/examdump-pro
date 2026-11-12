@@ -29,10 +29,12 @@
 
 ## Authorization
 
-- Roles: `user` and `admin`. Admin routes call `requireAdmin`.
+- Five roles — Administrator, Billing, Content, Support, Learner — mapped to 23
+  permissions. Admin routes call `requirePermission(...)`; no admin route relies on
+  a blanket administrator check.
 - Email verification is required for subscription creation and AI.
-- Entitlements are derived from `user.plan` + `user.premiumUntil` and server
-  settings on every request.
+- Entitlements are derived server-side from active **subscriptions** and
+  **access grants**, never from client input.
 
 ## Dataset protection
 

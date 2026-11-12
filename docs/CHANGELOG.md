@@ -37,10 +37,24 @@ All notable changes to ExamDump Pro.
   `nginx -s reload` remains required after an API recreate — see
   `docs/OPERATIONS.md`.
 
-### Known issues
+### Fixed
 
-See [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md). Notably `PAYMENT_MAX_REFUNDS` is
-defined but not enforced, and UPI admin routes use a coarse `requireAdmin` guard.
+- **`PAYMENT_MAX_REFUNDS` is enforced.** The ceiling was defined and documented
+  but never read, so the number of partial refunds per payment was unbounded. It
+  is now enforced inside a conditional `UPDATE`, making the check atomic: two
+  concurrent refunds cannot both pass. Failed refunds do not consume the
+  allowance.
+- **Admin UPI routes use granular permissions.** A blanket `requireAdmin` guard
+  meant any Administrator could move money while a payments-review role could not
+  reach the routes at all. Routes now require `payments.read`,
+  `payments.manage` or `payments.refund` as appropriate.
+- **Webhooks no longer fall back to re-serialised JSON.** When the raw body was
+  absent the receivers hashed `JSON.stringify(request.body)`, which is not the
+  byte string the provider signed. `requireRawBody` now refuses such a request
+  with a 400 instead of substituting different bytes.
+
+Each fix is covered by a regression test verified to fail against the previous
+code. Remaining limitations are listed in [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md).
 
 ## [1.1.0] — 2026
 

@@ -47,16 +47,16 @@ Impact: an admin could issue many small partial refunds. Low financial risk
 Recommendation: enforce the count in the refund path, or remove the variable so it
 does not mislead operators.
 
-### F2 — `routes/admin-upi.ts` uses coarse `requireAdmin` (low)
+### F2 — `routes/admin-upi.ts` used coarse `requireAdmin` (low) — resolved
 
-Other admin route files use `requirePermission(...)`. The UPI admin routes use
-`requireAdmin`, which permits **any** Administrator rather than requiring a
-payment-specific permission. Today no non-admin role has admin access, so there is
-no live escalation, but the granularity is inconsistent and would become a real gap
-if a limited admin role were added.
+The UPI admin routes used `requireAdmin`, permitting **any** Administrator rather
+than requiring a payment-specific permission, and blocking a payments-review role
+entirely.
 
-Recommendation: switch to `requirePermission('payments.manage')` /
-`('payments.refund')` for consistency with `admin-ops.ts`.
+**Resolved.** Each route now carries its own permission: `payments.read` for
+overview and listings, `payments.manage` for manual match and observer poll,
+`payments.refund` for refund request and completion. Covered by
+`apps/api/test/admin-upi-authz.test.ts`.
 
 ### F3 — Webhook raw-body fallback (low)
 
@@ -65,8 +65,10 @@ would weaken HMAC verification, because re-serialisation is not byte-identical. 
 raw parser at `app.ts:69` is registered, so the fallback is not currently taken —
 but removing that registration would silently degrade verification.
 
-Recommendation: fail closed (reject) when `rawBody` is absent for a webhook
-request.
+**Resolved.** `requireRawBody` in `routes/payments.ts` now returns the captured
+bytes or throws a 400. The fallback is gone, so a missing raw body is an explicit
+rejection rather than a silent substitution. Covered by
+`apps/api/test/payments.test.ts`.
 
 ### F4 — No global log redaction (medium)
 

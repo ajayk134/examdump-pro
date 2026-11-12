@@ -49,6 +49,21 @@ group by r.name order by 1;"
 Prefer `requirePermission` for new admin routes — a Billing operator should not
 be able to edit roles just because both are "admin" routes.
 
+No admin route relies on the coarse guard any more. The admin UPI surface is now
+split by capability, so a role that reviews payments cannot move money:
+
+| Route | Permission |
+| --- | --- |
+| `GET /admin-ops/upi/overview` | `payments.read` |
+| `GET /admin-ops/upi/orders`, `/orders/:id` | `payments.read` |
+| `GET /admin-ops/upi/notifications`, `/refunds` | `payments.read` |
+| `POST /admin-ops/upi/notifications/:id/match` | `payments.manage` |
+| `POST /admin-ops/upi/observer/poll` | `payments.manage` |
+| `POST /admin-ops/upi/orders/:id/refund` | `payments.refund` |
+| `POST /admin-ops/upi/refunds/:id/complete` | `payments.refund` |
+
+Covered by `apps/api/test/admin-upi-authz.test.ts`.
+
 `getUserPermissions()` caches the resolved set per request context; do not
 re-query inside a handler loop.
 

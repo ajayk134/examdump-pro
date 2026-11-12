@@ -44,9 +44,11 @@ bytes and breaks the HMAC. `apps/api/src/app.ts:69` registers a custom
 `application/json` content-type parser that stores the raw string on
 `request.rawBody`, and the webhook handlers verify against that.
 
-The handlers fall back to `JSON.stringify(request.body)` if `rawBody` is absent.
-That fallback would weaken verification (re-serialisation is not byte-identical),
-so the parser registration in `app.ts` must not be removed.
+The handlers do **not** fall back to re-serialising the parsed body. When
+`rawBody` is absent the request is rejected with a 400 by `requireRawBody`, because
+a request with no captured bytes cannot be authenticated and re-serialisation is
+not byte-identical. Keep the parser registration in `app.ts` so well-formed
+webhooks continue to be accepted.
 
 ## UPI: an honest assessment
 

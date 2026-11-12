@@ -3,35 +3,46 @@
 Defects and limitations that exist **today**. Each was verified by reading the
 source, not inferred.
 
-## Confirmed defects
+## Resolved defects
 
-### KI-1 — `PAYMENT_MAX_REFUNDS` is never enforced
+These were confirmed by reading the source, then fixed. Each fix has a
+regression test that was verified to fail against the original code.
 
-`apps/api/src/config/env.ts:178` defines it (default 5). A repository-wide search
-finds no other reference.
+### ~~KI-1 — `PAYMENT_MAX_REFUNDS` was never enforced~~ — FIXED
 
-- **Impact:** the *number* of partial refunds per payment is unbounded. Amounts are
-  still bounded by `payments.refunded_minor`, so over-refunding is prevented.
-- **Fix:** enforce a count in the refund path, or delete the variable so it stops
-  implying a control that does not exist.
+`env.ts` defined it (default 5) but nothing read it, so the number of partial
+refunds per payment was unbounded. Amounts remained bounded by
+`payments.refunded_minor`, so over-refunding was already impossible.
 
-### KI-2 — UPI admin routes use coarse `requireAdmin`
+- **Fix:** `services/subscription.service.ts` now enforces the ceiling inside a
+  conditional `UPDATE` that counts settled refunds in the same statement, so two
+  concurrent refunds cannot both pass the check. Failed refunds are excluded, as
+  they never moved money. A concurrent modification surfaces as a 409.
+- **Tests:** `apps/api/test/refund-limit.test.ts`.
 
-`routes/admin-upi.ts:52` guards with `requireAdmin`. Other admin route files use
-`requirePermission(...)`.
+### ~~KI-2 — UPI admin routes used coarse `requireAdmin`~~ — FIXED
 
-- **Impact:** any Administrator can act on UPI orders, regardless of payment-specific
-  permissions. No escalation today because no limited admin role exists.
-- **Fix:** switch to `requirePermission('payments.manage')` / `('payments.refund')`.
+`routes/admin-upi.ts` guarded every route with `requireAdmin`, so any
+Administrator could move money, and a role created to review payments could not
+reach the routes at all.
 
-### KI-3 — webhook raw-body fallback could weaken HMAC
+- **Fix:** per-route guards — `payments.read` for overview and listings,
+  `payments.manage` for manual match and observer poll, `payments.refund` for
+  refund request and completion.
+- **Tests:** `apps/api/test/admin-upi-authz.test.ts` builds roles with exact
+  permission sets and asserts a read-only role can read but cannot refund.
 
-`routes/payments.ts:135,365` use `request.rawBody ?? JSON.stringify(request.body)`.
+### ~~KI-3 — webhook raw-body fallback could weaken HMAC~~ — FIXED
 
-- **Impact:** currently safe — the raw parser is registered at `app.ts:69`. If that
-  registration were removed, verification would silently degrade to
-  re-serialised JSON, which is not byte-identical.
-- **Fix:** reject the request when `rawBody` is absent.
+Both receivers used `request.rawBody ?? JSON.stringify(request.body)`, silently
+substituting different bytes for the ones the provider signed.
+
+- **Fix:** `routes/payments.ts` exposes `requireRawBody`, which returns the
+  captured bytes or throws a 400. A request with no raw bytes cannot be
+  authenticated, so it is refused rather than guessed at.
+- **Tests:** `apps/api/test/payments.test.ts`.
+
+## Open defects
 
 ### KI-4 — no global log redaction
 
