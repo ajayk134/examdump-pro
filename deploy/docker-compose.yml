@@ -110,6 +110,24 @@ services:
       PAYMENTS_ENABLED: ${PAYMENTS_ENABLED:-false}
       ALLOW_MOCK_PAYMENTS: ${ALLOW_MOCK_PAYMENTS:-false}
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-none}
+      # --- Direct UPI collection (see docs/infrastructure/upi-collection.md) --
+      # These MUST be forwarded explicitly. Compose only passes the variables
+      # listed here into the container, so setting them in Doppler without this
+      # block leaves UPI silently unconfigured (and `UPI_SMS_INGEST_SECRET`
+      # unset means the ingest endpoints refuse every request).
+      UPI_PAYEE_VPA: ${UPI_PAYEE_VPA:-}
+      UPI_PAYEE_NAME: ${UPI_PAYEE_NAME:-ExamDump}
+      UPI_ORDER_TTL_MINUTES: ${UPI_ORDER_TTL_MINUTES:-15}
+      UPI_AUTO_APPROVE: ${UPI_AUTO_APPROVE:-false}
+      UPI_NOTIFICATION_MAX_PAISE: ${UPI_NOTIFICATION_MAX_PAISE:-50000000}
+      UPI_GMAIL_POLL_SECONDS: ${UPI_GMAIL_POLL_SECONDS:-60}
+      UPI_GMAIL_USER: ${UPI_GMAIL_USER:-}
+      UPI_GOOGLE_CLIENT_ID: ${UPI_GOOGLE_CLIENT_ID:-}
+      UPI_GOOGLE_CLIENT_SECRET: ${UPI_GOOGLE_CLIENT_SECRET:-}
+      UPI_GOOGLE_REFRESH_TOKEN: ${UPI_GOOGLE_REFRESH_TOKEN:-}
+      UPI_SMS_INGEST_SECRET: ${UPI_SMS_INGEST_SECRET:-}
+      UPI_GMAIL_LABEL: ${UPI_GMAIL_LABEL:-INBOX}
+      UPI_GMAIL_QUERY: ${UPI_GMAIL_QUERY:-is:unread}
       # ExamDump Pay adapter selection (see docs/infrastructure/mail-and-pay.md)
       PAYMENT_ADAPTER: ${PAYMENT_ADAPTER:-none}
       PAYMENT_METHODS: ${PAYMENT_METHODS:-upi,card}

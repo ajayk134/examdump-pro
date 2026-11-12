@@ -297,3 +297,158 @@ describe('admin surface', () => {
     expect(payments_rows.length).toBe(0);
   });
 });
+
+/* ======================================================================== */
+/* Regression tests added by the production-readiness audit                  */
+/* ======================================================================== */
+
+describe('timestamp-bound ingest signature', () => {
+  /**
+   * Regression: the HMAC covered only the raw body, so a captured request stayed
+   * valid forever. Signing `<timestamp>.<body>` lets stale requests be refused,
+   * and because the timestamp is inside the HMAC an attacker cannot move it
+   * forward to keep a captured request alive.
+   */
+  const SECRET = 'test-ingest-secret-0123456789';
+  let previous: string | undefined;
+
+  beforeEach(() => {
+    const mutable = ctx.env as { UPI_SMS_INGEST_SECRET?: string };
+    previous = mutable.UPI_SMS_INGEST_SECRET;
+    mutable.UPI_SMS_INGEST_SECRET = SECRET;
+  });
+
+  afterEach(() => {
+    (ctx.env as { UPI_SMS_INGEST_SECRET?: string }).UPI_SMS_INGEST_SECRET = previous;
+  });
+
+  async function post(body: unknown, headers: Record<string, string>) {
+    return ctx.app.inject({
+      method: 'POST',
+      url: '/api/upi/ingest/sms',
+      headers: { 'content-type': 'application/json', ...headers },
+      payload: JSON.stringify(body),
+    });
+  }
+
+  function signWithTimestamp(ts: string, body: unknown): string {
+    return createHmac('sha256', SECRET).update(`${ts}.${JSON.stringify(body)}`).digest('hex');
+  }
+
+  it('accepts a fresh timestamped signature', async () => {
+    const body = {
+      text: 'Rs.499.00 credited to your a/c XX1234 from VPA payer@okhdfcbank. UPI Ref No 909090909090',
+      timestamp: new Date().toISOString(),
+    };
+    const ts = String(Date.now());
+    const res = await post(body, { 'x-upi-signature': signWithTimestamp(ts, body), 'x-upi-timestamp': ts });
+    expect(res.statusCode).toBeLessThan(400);
+  });
+
+  it('refuses a timestamped signature that is too old', async () => {
+    const body = { text: 'Rs.10.00 credited ... UPI Ref No 111111111111' };
+    // Three days old: outside the replay window even though the HMAC is valid.
+    const ts = String(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const res = await post(body, { 'x-upi-signature': signWithTimestamp(ts, body), 'x-upi-timestamp': ts });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('refuses a signature whose timestamp was tampered with', async () => {
+    const body = { text: 'Rs.10.00 credited ... UPI Ref No 222222222222' };
+    const signedAt = String(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const sig = signWithTimestamp(signedAt, body);
+    // Attacker replays an old signature but claims a fresh timestamp.
+    const res = await post(body, { 'x-upi-signature': sig, 'x-upi-timestamp': String(Date.now()) });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('still accepts the legacy body-only signature', async () => {
+    const body = { text: 'Rs.499.00 credited to your a/c XX1234 from VPA payer@okhdfcbank. UPI Ref No 313131313131' };
+    const res = await post(body, { 'x-upi-signature': await sign(SECRET, body) });
+    expect(res.statusCode).toBeLessThan(400);
+  });
+
+  it('rejects an unusable message timestamp rather than trusting it', async () => {
+    const body = { text: 'Rs.499.00 credited ... UPI Ref No 414141414141', timestamp: 'not-a-date' };
+    const ts = String(Date.now());
+    const res = await post(body, { 'x-upi-signature': signWithTimestamp(ts, body), 'x-upi-timestamp': ts });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+
+describe('admin order detail does not leak other orders', () => {
+  /**
+   * Regression: the detail route filtered notifications only on
+   * `status = 'matched'`, so it returned the five most recent matches in the
+   * whole system. Opening one order showed unrelated customers' bank references
+   * and message excerpts.
+   */
+  it('returns only the notifications that settled the requested order', async () => {
+    const db = getDb();
+    await db.delete(upiMatches);
+    await db.delete(upiNotifications);
+    await db.delete(upiOrders);
+
+    const buyer = await registerVerifiedUser(ctx.app, { email: 'upi-leak-a@example.com' });
+
+    const [order] = await db
+      .insert(upiOrders)
+      .values({
+        reference: 'EDLEAKA01',
+        userId: buyer.userId,
+        amountPaise: 49900,
+        payeeVpa: 'examdump@okhdfcbank',
+        payeeName: 'ExamDump',
+        upiUri: 'upi://pay',
+        status: 'settled',
+        settledAt: new Date(),
+        expiresAt: new Date(Date.now() + 60_000),
+      })
+      .returning();
+
+    const [related] = await db
+      .insert(upiNotifications)
+      .values({
+        source: 'gmail',
+        status: 'matched',
+        amountPaise: 49900,
+        bankReference: 'AAAAORDERA',
+        rawText: 'order A credit',
+        observedAt: new Date(),
+        dedupeKey: `k-a-${Date.now()}`,
+      })
+      .returning();
+
+    // Matched, but belongs to no order in this test.
+    await db.insert(upiNotifications).values({
+      source: 'gmail',
+      status: 'matched',
+      amountPaise: 19900,
+      bankReference: 'BBBBOTHER',
+      rawText: 'unrelated credit',
+      observedAt: new Date(),
+      dedupeKey: `k-b-${Date.now()}`,
+    });
+
+    await db.insert(upiMatches).values({
+      orderId: order!.id,
+      notificationId: related!.id,
+      decision: 'manual_approved',
+      reasons: ['test'],
+      confidence: 100,
+      amountPaise: 49900,
+    });
+
+    const cookie = await loginAdmin(ctx.app);
+    const res = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/admin-ops/upi/orders/${order!.id}`,
+      headers: { cookie },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { recentMatches: Array<{ bankReference: string | null }> };
+    expect(body.recentMatches.length).toBe(1);
+    expect(body.recentMatches[0]?.bankReference).toBe('AAAAORDERA');
+  });
+});

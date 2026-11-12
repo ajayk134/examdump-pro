@@ -727,3 +727,176 @@ describe('stats and cancellation', () => {
     expect(stats.settled).toBe(0);
   });
 });
+
+/* ======================================================================== */
+/* Regression tests added by the production-readiness audit                  */
+/* ======================================================================== */
+
+describe('UPI_AUTO_APPROVE is honoured', () => {
+  /**
+   * Regression: the flag was read only for display. Every qualifying credit
+   * settled automatically, so an operator deploying with auto-approve off (the
+   * documented first-deployment rule) still had real money auto-granting plans.
+   */
+  function envWithAutoApprove(value: boolean): Env {
+    return loadEnv({
+      ...process.env,
+      NODE_ENV: 'test',
+      DATABASE_URL: process.env.DATABASE_URL_TEST ?? 'postgres://postgres:postgres@127.0.0.1:5433/examdump_test',
+      JWT_ACCESS_SECRET: 'x'.repeat(32),
+      JWT_REFRESH_SECRET: 'y'.repeat(32),
+      JWT_SECRET: 'z'.repeat(32),
+      PUBLIC_WEB_URL: 'http://localhost:3100',
+      WEB_ORIGIN: 'http://localhost:3100',
+      ADMIN_EMAIL: 'admin@test.local',
+      ADMIN_PASSWORD: 'AdminPass123',
+      PAYMENTS_ENABLED: 'true',
+      UPI_PAYEE_VPA: 'examdump@okhdfcbank',
+      UPI_PAYEE_NAME: 'ExamDump',
+      UPI_AUTO_APPROVE: value ? 'true' : 'false',
+      ENABLE_DATASET_SYNC: 'false',
+      RATE_LIMIT_MAX: '100000',
+      LOG_LEVEL: 'silent',
+    });
+  }
+
+  it('holds the credit for review and does not settle when disabled', async () => {
+    const manualEnv = envWithAutoApprove(false);
+    const user = await makeUser('upi-hold@example.com');
+    const order = await makeOrder(user.id, 49900);
+
+    const result = await ingestNotification(manualEnv, {
+      source: 'gmail',
+      text: creditAlert('499.00', ' Ref No 303030303030'),
+      timestamp: new Date().toISOString(),
+    });
+
+    // Held, and the buyer is told nothing was confirmed.
+    expect(result.status).toBe('unmatched');
+    expect(result.reason).toBe('auto_approve_disabled');
+
+    const after = await getOrderById(order.id);
+    expect(after?.status).toBe('under_review');
+    expect(after?.settledAt).toBeNull();
+
+    // No entitlement was granted.
+    const paymentRow = await getDb().select().from(payments).where(eq(payments.id, order.paymentId!));
+    expect(paymentRow[0]?.status).toBe('pending');
+
+    // The notification is queued for a human, not lost.
+    const note = await getDb().select().from(upiNotifications).where(eq(upiNotifications.id, result.notificationId!));
+    expect(note[0]?.status).toBe('unmatched');
+    expect(note[0]?.decisionReason).toBe('auto_approve_disabled_held_for_review');
+
+    // And a held order can still be settled by an administrator.
+    const approved = await manuallyApprove(manualEnv, result.notificationId!, order.id, user.id, 'checked bank app');
+    expect(approved.ok).toBe(true);
+    expect((await getOrderById(order.id))?.status).toBe('settled');
+  });
+
+  it('still settles automatically when enabled', async () => {
+    const autoEnv = envWithAutoApprove(true);
+    const user = await makeUser('upi-auto@example.com');
+    const order = await makeOrder(user.id, 49900);
+
+    const result = await ingestNotification(autoEnv, {
+      source: 'gmail',
+      text: creditAlert('499.00', ' Ref No 404040404040'),
+      timestamp: new Date().toISOString(),
+    });
+
+    expect(result.status).toBe('matched');
+    expect((await getOrderById(order.id))?.status).toBe('settled');
+  });
+});
+
+describe('manual approval requires the credit to match the order', () => {
+  /**
+   * Regression: `manuallyApprove` never compared the credit amount with the
+   * order amount, so a ₹1 test transfer could be approved against a ₹499 order
+   * and grant the plan.
+   */
+  it('refuses a credit smaller than the order', async () => {
+    const admin = await makeUser('upi-admin-mm@example.com');
+    const user = await makeUser('upi-mismatch-manual@example.com');
+    const order = await makeOrder(user.id, 49900);
+
+    const held = await ingestNotification(env, {
+      source: 'sms',
+      text: creditAlert('1.00', ' Ref No 505050505050'),
+      timestamp: new Date().toISOString(),
+    });
+    expect(held.status).toBe('unmatched');
+
+    const result = await manuallyApprove(env, held.notificationId!, order.id, admin.id, 'oops');
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/amount_mismatch/);
+
+    expect((await getOrderById(order.id))?.status).toBe('pending');
+  });
+
+  it('refuses to re-approve a notification that was already decided', async () => {
+    const admin = await makeUser('upi-admin-twice@example.com');
+    const user = await makeUser('upi-reapprove@example.com');
+    const order = await makeOrder(user.id, 49900);
+
+    // Auto-approve is on, so this settles through the normal path first.
+    const settled = await ingestNotification(env, {
+      source: 'sms',
+      text: creditAlert('499.00', ' Ref No 606060606060'),
+      timestamp: new Date().toISOString(),
+    });
+    expect(settled.status).toBe('matched');
+
+    // Re-approving the same, already-decided notification must be refused.
+    const again = await manuallyApprove(env, settled.notificationId!, order.id, admin.id, 'again');
+    expect(again.ok).toBe(false);
+
+    const matches = await getDb().select().from(upiMatches).where(eq(upiMatches.orderId, order.id));
+    expect(matches.length).toBe(1);
+  });
+});
+
+describe('refunds cannot exceed the order under concurrency', () => {
+  /**
+   * Regression: the running-total check read the sum and then inserted without a
+   * lock, so parallel requests all saw "room left". Measured before the fix: 20
+   * concurrent 10% refunds were all accepted against one 100% order.
+   */
+  it('serialises concurrent refunds so the total never exceeds the order', async () => {
+    const admin = await makeUser('upi-refund-admin@example.com');
+    const user = await makeUser('upi-refund-race@example.com');
+    const order = await makeOrder(user.id, 100000);
+    await ingestNotification(env, {
+      source: 'gmail',
+      text: creditAlert('1000.00', ' Ref No 707070707070'),
+      timestamp: new Date().toISOString(),
+    });
+    expect((await getOrderById(order.id))?.status).toBe('settled');
+
+    // 20 x 10%: only 10 may succeed.
+    const results = await Promise.allSettled(
+      Array.from({ length: 20 }, (_, i) => requestRefund(order.id, 10000, admin.id, `attempt ${i}`)),
+    );
+    const accepted = results.filter((r) => r.status === 'fulfilled').length;
+
+    const rows = await getDb().select().from(upiRefunds).where(eq(upiRefunds.orderId, order.id));
+    const total = rows.reduce((sum, r) => sum + r.amountPaise, 0);
+
+    expect(accepted).toBeLessThanOrEqual(10);
+    expect(total).toBeLessThanOrEqual(order.amountPaise);
+  });
+
+  it('rejects a non-positive refund amount', async () => {
+    const admin = await makeUser('upi-refund-zero@example.com');
+    const user = await makeUser('upi-refund-zero-buyer@example.com');
+    const order = await makeOrder(user.id, 49900);
+    await ingestNotification(env, {
+      source: 'gmail',
+      text: creditAlert('499.00', ' Ref No 808080808080'),
+      timestamp: new Date().toISOString(),
+    });
+    await expect(requestRefund(order.id, 0, admin.id, 'zero')).rejects.toThrow();
+    await expect(requestRefund(order.id, -100, admin.id, 'negative')).rejects.toThrow();
+  });
+});

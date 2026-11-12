@@ -321,6 +321,48 @@ export async function ingestNotification(env: Env, input: IngestInput): Promise<
 
   const approvable = assessments.filter((a) => a.assessment.decision === 'approve');
 
+  /*
+   * `UPI_AUTO_APPROVE` is the operator's kill-switch. When it is off, a credit
+   * that scored well enough to approve is still held for a human: the order goes
+   * to `under_review` and the notification stays `unmatched`, so it appears in
+   * the dashboard's "needs a human decision" queue. Settlement only happens
+   * through `manuallyApprove`.
+   *
+   * Without this branch the flag was read for display only and every qualifying
+   * credit settled automatically, which silently defeated the documented first
+   * -deployment rule of running with auto-approve off.
+   */
+  if (!env.UPI_AUTO_APPROVE && approvable.length >= 1) {
+    const best = approvable.sort((a, b) => b.assessment.confidence - a.assessment.confidence)[0]!;
+    await db
+      .update(upiNotifications)
+      .set({
+        status: 'unmatched',
+        decisionReason: 'auto_approve_disabled_held_for_review',
+        confidence: best.assessment.confidence,
+      })
+      .where(eq(upiNotifications.id, notificationId));
+    await db
+      .update(upiOrders)
+      .set({ status: 'under_review', updatedAt: new Date() })
+      .where(and(eq(upiOrders.id, best.order.id), eq(upiOrders.status, 'pending')));
+    await db.insert(upiRiskEvents).values({
+      orderId: best.order.id,
+      notificationId,
+      decision: 'review',
+      confidence: best.assessment.confidence,
+      reasons: [...best.assessment.reasons, 'auto_approve_disabled'],
+      signals: best.assessment.signals,
+    });
+    return {
+      status: 'unmatched',
+      notificationId,
+      orderId: best.order.id,
+      confidence: best.assessment.confidence,
+      reason: 'auto_approve_disabled',
+    };
+  }
+
   if (approvable.length === 1) {
     const winner = approvable[0]!;
     const settled = await settleFromNotification(env, winner.order, notificationId, winner.assessment);
@@ -487,9 +529,34 @@ export async function manuallyApprove(
       .select()
       .from(upiNotifications)
       .where(eq(upiNotifications.id, notificationId))
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!order || !notification) return { ok: false, reason: 'not_found' };
     if (order.status === 'settled') return { ok: false, reason: 'already_settled' };
+
+    /*
+     * The credit must actually pay for this order. Without this check an admin
+     * (or a mistaken click on a ₹1 test transfer) could apply a tiny credit to a
+     * large order and grant the plan. A human resolving an ambiguous match is
+     * deciding *which* order a credit belongs to, not deciding that a short
+     * payment counts as a full one.
+     */
+    if (notification.amountPaise === null || notification.amountPaise !== order.amountPaise) {
+      return {
+        ok: false,
+        reason: `amount_mismatch:expected=${order.amountPaise},credit=${notification.amountPaise ?? 'unknown'}`,
+      };
+    }
+
+    /*
+     * Only a notification still awaiting a decision may be approved. A credit
+     * already marked `matched`, `rejected`, `ignored` or `duplicate` has been
+     * decided, and re-approving it would be a second settlement attempt driven
+     * by a stale dashboard page.
+     */
+    if (!['unmatched', 'received'].includes(notification.status)) {
+      return { ok: false, reason: `notification_not_pending:${notification.status}` };
+    }
 
     await tx.insert(upiMatches).values({
       orderId,
@@ -510,11 +577,19 @@ export async function manuallyApprove(
       .where(eq(upiNotifications.id, notificationId));
 
     if (order.paymentId) {
-      await settlePayment(order.paymentId, {
+      const result = await settlePayment(order.paymentId, {
         gatewayStatus: 'succeeded',
         source: 'upi_manual',
         providerPaymentId: notification.bankReference ?? undefined,
       });
+      /*
+       * `ignored` means the payment row was not found. Throwing rolls the whole
+       * transaction back so an order is never left `settled` without the plan it
+       * claims to have bought.
+       */
+      if (result.status === 'ignored') {
+        throw new Error(`upi_manual_settlement_failed:${result.reason ?? 'unknown'}`);
+      }
     }
     return { ok: true };
   });
@@ -528,24 +603,41 @@ export async function requestRefund(
   requestedBy: string,
   reason: string,
 ): Promise<{ id: string }> {
+  if (!Number.isSafeInteger(amountPaise) || amountPaise <= 0) throw new Error('invalid_refund_amount');
+
   const db = getDb();
-  const order = await getOrderById(orderId);
-  if (!order) throw new Error('order_not_found');
-  if (!['settled', 'partially_refunded'].includes(order.status)) throw new Error('order_not_refundable');
+  /*
+   * The total-check and the insert must share one transaction with a lock on the
+   * order row. Reading the sum first and inserting afterwards let two concurrent
+   * requests both observe "room left" and both insert, so N parallel calls could
+   * refund a multiple of the order (measured: 20 x 10% approved against a single
+   * 100% order). The lock serialises them, so the second call sees the first
+   * refund already committed.
+   */
+  return db.transaction(async (tx) => {
+    const [order] = await tx
+      .select()
+      .from(upiOrders)
+      .where(eq(upiOrders.id, orderId))
+      .limit(1)
+      .for('update');
+    if (!order) throw new Error('order_not_found');
+    if (!['settled', 'partially_refunded'].includes(order.status)) throw new Error('order_not_refundable');
 
-  const existing = await db
-    .select({ total: sql<number>`coalesce(sum(${upiRefunds.amountPaise}), 0)::int` })
-    .from(upiRefunds)
-    .where(and(eq(upiRefunds.orderId, orderId), ne(upiRefunds.status, 'failed')));
+    const existing = await tx
+      .select({ total: sql<number>`coalesce(sum(${upiRefunds.amountPaise}), 0)::int` })
+      .from(upiRefunds)
+      .where(and(eq(upiRefunds.orderId, orderId), ne(upiRefunds.status, 'failed')));
 
-  const refunded = existing[0]?.total ?? 0;
-  if (refunded + amountPaise > order.amountPaise) throw new Error('refund_exceeds_order');
+    const refunded = existing[0]?.total ?? 0;
+    if (refunded + amountPaise > order.amountPaise) throw new Error('refund_exceeds_order');
 
-  const [refund] = await db
-    .insert(upiRefunds)
-    .values({ orderId, amountPaise, requestedBy, reason })
-    .returning({ id: upiRefunds.id });
-  return { id: refund!.id };
+    const [refund] = await tx
+      .insert(upiRefunds)
+      .values({ orderId, amountPaise, requestedBy, reason })
+      .returning({ id: upiRefunds.id });
+    return { id: refund!.id };
+  });
 }
 
 /**

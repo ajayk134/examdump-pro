@@ -21,7 +21,7 @@ import { requireAdmin } from '../lib/guards.js';
 import { parseOrThrow } from '../lib/validation.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { getDb } from '../db/client.js';
-import { upiNotifications, upiOrders, upiRefunds } from '../db/schema/index.js';
+import { upiMatches, upiNotifications, upiRefunds } from '../db/schema/index.js';
 import { recordAudit } from '../services/audit.service.js';
 import {
   completeRefund,
@@ -192,12 +192,31 @@ export async function adminUpiRoutes(app: FastifyInstance, env: Env): Promise<vo
     const order = await getOrderById(id);
     if (!order) throw notFound('Order not found');
     const db = getDb();
+    /*
+     * Join through `upi_matches` so this returns the notifications that actually
+     * settled *this* order. Filtering only on `status = 'matched'` returned the
+     * five most recent matched notifications in the whole system, so opening one
+     * order's detail pane displayed unrelated customers' bank references and
+     * truncated message text.
+     */
     const notifications = await db
-      .select()
-      .from(upiNotifications)
-      .where(and(eq(upiNotifications.status, 'matched')))
+      .select({
+        id: upiNotifications.id,
+        source: upiNotifications.source,
+        status: upiNotifications.status,
+        amountPaise: upiNotifications.amountPaise,
+        bankReference: upiNotifications.bankReference,
+        senderVpa: upiNotifications.senderVpa,
+        observedAt: upiNotifications.observedAt,
+        receivedAt: upiNotifications.receivedAt,
+        confidence: upiNotifications.confidence,
+        decision: upiMatches.decision,
+      })
+      .from(upiMatches)
+      .innerJoin(upiNotifications, eq(upiNotifications.id, upiMatches.notificationId))
+      .where(eq(upiMatches.orderId, id))
       .orderBy(desc(upiNotifications.receivedAt))
-      .limit(5);
+      .limit(10);
     return { order, recentMatches: notifications };
   });
 }

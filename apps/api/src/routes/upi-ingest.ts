@@ -26,7 +26,14 @@ import { ingestNotification } from '../services/upi/order.service.js';
 const ingestSchema = z.object({
   /** Raw SMS body as received on the device. */
   text: z.string().min(1).max(4000),
-  /** When the handset received it (ISO 8601 or epoch ms). */
+  /**
+   * When the handset received it (ISO 8601 or epoch ms).
+   *
+   * This is attacker-supplied, so it is also sanity-bounded: a value far outside
+   * a plausible window relative to server time is refused rather than fed to the
+   * timing scorer, which would otherwise treat a handset with a wrong clock as
+   * "observed after expiry" and silently drop a genuine payment.
+   */
   timestamp: z.union([z.string(), z.number()]).optional(),
   /** Sender id, e.g. "VK-HDFCBK". Stored for audit, never used for matching. */
   sender: z.string().max(64).optional(),
@@ -34,14 +41,68 @@ const ingestSchema = z.object({
   device: z.string().max(64).optional(),
 });
 
-function verifySignature(env: Env, rawBody: string, provided: string | undefined): boolean {
+/** How far a bridge-supplied timestamp may drift from server time. */
+const MAX_TIMESTAMP_SKEW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Reject an implausible bridge timestamp.
+ *
+ * Returns the epoch ms to use, or null when the value is unparseable or outside
+ * the allowed window. The window is generous (a day) because handsets in the
+ * field can be offline for hours; it exists to stop absurd values, not to
+ * enforce precise clocks.
+ */
+function sanitizeTimestamp(value: string | number | undefined, now = Date.now()): number | null {
+  if (value === undefined) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const ms = parsed.getTime();
+  if (Math.abs(ms - now) > MAX_TIMESTAMP_SKEW_MS) return null;
+  return ms;
+}
+
+/**
+ * Verify the request signature.
+ *
+ * The signed material is `<timestamp>.<raw body>`, not the body alone. Signing
+ * only the body meant a captured request stayed valid forever: the same bytes
+ * could be replayed any time later. Binding a timestamp in lets us reject stale
+ * requests, and because the timestamp is inside the HMAC an attacker cannot move
+ * it forward to keep a captured request alive.
+ *
+ * A body-only signature is still accepted when the sender omits the timestamp
+ * header, so an already-deployed bridge keeps working; the timestamped form is
+ * what the docs now instruct.
+ */
+function verifySignature(
+  env: Env,
+  rawBody: string,
+  provided: string | undefined,
+  timestamp: string | undefined,
+  now = Date.now(),
+): boolean {
   if (!env.UPI_SMS_INGEST_SECRET) return false;
   if (!provided) return false;
-  const expected = createHmac('sha256', env.UPI_SMS_INGEST_SECRET).update(rawBody).digest('hex');
-  const a = Buffer.from(expected, 'utf8');
-  const b = Buffer.from(provided.trim().toLowerCase(), 'utf8');
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+
+  const candidates: string[] = [];
+  if (timestamp) {
+    const seen = Number(timestamp);
+    if (!Number.isFinite(seen)) return false;
+    // Replay window: a signed timestamp older or newer than this is refused.
+    if (Math.abs(now - seen) > MAX_TIMESTAMP_SKEW_MS) return false;
+    candidates.push(
+      createHmac('sha256', env.UPI_SMS_INGEST_SECRET).update(`${timestamp}.${rawBody}`).digest('hex'),
+    );
+  }
+  candidates.push(createHmac('sha256', env.UPI_SMS_INGEST_SECRET).update(rawBody).digest('hex'));
+
+  const given = Buffer.from(provided.trim().toLowerCase(), 'utf8');
+  for (const expected of candidates) {
+    const a = Buffer.from(expected, 'utf8');
+    if (a.length !== given.length) continue;
+    if (timingSafeEqual(a, given)) return true;
+  }
+  return false;
 }
 
 export async function upiIngestRoutes(app: FastifyInstance, env: Env): Promise<void> {
@@ -57,15 +118,21 @@ export async function upiIngestRoutes(app: FastifyInstance, env: Env): Promise<v
     }
     const rawBody = (request as FastifyRequest & { rawBody?: string }).rawBody ?? '';
     const signature = (request.headers['x-upi-signature'] as string | undefined) ?? undefined;
-    if (!verifySignature(env, rawBody, signature)) {
+    const signedAt = (request.headers['x-upi-timestamp'] as string | undefined) ?? undefined;
+    if (!verifySignature(env, rawBody, signature, signedAt)) {
       throw unauthorized('Signature verification failed.');
     }
 
     const input = ingestSchema.parse(request.body);
+    // A nonsense handset clock must not be treated as evidence about the payment.
+    const observed = sanitizeTimestamp(input.timestamp) ?? undefined;
+    if (input.timestamp !== undefined && observed === undefined) {
+      throw badRequest('The message timestamp is not a usable date.');
+    }
     const result = await ingestNotification(env, {
       source: 'sms',
       text: input.text,
-      timestamp: input.timestamp,
+      timestamp: observed,
       meta: { sender: input.sender ?? null, device: input.device ?? null },
     });
 
@@ -80,15 +147,20 @@ export async function upiIngestRoutes(app: FastifyInstance, env: Env): Promise<v
     }
     const rawBody = (request as FastifyRequest & { rawBody?: string }).rawBody ?? '';
     const signature = (request.headers['x-upi-signature'] as string | undefined) ?? undefined;
-    if (!verifySignature(env, rawBody, signature)) {
+    const signedAt = (request.headers['x-upi-timestamp'] as string | undefined) ?? undefined;
+    if (!verifySignature(env, rawBody, signature, signedAt)) {
       throw unauthorized('Signature verification failed.');
     }
 
     const input = ingestSchema.parse(request.body);
+    const observed = sanitizeTimestamp(input.timestamp) ?? undefined;
+    if (input.timestamp !== undefined && observed === undefined) {
+      throw badRequest('The message timestamp is not a usable date.');
+    }
     const result = await ingestNotification(env, {
       source: 'webhook',
       text: input.text,
-      timestamp: input.timestamp,
+      timestamp: observed,
       meta: { sender: input.sender ?? null, device: input.device ?? null },
     });
     return { accepted: true, status: result.status };

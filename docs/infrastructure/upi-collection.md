@@ -128,7 +128,7 @@ All variables are server-side. None are ever sent to the browser.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `UPI_ORDER_TTL_MINUTES` | `15` | How long a QR stays payable. |
-| `UPI_AUTO_APPROVE` | `false` | `true` settles automatically when the score clears the threshold. Keep `false` for the first days. |
+| `UPI_AUTO_APPROVE` | `false` | `true` settles a well-scored credit automatically. When `false` (the default) such a credit is **held**: the order moves to `under_review` and waits for an administrator to confirm it. Keep `false` for the first days. |
 | `UPI_NOTIFICATION_MAX_PAISE` | `5000000` | Ceiling per credit (₹50,000). Above this the alert is rejected, not matched. |
 | `UPI_SMS_INGEST_SECRET` | — | Shared secret for the SMS bridge. Without it the ingest endpoints refuse everything. |
 | `UPI_GMAIL_POLL_SECONDS` | `60` | Observer interval. `0` disables polling. |
@@ -191,14 +191,29 @@ scope is needed at all.
 
 The phone that receives bank SMS runs a small forwarder. It must sign every request.
 
+The signature covers a millisecond timestamp **and** the body:
+`HMAC_SHA256(secret, "<timestamp>.<body>")`. Sending the timestamp in the header
+lets the server refuse stale requests, and because the timestamp is part of the
+signed material an attacker cannot move it forward to keep a captured request
+alive. Requests carrying only a body signature are still accepted for backwards
+compatibility with an already-deployed bridge, but the timestamped form is what
+new deployments should use.
+
 ```bash
 BODY='{"text":"Rs 499.00 credited to a/c XX1234. UPI Ref 123456789012","device":"pixel-7"}'
-SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$UPI_SMS_INGEST_SECRET" | awk '{print $2}')
+TS=$(date +%s%3N)
+SIG=$(printf '%s' "$TS.$BODY" | openssl dgst -sha256 -hmac "$UPI_SMS_INGEST_SECRET" | awk '{print $2}')
 curl -sS -X POST https://your-host/api/upi/ingest/sms \
   -H 'content-type: application/json' \
   -H "x-upi-signature: $SIG" \
+  -H "x-upi-timestamp: $TS" \
   -d "$BODY"
 ```
+
+Timestamps more than 24 hours from server time are rejected, as is a `timestamp`
+field inside the body that is not a usable date. The window is wide because a
+handset may be offline for hours; it exists to stop absurd values rather than to
+enforce precise phone clocks.
 
 The response is deliberately terse (`{"accepted":true,"status":"..."}`). A compromised
 handset learns whether its message was understood, never which order it affected.

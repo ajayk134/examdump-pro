@@ -463,23 +463,43 @@ export async function settlePayment(
   const gatewayStatus = (options.gatewayStatus ?? '').toLowerCase();
 
   const result = await db.transaction(async (tx): Promise<SettleResult> => {
-    const [payment] = await tx
+    /*
+     * Resolve the payment row in two steps, most-specific first.
+     *
+     * A single `OR` across (id, providerPaymentId, providerRef) could return a
+     * *different* row than the caller addressed: when a caller settles by
+     * explicit `paymentId` (as UPI does) and also passes a bank UTR, an unrelated
+     * pending payment whose `providerRef` happened to equal that UTR would match
+     * first. Granting that row's plan would entitle the wrong account. So the
+     * explicit id is tried alone first and only falls back to reference lookup
+     * when the caller did not supply one.
+     */
+    const byId = await tx
       .select()
       .from(payments)
-      .where(
-        options.providerPaymentId
-          ? or(
-              eq(payments.id, paymentId),
-              eq(payments.providerPaymentId, options.providerPaymentId),
-              // Adapters such as Razorpay store the order id at creation time
-              // and only learn the payment id later, so a webhook may address
-              // the payment by either id.
-              eq(payments.providerRef, options.providerPaymentId),
-            )
-          : eq(payments.id, paymentId),
-      )
+      .where(eq(payments.id, paymentId))
       .limit(1)
       .for('update');
+
+    let payment = byId[0];
+
+    if (!payment && options.providerPaymentId) {
+      // Adapters such as Razorpay store the order id at creation time and only
+      // learn the payment id later, so a webhook may address the payment by
+      // either identifier rather than by our own row id.
+      const byReference = await tx
+        .select()
+        .from(payments)
+        .where(
+          or(
+            eq(payments.providerPaymentId, options.providerPaymentId),
+            eq(payments.providerRef, options.providerPaymentId),
+          ),
+        )
+        .limit(1)
+        .for('update');
+      payment = byReference[0];
+    }
 
     if (!payment) return { paymentId, status: 'ignored', reason: 'unknown_payment' };
 
