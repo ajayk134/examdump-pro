@@ -1226,3 +1226,128 @@ describe('unique payment amounts', () => {
 });
 
 
+
+/* ------------------------------------------------------------------------ */
+/* Ingestion reliability                                                     */
+/* ------------------------------------------------------------------------ */
+
+describe('notification ingestion is idempotent and replay-safe', () => {
+  it('attributes a replayed alert to exactly one settlement, never two', async () => {
+    /*
+     * Replay protection is the property the whole settlement path rests on. Two
+     * identical deliveries (a mail server retry, a restarted poller re-reading the
+     * same message) must produce one settlement and one notification row.
+     */
+    const user = await makeUser('upi-replay@example.com');
+    const order = await makeOrder(user.id, 49900);
+    const text = creditAlertFor(order, '', randomUtr());
+    const at = new Date().toISOString();
+
+    const first = await ingestNotification(env, { source: 'gmail', text, timestamp: at });
+    const replayFromOtherSource = await ingestNotification(env, { source: 'sms', text, timestamp: at });
+    const replayAgain = await ingestNotification(env, { source: 'gmail', text, timestamp: at });
+
+    expect(first.status).toBe('matched');
+    // Different source, same UTR: the UTR index refuses it, so it cannot settle.
+    expect(replayFromOtherSource.status).not.toBe('matched');
+    expect(replayAgain.status).toBe('duplicate');
+
+    const matches = await getDb().select().from(upiMatches).where(eq(upiMatches.orderId, order.id));
+    expect(matches.length).toBe(1);
+  });
+
+  it('settles at most once when the same alert is delivered concurrently', async () => {
+    const user = await makeUser('upi-replay-race@example.com');
+    const order = await makeOrder(user.id, 49900);
+    const text = creditAlertFor(order, '', randomUtr());
+    const at = new Date().toISOString();
+
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => ingestNotification(env, { source: 'gmail', text, timestamp: at })),
+    );
+
+    expect(results.filter((r) => r.status === 'matched').length).toBe(1);
+    const matches = await getDb().select().from(upiMatches).where(eq(upiMatches.orderId, order.id));
+    expect(matches.length).toBe(1);
+  });
+
+  it('recovers after a restart: a credit observed while the worker was down still settles', async () => {
+    /*
+     * The Gmail observer is stateless apart from its cursor, so a payment that
+     * arrived while the process was stopped must settle on the next poll. What
+     * this tests is the property that makes that true: matching does not depend on
+     * any in-memory state, only on the notification text and the order row.
+     */
+    const user = await makeUser('upi-restart@example.com');
+    const order = await makeOrder(user.id, 49900);
+
+    // Simulate "we were down": the credit is only handed to the ingester later.
+    const observedWhileDown = new Date();
+    const result = await ingestNotification(env, {
+      source: 'gmail',
+      text: creditAlertFor(order, '', randomUtr()),
+      timestamp: observedWhileDown.toISOString(),
+    });
+
+    expect(result.status).toBe('matched');
+    expect((await getOrderById(order.id))?.status).toBe('settled');
+  });
+
+  it('does not settle a credit observed before the order existed', async () => {
+    const user = await makeUser('upi-before-order@example.com');
+    const order = await makeOrder(user.id, 49900);
+
+    const result = await ingestNotification(env, {
+      source: 'gmail',
+      text: creditAlertFor(order, '', randomUtr()),
+      // An hour before the order row, well outside the allowed clock skew.
+      timestamp: new Date(order.createdAt.getTime() - 3_600_000).toISOString(),
+    });
+
+    expect(result.status).not.toBe('matched');
+    expect((await getOrderById(order.id))?.status).toBe('pending');
+  });
+
+  it('cannot even construct two live orders at one amount', async () => {
+    /*
+     * The ambiguous-match branch in the ingester (`multiple_approvable_candidates`)
+     * is unreachable through normal writes because `upi_orders_active_amount_idx`
+     * refuses a second live order at the same amount. That is the stronger
+     * guarantee: ambiguity is prevented at insert time rather than resolved later
+     * by a scorer.
+     *
+     * Asserted here so nobody removes the index believing the matcher covers it.
+     */
+    const db = getDb();
+    const a = await makeUser('upi-ambiguous-a@example.com');
+    const b = await makeUser('upi-ambiguous-b@example.com');
+    const orderA = await makeOrder(a.id, 49900);
+    const paymentB = await makePayment(b.id, 49900);
+
+    await expect(
+      db
+        .insert(upiOrders)
+        .values({
+          reference: 'EDAMBIGB1',
+          userId: b.id,
+          paymentId: paymentB.id,
+          amountPaise: orderA.amountPaise,
+          baseAmountPaise: 49900,
+          payeeVpa: 'examdump@okhdfcbank',
+          payeeName: 'ExamDump',
+          upiUri: 'upi://pay',
+          planId: PLAN_ID,
+          description: 'colliding order',
+          expiresAt: new Date(Date.now() + 15 * 60_000),
+        })
+        .returning(),
+    ).rejects.toThrow(/upi_orders_active_amount_idx|duplicate key/i);
+
+    // And the one order that does exist is still the only candidate.
+    const live = await db
+      .select({ id: upiOrders.id })
+      .from(upiOrders)
+      .where(eq(upiOrders.amountPaise, orderA.amountPaise));
+    expect(live.length).toBe(1);
+  });
+});
