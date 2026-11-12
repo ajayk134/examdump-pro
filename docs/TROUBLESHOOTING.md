@@ -71,17 +71,24 @@ run the standalone server (`node apps/web/server.js`) as the Docker image does.
 
 ## API tests very slow
 
-Integration tests hit your configured PostgreSQL. On a remote Atlas cluster each
-write can take ~1 s. Run a local PostgreSQL (`docker run -p 27017:27017 postgres:16-alpine`) and
-set `DATABASE_URL_TEST` for fast runs. CI uses a local PostgreSQL service.
+Integration tests hit your configured PostgreSQL. On a remote managed cluster
+ each write can take ~1 s. Run a local PostgreSQL and set `DATABASE_URL_TEST` for
+fast runs:
 
-## `npm install` warnings about install scripts (esbuild, mongodb-memory-server)
+```bash
+docker run -d --name examdump-pg -e POSTGRES_PASSWORD=postgres \
+  -p 5433:5432 postgres:16-alpine
+```
+
+CI uses a local PostgreSQL service.
+
+## `npm install` warnings about deferred install scripts (esbuild)
 
 npm may defer postinstall scripts under newer security defaults. If builds fail,
 approve them:
 
 ```bash
-npm install-scripts approve esbuild mongodb-memory-server
+npm install-scripts approve esbuild
 ```
 
 ## Docker build cannot find `package-lock.json`
@@ -92,3 +99,86 @@ rebuild the image.
 ## Prisma/other? 
 
 This project does not use an ORM other than Drizzle ORM.
+## Site returns 502 while the API is healthy
+
+nginx resolves `server api:4000` once at startup and caches the IP. Recreating
+the API container gives it a new address, so nginx keeps proxying to a dead
+container.
+
+```bash
+sudo podman exec examdump-pro_nginx_1 nginx -s reload
+```
+
+Confirm the API itself is fine first:
+
+```bash
+curl -s localhost:4000/api/health          # inside the host, if published
+sudo podman exec examdump-pro_api_1 wget -qO- localhost:4000/api/health
+```
+
+## `podman ps` shows nothing but the site is up
+
+The host runs two Podman stores. Production is **rootful**:
+
+```bash
+sudo podman ps          # production
+podman ps               # unrelated / leftover
+```
+
+A rootless store being empty tells you nothing about production.
+
+## `getaddrinfo ENOTFOUND postgres` on API start
+
+The database container is missing the `postgres` network alias that
+`DATABASE_URL` targets. Compose declares it in `deploy/docker-compose.yml`:
+
+```yaml
+networks:
+  examdump:
+    aliases: [postgres]
+```
+
+Check resolution from another container:
+
+```bash
+sudo podman exec examdump-pro_nginx_1 getent hosts postgres
+```
+
+## `POSTGRES_PASSWORD is required`
+
+Compose aborts when the variable is absent. `sudo` strips exported shell
+variables, so `sudo env POSTGRES_PASSWORD=... podman compose` is unreliable.
+Use Doppler:
+
+```bash
+cd deploy
+doppler run --project examdump-pro --config prd -- podman compose up -d
+```
+
+## `null value in column "base_amount_paise" ... violates not-null constraint`
+
+The running container predates migration `0007`. The database is ahead of the
+code. Rebuild the API image so both match:
+
+```bash
+cd deploy && doppler run -p examdump-pro -c prd -- \
+  podman compose -p examdump-pro up -d --build api
+```
+
+Verify the bundle actually contains the change:
+
+```bash
+sudo podman exec examdump-pro_api_1 sh -c 'grep -l baseAmountPaise /app/dist/*.js | wc -l'
+```
+
+## PostgreSQL will not start: initdb permission error
+
+The named volume contains foreign files (for example a copy of a home
+directory), so `initdb` cannot chown it. Inspect before acting:
+
+```bash
+sudo podman volume inspect pgdata
+sudo podman run --rm -v pgdata:/v alpine ls -la /v | head
+```
+
+Back up, prove the restore, then recreate the volume. Never delete first.

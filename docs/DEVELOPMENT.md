@@ -100,3 +100,10 @@ DATASET_BRANCH=masked_main npm run sync:dataset -w @examdump/api
 - Conventional commit messages (`feat:`, `fix:`, `docs:`, `test:`, `chore:`).
 - Never commit `.env`, tokens, dumps or question data.
 - Run `npm run typecheck && npm test` before pushing.
+
+## Related documentation
+
+- [Environment reference](ENVIRONMENT.md) — every variable, group by group.
+- [Operations runbook](OPERATIONS.md) — deploy, 502 trap, backups, UPI go-live.
+- [Architecture](ARCHITECTURE.md), [API](API.md), [Database](DATABASE.md).
+- Agent brief: [`.github/copilot-instructions.md`](../.github/copilot-instructions.md).

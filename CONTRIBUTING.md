@@ -11,7 +11,7 @@ Thanks for helping improve ExamDump Pro.
 
 ```bash
 npm run typecheck
-MONGODB_URI_TEST="mongodb://127.0.0.1:27017/examdump_test" npm test
+DATABASE_URL_TEST="postgres://postgres:postgres@127.0.0.1:5433/examdump_test" npm test
 npm run build
 ```
 
@@ -26,6 +26,11 @@ npm run build
 - Preserve accessibility (semantic HTML, labels, keyboard focus, contrast) and
   dark/light theme parity.
 - Keep dependencies minimal and justified.
+- Never use the word "student" in code, docs, UI copy or commits — the product
+  serves candidates and working professionals.
+- Payments default to off. Do not enable `PAYMENTS_ENABLED` or
+  `UPI_AUTO_APPROVE` in a pull request.
+- No `dangerouslySetInnerHTML` except the server-rendered own UPI QR SVG.
 
 ## Commit messages
 
