@@ -2,6 +2,46 @@
 
 All notable changes to ExamDump Pro.
 
+## [Unreleased]
+
+### Added
+
+- Unique payable amount per UPI order: the plan price plus a random 0–99 paise
+  suffix, so an incoming bank alert matches exactly one active order. Enforced by
+  the partial unique index `upi_orders_active_amount_idx`; creation retries on
+  collision. `base_amount_paise` records the unsuffixed price.
+- UPI settlement hardening after a security audit: a single settlement per order
+  (`upi_matches_order_settled_idx`), one notification per bank UTR
+  (`upi_notifications_utr_idx`), risk scoring, and human review by default.
+- Email centre: durable Postgres-backed queue with `FOR UPDATE SKIP LOCKED`
+  claiming, templates, campaigns, preferences and suppression.
+- Documentation system: `docs/` hierarchy (architecture, database, security,
+  performance, deployment, payments, testing, operations, decisions), root-level
+  reference documents, and agent instructions for GitHub Copilot
+  (`.github/copilot-instructions.md` plus path-scoped
+  `.github/instructions/*.instructions.md`).
+
+### Changed
+
+- `deploy/docker-compose.yml` declares explicit network aliases `postgres` and
+  `api`. `DATABASE_URL` targets the bare hostname `postgres` and nginx proxies to
+  `server api:4000`; without the aliases a recreated container fails to resolve and
+  the site returns 502.
+- Documentation corrected where it described systems that no longer exist
+  (stale MongoDB references in `AGENTS.md`, `CONTRIBUTING.md` and
+  `TROUBLESHOOTING.md`; a wrong Postgres port).
+
+### Fixed
+
+- Rebuilding the API container no longer leaves a stale nginx upstream. Note that
+  `nginx -s reload` remains required after an API recreate — see
+  `docs/OPERATIONS.md`.
+
+### Known issues
+
+See [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md). Notably `PAYMENT_MAX_REFUNDS` is
+defined but not enforced, and UPI admin routes use a coarse `requireAdmin` guard.
+
 ## [1.1.0] — 2026
 
 ### Changed
