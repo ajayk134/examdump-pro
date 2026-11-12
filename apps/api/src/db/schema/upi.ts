@@ -53,6 +53,16 @@ export const upiOrders = pgTable(
     /** The `payments` row this order pays for; settlement flows through it. */
     paymentId: uuid('payment_id').references(() => payments.id, { onDelete: 'set null' }),
     amountPaise: integer('amount_paise').notNull(),
+    /**
+     * The plan/quote price before the unique-paisa suffix.
+     *
+     * `amount_paise` is what the customer must actually transfer: the base price
+     * plus a 1-99 paisa suffix that makes concurrent payments distinguishable.
+     * Keeping the base separately means the quoted price is still recoverable,
+     * refunds can be computed from it, and the UI can explain the suffix instead
+     * of showing a number that silently differs from the price list.
+     */
+    baseAmountPaise: integer('base_amount_paise').notNull(),
     currency: text('currency').notNull().default('INR'),
     /** VPA the customer must pay. Snapshot: changing the payee later must not
      *  rewrite history for an order that was already shown to a customer. */
@@ -82,6 +92,21 @@ export const upiOrders = pgTable(
     index('upi_orders_user_idx').on(t.userId, t.createdAt),
     index('upi_orders_amount_idx').on(t.amountPaise, t.status),
     index('upi_orders_payment_idx').on(t.paymentId),
+    /*
+     * At most one *live* order may hold a given amount.
+     *
+     * This is the database-level guarantee behind amount reservation. Two
+     * concurrent checkouts that randomly drew the same suffix cannot both exist:
+     * the second insert fails with 23505 and the caller retries with a new
+     * suffix. Scoped to pending/under_review so a settled or expired order does
+     * not permanently burn its amount.
+     *
+     * It is a collision-avoidance device, not proof that money arrived: matching
+     * still requires a bank reference and the notification dedupe rules.
+     */
+    uniqueIndex('upi_orders_active_amount_idx')
+      .on(t.amountPaise)
+      .where(sql`${t.status} in ('pending', 'under_review')`),
   ],
 );
 

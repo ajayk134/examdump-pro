@@ -59,6 +59,12 @@ export function generateReference(): string {
 export interface CreateOrderInput {
   userId: string;
   paymentId: string;
+  /**
+   * The price the customer was quoted, in paise.
+   *
+   * The amount actually payable is this plus a unique 1-99 paisa suffix chosen at
+   * insert time. Callers pass the quote total, never a suffixed amount.
+   */
   amountPaise: number;
   planId?: string | null;
   description?: string;
@@ -67,8 +73,54 @@ export interface CreateOrderInput {
 }
 
 /**
+ * Range of the uniqueness suffix added to each payment attempt.
+ *
+ * Small enough that a customer barely notices (₹499.00 becomes ₹499.37), large
+ * enough that concurrent checkouts for one plan rarely collide, and bounded so
+ * the CHECK constraint in migration 0007 can enforce it.
+ */
+export const SUFFIX_MIN_PAISE = 1;
+export const SUFFIX_MAX_PAISE = 99;
+
+/** How many suffixes to try before giving up on reserving an amount. */
+const AMOUNT_RESERVATION_ATTEMPTS = 24;
+
+/** Injectable RNG so the collision path is testable without weakening production. */
+let suffixRandom: () => number = Math.random;
+
+/** Replace the suffix RNG. Tests only; production never calls this. */
+export function setSuffixRandom(fn: (() => number) | null): void {
+  suffixRandom = fn ?? Math.random;
+}
+
+/**
+ * Pick a suffix in [1, 99].
+ *
+ * Random rather than sequential, so two customers starting at the same moment for
+ * the same plan do not walk onto each other's amounts.
+ */
+function pickSuffix(): number {
+  const span = SUFFIX_MAX_PAISE - SUFFIX_MIN_PAISE + 1;
+  const raw = Math.floor(suffixRandom() * span);
+  // Guard against an injected RNG returning exactly 1.0.
+  return SUFFIX_MIN_PAISE + Math.min(Math.max(raw, 0), span - 1);
+}
+
+/**
  * Create a UPI order. The UPI payload is frozen at creation so what the customer
  * scanned is exactly what we later try to match.
+ *
+ * Amount reservation is the interesting part. Two people buying the same plan at
+ * the same time must not be told to transfer the same number of paise, or a credit
+ * becomes ambiguous. Each attempt draws a random 1-99 paisa suffix and lets
+ * `upi_orders_active_amount_idx` arbitrate: the loser of a collision gets 23505
+ * from PostgreSQL and simply draws again.
+ *
+ * The database decides, not a SELECT-then-INSERT, because that pattern is exactly
+ * the race this is meant to remove.
+ *
+ * This narrows ambiguity; it does not prove payment. A notification still has to
+ * carry a matching amount and a bank reference and pass the dedupe rules.
  */
 export async function createUpiOrder(env: Env, input: CreateOrderInput): Promise<UpiOrder> {
   if (!env.UPI_PAYEE_VPA) throw new Error('upi_not_configured');
@@ -76,19 +128,26 @@ export async function createUpiOrder(env: Env, input: CreateOrderInput): Promise
     throw new Error('invalid_amount');
   }
   if (input.amountPaise > MAX_AMOUNT_PAISE) throw new Error('amount_above_maximum');
+  // The suffixed amount must still be a valid UPI transfer.
+  if (input.amountPaise + SUFFIX_MAX_PAISE > MAX_AMOUNT_PAISE) throw new Error('amount_above_maximum');
 
   const db = getDb();
   const ttlMinutes = Math.min(Math.max(input.ttlMinutes ?? env.UPI_ORDER_TTL_MINUTES, 3), 120);
+  const baseAmountPaise = input.amountPaise;
+  const payeeName = env.UPI_PAYEE_NAME || 'ExamDump';
 
-  // Retry reference collisions; they are astronomically unlikely but the unique
-  // index means a collision would otherwise surface as a 500.
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < AMOUNT_RESERVATION_ATTEMPTS; attempt += 1) {
     const reference = generateReference();
     if (!/^[A-Z0-9]{4,20}$/.test(reference)) throw new Error('invalid_reference_format');
+
+    const amountPaise = baseAmountPaise + pickSuffix();
     const upiUri = buildUpiUri({
       payeeVpa: env.UPI_PAYEE_VPA,
-      payeeName: env.UPI_PAYEE_NAME || 'ExamDump',
-      amountPaise: input.amountPaise,
+      payeeName,
+      // The customer transfers the suffixed amount, so the QR must say so.
+      amountPaise,
       transactionRef: sanitizeNote(reference, 20),
     });
 
@@ -99,9 +158,10 @@ export async function createUpiOrder(env: Env, input: CreateOrderInput): Promise
           reference,
           userId: input.userId,
           paymentId: input.paymentId,
-          amountPaise: input.amountPaise,
+          amountPaise,
+          baseAmountPaise,
           payeeVpa: env.UPI_PAYEE_VPA,
-          payeeName: env.UPI_PAYEE_NAME || 'ExamDump',
+          payeeName,
           upiUri,
           planId: input.planId ?? null,
           description: input.description ?? '',
@@ -110,12 +170,43 @@ export async function createUpiOrder(env: Env, input: CreateOrderInput): Promise
         .returning();
       return order!;
     } catch (err) {
-      // 23505 = unique_violation on reference; try another.
-      if ((err as { code?: string }).code === '23505' && attempt < 4) continue;
+      /*
+       * Postgres unique-violation detail lives on `err.cause` once Drizzle (or any
+       * driver wrapper) re-throws it, so read both levels. Getting this wrong is
+       * not hypothetical: the first version of this code only checked `err` and
+       * therefore never retried a real amount collision.
+       */
+      const cause = (err as { cause?: unknown }).cause as
+        | { code?: string; constraint?: string }
+        | undefined;
+      const code = (err as { code?: string }).code ?? cause?.code;
+      /*
+       * The index name is not reliably exposed as a field: depending on the driver
+       * wrapper it arrives on `err.constraint`, on `err.cause.constraint`, or only
+       * inside the message. Since the message is the one place it always appears,
+       * match on all three. The code check stays mandatory so a 23505 from an
+       * unrelated constraint is still a real error.
+       */
+      const constraint =
+        (err as { constraint?: string }).constraint ?? cause?.constraint ?? '';
+      const haystack = `${constraint} ${(err as { message?: string }).message ?? ''}`;
+
+      // 23505 on the active-amount index means another live order holds that
+      // amount: draw a new suffix. On the reference index, draw a new reference.
+      // Both are safe to retry; any other constraint is a real bug.
+      const retryable =
+        code === '23505' && (haystack.includes('active_amount') || haystack.includes('reference'));
+      if (retryable) {
+        lastError = err;
+        continue;
+      }
       throw err;
     }
   }
-  throw new Error('reference_generation_failed');
+
+  // Exhausting every attempt means the amount space for this price is saturated by
+  // genuinely live orders, not that the generator is broken.
+  throw Object.assign(new Error('amount_reservation_failed'), { cause: lastError });
 }
 
 /** The customer's currently payable order, if any. */
@@ -630,6 +721,16 @@ export async function requestRefund(
       .where(and(eq(upiRefunds.orderId, orderId), ne(upiRefunds.status, 'failed')));
 
     const refunded = existing[0]?.total ?? 0;
+    /*
+     * Cap at what the customer actually sent, never more.
+     *
+     * The customer transferred `amount_paise`, which is the base price plus a
+     * 1-99 paisa suffix. A full refund must return every paisa they sent,
+     * including the suffix, so the cap is the payable amount: capping at the base
+     * would leave a few paise stranded on every full refund and would make
+     * "refunded" unreachable. The suffix is still not part of the price, which is
+     * why `base_amount_paise` is recorded separately for reporting.
+     */
     if (refunded + amountPaise > order.amountPaise) throw new Error('refund_exceeds_order');
 
     const [refund] = await tx

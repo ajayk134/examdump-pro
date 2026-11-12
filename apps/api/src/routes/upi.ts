@@ -75,9 +75,12 @@ export async function upiRoutes(app: FastifyInstance, env: Env): Promise<void> {
 
     if (quote.totalMinor <= 0) throw badRequest('This plan has no amount due.');
 
-    // Reuse an open order of the same amount so a refresh does not mint a second QR.
+    // Reuse an open order for the same *base* price so a refresh does not mint a
+    // second QR. Comparing the payable amount would never match: it carries the
+    // uniqueness suffix. The existing order's amount (suffix included) is what the
+    // customer is already looking at, so it is returned unchanged.
     const existing = await getActiveOrder(user.id);
-    if (existing && existing.amountPaise === quote.totalMinor) {
+    if (existing && existing.baseAmountPaise === quote.totalMinor) {
       return { order: presentOrder(existing, env) };
     }
     if (existing) await cancelOrder(existing.id, 'replaced_by_new_order');
@@ -132,6 +135,14 @@ function presentOrder(order: NonNullable<Awaited<ReturnType<typeof getOrderById>
     status: expired ? 'expired' : order.status,
     amountPaise: order.amountPaise,
     amountLabel: formatPaise(order.amountPaise),
+    /*
+     * The price the customer was quoted, and the paise added to it so concurrent
+     * checkouts do not share one payable amount. Shown separately so the total on
+     * screen never looks like a pricing error.
+     */
+    baseAmountPaise: order.baseAmountPaise,
+    baseAmountLabel: formatPaise(order.baseAmountPaise),
+    suffixPaise: order.amountPaise - order.baseAmountPaise,
     payeeVpa: order.payeeVpa,
     payeeName: order.payeeName,
     description: order.description,

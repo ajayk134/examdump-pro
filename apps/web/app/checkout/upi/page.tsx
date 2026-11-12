@@ -26,6 +26,11 @@ interface UpiOrder {
   status: 'pending' | 'settled' | 'expired' | 'cancelled' | 'refunded';
   amountPaise: number;
   amountLabel: string;
+  /** Quoted plan price, before the per-attempt uniqueness suffix. */
+  baseAmountPaise?: number;
+  baseAmountLabel?: string;
+  /** Paise added so concurrent checkouts do not share one payable amount. */
+  suffixPaise?: number;
   payeeName: string;
   payeeVpa: string;
   description: string;
@@ -260,6 +265,16 @@ export default function UpiCheckoutPage() {
           <div className="mt-4 rounded-xl bg-surface-sunken p-3 text-center">
             <p className="text-xs uppercase tracking-wide text-content-muted">Amount</p>
             <p className="mt-1 text-2xl font-semibold text-content-primary">{order.amountLabel}</p>
+            {/*
+              Explain the odd paise. Without this the total looks like a pricing
+              error rather than what it is: a per-payment amount that lets us tell
+              two simultaneous checkouts apart. Only shown when there is a suffix.
+            */}
+            {typeof order.suffixPaise === 'number' && order.suffixPaise > 0 && order.baseAmountLabel ? (
+              <p className="mt-1 text-xs text-content-muted">
+                {order.baseAmountLabel} plus {order.suffixPaise} paise so this payment is uniquely yours
+              </p>
+            ) : null}
           </div>
         </Card>
 
@@ -291,8 +306,8 @@ export default function UpiCheckoutPage() {
               </div>
             </dl>
             <p className="mt-4 text-xs leading-relaxed text-content-muted">
-              Pay exactly {order.amountLabel}. Your payment is matched automatically by the amount and
-              reference, so keep them unchanged.
+              Pay exactly {order.amountLabel}, including the paise. This exact amount is reserved for
+              your checkout, so it is matched to you and not to another payment. Keep it unchanged.
             </p>
           </Card>
 

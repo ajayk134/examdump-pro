@@ -47,7 +47,10 @@ interface OrderRow {
   id: string;
   reference: string;
   status: string;
+  /** Payable amount, i.e. the plan price plus the uniqueness suffix. */
   amountPaise: number;
+  /** Quoted plan price before the suffix. */
+  baseAmountPaise?: number;
   userEmail?: string | null;
   planId?: string | null;
   createdAt: string;
@@ -301,7 +304,19 @@ export function AdminUpiPanel() {
                   <tr key={o.id}>
                     <td className="px-4 py-2 font-mono text-xs">{o.reference}</td>
                     <td className="px-4 py-2 text-content-secondary">{o.userEmail ?? '—'}</td>
-                    <td className="px-4 py-2 font-medium">{rupees(o.amountPaise)}</td>
+                    <td className="px-4 py-2 font-medium">
+                      {rupees(o.amountPaise)}
+                      {/*
+                        The suffix is what makes the payment unattributable to
+                        anyone else's checkout, so show it rather than leaving a
+                        reconciliation mismatch that looks like a rounding bug.
+                      */}
+                      {typeof o.baseAmountPaise === 'number' && o.baseAmountPaise !== o.amountPaise ? (
+                        <span className="ml-1 text-xs font-normal text-content-muted">
+                          ({rupees(o.baseAmountPaise)} +{o.amountPaise - o.baseAmountPaise}p)
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="px-4 py-2">
                       <Badge tone={statusTone[o.status] ?? 'default'}>{o.status}</Badge>
                     </td>

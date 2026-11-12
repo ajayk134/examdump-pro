@@ -50,6 +50,13 @@
       "when": 1794500000000,
       "tag": "0006_upi_payments",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1762500000000,
+      "tag": "0007_upi_amount_suffix",
+      "breakpoints": true
     }
   ]
 }

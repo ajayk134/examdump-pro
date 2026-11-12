@@ -168,9 +168,32 @@ describe('exam-scoped plans', () => {
         headers: { cookie },
       });
       expect(ok.statusCode).toBe(200);
-      const order = (ok.json() as { order: { amountPaise: number; reference: string } }).order;
+      const order = (
+        ok.json() as {
+          order: {
+            amountPaise: number;
+            baseAmountPaise: number;
+            suffixPaise: number;
+            amountLabel: string;
+            upiUri: string;
+            reference: string;
+            intents: Array<{ href: string }>;
+          };
+        }
+      ).order;
       expect(order.amountPaise).toBeGreaterThan(0);
       expect(order.reference).toMatch(/^ED[A-Z0-9]{8}$/);
+
+      // The checkout payload must describe the payable amount consistently: the
+      // QR, every app intent and the label all quote the suffixed total, while the
+      // quoted plan price stays available separately.
+      const label = (order.amountPaise / 100).toFixed(2);
+      expect(order.suffixPaise).toBeGreaterThanOrEqual(1);
+      expect(order.suffixPaise).toBeLessThanOrEqual(99);
+      expect(order.amountPaise - order.baseAmountPaise).toBe(order.suffixPaise);
+      expect(order.amountLabel).toContain(label);
+      expect(order.upiUri).toContain(`am=${label}`);
+      for (const intent of order.intents) expect(intent.href).toContain(`am=${label}`);
     } finally {
       enabled.PAYMENTS_ENABLED = prevPaid;
       enabled.UPI_PAYEE_VPA = prevVpa;
@@ -398,6 +421,7 @@ describe('admin order detail does not leak other orders', () => {
         reference: 'EDLEAKA01',
         userId: buyer.userId,
         amountPaise: 49900,
+        baseAmountPaise: 49900,
         payeeVpa: 'examdump@okhdfcbank',
         payeeName: 'ExamDump',
         upiUri: 'upi://pay',

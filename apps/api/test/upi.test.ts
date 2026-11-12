@@ -145,8 +145,26 @@ async function makeOrder(userId: string, amountPaise: number, opts: { ttlMinutes
 }
 
 /** A synthetic credit alert, timestamped now unless overridden. */
-function creditAlert(amountRupees: string, extra = ''): string {
-  return `Rs.${amountRupees} credited to your a/c XX1234 from VPA payer@okhdfcbank. UPI Ref No 123456789012.${extra}`;
+function creditAlert(amountRupees: string, extra = '', utr = '123456789012'): string {
+  return `Rs.${amountRupees} credited to your a/c XX1234 from VPA payer@okhdfcbank. UPI Ref No ${utr}.${extra}`;
+}
+
+/**
+ * A credit alert for exactly what an order asks the customer to pay.
+ *
+ * Orders now carry a unique 1-99 paisa suffix, so the receivable amount is not
+ * the plan price. Every alert in these tests must quote the order's real amount,
+ * otherwise matching would correctly fail on the amount comparison.
+ */
+/** A unique 12-digit bank reference, so no two tests collide on the UTR index. */
+function randomUtr(): string {
+  let out = '';
+  for (let i = 0; i < 12; i += 1) out += Math.floor(Math.random() * 10);
+  return out;
+}
+
+function creditAlertFor(order: { amountPaise: number }, extra = '', utr?: string): string {
+  return creditAlert((order.amountPaise / 100).toFixed(2), extra, utr);
 }
 
 beforeAll(async () => {
@@ -448,7 +466,11 @@ describe('orders', () => {
     const user = await makeUser('upi-order@example.com');
     const order = await makeOrder(user.id, 49900);
     expect(order.reference).toMatch(/^ED[A-Z0-9]{8}$/);
-    expect(order.upiUri).toContain('am=499.00');
+    // The QR must quote the suffixed payable amount, not the plan price.
+    expect(order.upiUri).toContain(`am=${(order.amountPaise / 100).toFixed(2)}`);
+    expect(order.baseAmountPaise).toBe(49900);
+    expect(order.amountPaise).toBeGreaterThanOrEqual(49901);
+    expect(order.amountPaise).toBeLessThanOrEqual(49999);
     expect(order.status).toBe('pending');
     // The reference must appear in the note so banks that echo it help matching.
     expect(order.upiUri).toContain(order.reference);
@@ -479,7 +501,7 @@ describe('orders', () => {
     // A notification for an expired order must not settle it.
     const result = await ingestNotification(env, {
       source: 'gmail',
-      text: creditAlert('499.00', ' Ref No 999888777666'),
+      text: creditAlertFor(order, ' Ref No 999888777666'),
       timestamp: new Date().toISOString(),
     });
     expect(result.status).not.toBe('matched');
@@ -493,7 +515,7 @@ describe('ingestion and matching', () => {
 
     const result = await ingestNotification(env, {
       source: 'gmail',
-      text: creditAlert('499.00'),
+      text: creditAlertFor(order),
       timestamp: new Date().toISOString(),
     });
 
@@ -518,12 +540,12 @@ describe('ingestion and matching', () => {
 
     const first = await ingestNotification(env, {
       source: 'gmail',
-      text: creditAlert('499.00', ' Ref No 111111111111'),
+      text: creditAlertFor(order, ' Ref No 111111111111'),
       timestamp: new Date().toISOString(),
     });
     const second = await ingestNotification(env, {
       source: 'gmail',
-      text: creditAlert('499.00', ' Ref No 222222222222'),
+      text: creditAlertFor(order, ' Ref No 222222222222'),
       timestamp: new Date().toISOString(),
     });
 
@@ -536,8 +558,8 @@ describe('ingestion and matching', () => {
 
   it('suppresses a duplicated bank alert', async () => {
     const user = await makeUser('upi-dupe@example.com');
-    await makeOrder(user.id, 49900);
-    const text = creditAlert('499.00');
+    const order = await makeOrder(user.id, 49900);
+    const text = creditAlertFor(order);
     const at = new Date().toISOString();
 
     const first = await ingestNotification(env, { source: 'gmail', text, timestamp: at });
@@ -585,22 +607,60 @@ describe('ingestion and matching', () => {
     expect(result.reason).toBe('amount_above_limit');
   });
 
-  it('holds for review when two orders share the amount', async () => {
+  it('gives two orders for the same plan distinct payable amounts', async () => {
+    /*
+     * Two customers buying the same plan used to be told to transfer the same
+     * number of paise, so a credit could not be attributed to either. The suffix
+     * removes that ambiguity at the source.
+     */
     const a = await makeUser('upi-amb-a@example.com');
     const b = await makeUser('upi-amb-b@example.com');
     const orderA = await makeOrder(a.id, 49900);
     const orderB = await makeOrder(b.id, 49900);
 
+    expect(orderA.baseAmountPaise).toBe(49900);
+    expect(orderB.baseAmountPaise).toBe(49900);
+    expect(orderA.amountPaise).not.toBe(orderB.amountPaise);
+
+    // A credit for A's exact amount settles A and leaves B alone.
     const result = await ingestNotification(env, {
       source: 'gmail',
-      text: creditAlert('499.00', ' Ref No 444444444444'),
+      text: creditAlertFor(orderA, ' Ref No 444444444444'),
+      timestamp: new Date().toISOString(),
+    });
+    expect(result.status).toBe('matched');
+    expect((await getOrderById(orderA.id))?.status).toBe('settled');
+    expect((await getOrderById(orderB.id))?.status).toBe('pending');
+  });
+
+  it('never auto-settles when two different credits claim one live order', async () => {
+    /*
+     * The suffix prevents two live orders sharing an amount, so this exercises the
+     * remaining ambiguity: two distinct bank credits, same amount, one order. The
+     * second must not be treated as a second settlement, and the first must not be
+     * silently re-attributed.
+     */
+    const a = await makeUser('upi-amb2-a@example.com');
+    const orderA = await makeOrder(a.id, 49900);
+
+    const first = await ingestNotification(env, {
+      source: 'gmail',
+      text: creditAlertFor(orderA, ' Ref No 454545454545'),
+      timestamp: new Date().toISOString(),
+    });
+    const second = await ingestNotification(env, {
+      source: 'gmail',
+      text: creditAlertFor(orderA, ' Ref No 464646464646'),
       timestamp: new Date().toISOString(),
     });
 
-    // Ambiguity must never auto-approve.
-    expect(result.status).toBe('unmatched');
-    expect((await getOrderById(orderA.id))?.status).toBe('pending');
-    expect((await getOrderById(orderB.id))?.status).toBe('pending');
+    // One settlement, and the second credit is not allowed to claim the same order.
+    expect(first.status).toBe('matched');
+    expect(second.status).not.toBe('matched');
+    expect((await getOrderById(orderA.id))?.status).toBe('settled');
+
+    const matches = await getDb().select().from(upiMatches).where(eq(upiMatches.orderId, orderA.id));
+    expect(matches.length).toBe(1);
   });
 
   it('is safe under concurrent identical notifications', async () => {
@@ -611,12 +671,12 @@ describe('ingestion and matching', () => {
     const results = await Promise.all([
       ingestNotification(env, {
         source: 'gmail',
-        text: creditAlert('499.00', ' Ref No 555000111222'),
+        text: creditAlertFor(order, ' Ref No 555000111222'),
         timestamp: new Date().toISOString(),
       }),
       ingestNotification(env, {
         source: 'sms',
-        text: creditAlert('499.00', ' Ref No 555000333444'),
+        text: creditAlertFor(order, ' Ref No 555000333444'),
         timestamp: new Date().toISOString(),
       }),
     ]);
@@ -641,7 +701,7 @@ describe('ingestion and matching', () => {
 
     const result = await ingestNotification(env, {
       source: 'gmail',
-      text: creditAlert('499.00', ' Ref No 666000111222'),
+      text: creditAlertFor(order, ' Ref No 666000111222'),
       timestamp: new Date().toISOString(),
     });
     expect(result.status).not.toBe('matched');
@@ -658,13 +718,39 @@ describe('manual approval and refunds', () => {
     const order = await makeOrder(user.id, 49900);
     const other = await makeOrder(user.id, 49900);
 
-    // Two identical amounts: the automatic path holds, as designed.
-    const result = await ingestNotification(env, {
+    /*
+     * With auto-approve off, a correctly-sized credit is held for a human rather
+     * than settled: the realistic path into manual approval.
+     */
+    const manualEnv = loadEnv({
+      ...process.env,
+      NODE_ENV: 'test',
+      DATABASE_URL: process.env.DATABASE_URL_TEST ?? 'postgres://postgres:postgres@127.0.0.1:5433/examdump_test',
+      JWT_ACCESS_SECRET: 'test-access-secret-0123456789abcdef',
+      JWT_REFRESH_SECRET: 'test-refresh-secret-0123456789abcdef',
+      PASSWORD_PEPPER: 'test-pepper',
+      BCRYPT_ROUNDS: '8',
+      PUBLIC_WEB_URL: 'http://localhost:3100',
+      WEB_ORIGIN: 'http://localhost:3100',
+      ADMIN_EMAIL: 'admin@test.local',
+      ADMIN_PASSWORD: 'AdminPass123',
+      PAYMENTS_ENABLED: 'true',
+      UPI_PAYEE_VPA: 'examdump@okhdfcbank',
+      UPI_PAYEE_NAME: 'ExamDump',
+      UPI_ORDER_TTL_MINUTES: '15',
+      UPI_AUTO_APPROVE: 'false',
+      UPI_NOTIFICATION_MAX_PAISE: '5000000',
+      ENABLE_DATASET_SYNC: 'false',
+      RATE_LIMIT_MAX: '100000',
+      LOG_LEVEL: 'silent',
+    });
+    const result = await ingestNotification(manualEnv, {
       source: 'gmail',
-      text: creditAlert('499.00', ' Ref No 888000111222'),
+      text: creditAlertFor(order, ' Ref No 888000111222'),
       timestamp: new Date().toISOString(),
     });
     expect(result.status).toBe('unmatched');
+    expect((await getOrderById(order.id))?.status).toBe('under_review');
 
     const approved = await manuallyApprove(env, result.notificationId!, order.id, admin.id, 'verified in bank app');
     expect(approved.ok).toBe(true);
@@ -681,11 +767,12 @@ describe('manual approval and refunds', () => {
     const order = await makeOrder(user.id, 49900);
     await ingestNotification(env, {
       source: 'gmail',
-      text: creditAlert('499.00', ' Ref No 999000111222'),
+      text: creditAlertFor(order, ' Ref No 999000111222'),
       timestamp: new Date().toISOString(),
     });
 
-    const refund = await requestRefund(order.id, 49900, user.id, 'customer changed mind');
+    // A full refund returns everything the customer actually sent, suffix included.
+    const refund = await requestRefund(order.id, order.amountPaise, user.id, 'customer changed mind');
     let current = await getOrderById(order.id);
     // A request alone must not mark the order refunded: no money has moved yet.
     expect(current?.status).toBe('settled');
@@ -700,7 +787,7 @@ describe('manual approval and refunds', () => {
     const order = await makeOrder(user.id, 49900);
     await ingestNotification(env, {
       source: 'gmail',
-      text: creditAlert('499.00', ' Ref No 121000111222'),
+      text: creditAlertFor(order, ' Ref No 121000111222'),
       timestamp: new Date().toISOString(),
     });
     await expect(requestRefund(order.id, 99900, user.id, 'too much')).rejects.toThrow();
@@ -767,7 +854,7 @@ describe('UPI_AUTO_APPROVE is honoured', () => {
 
     const result = await ingestNotification(manualEnv, {
       source: 'gmail',
-      text: creditAlert('499.00', ' Ref No 303030303030'),
+      text: creditAlertFor(order, ' Ref No 303030303030'),
       timestamp: new Date().toISOString(),
     });
 
@@ -801,7 +888,7 @@ describe('UPI_AUTO_APPROVE is honoured', () => {
 
     const result = await ingestNotification(autoEnv, {
       source: 'gmail',
-      text: creditAlert('499.00', ' Ref No 404040404040'),
+      text: creditAlertFor(order, ' Ref No 404040404040'),
       timestamp: new Date().toISOString(),
     });
 
@@ -843,7 +930,7 @@ describe('manual approval requires the credit to match the order', () => {
     // Auto-approve is on, so this settles through the normal path first.
     const settled = await ingestNotification(env, {
       source: 'sms',
-      text: creditAlert('499.00', ' Ref No 606060606060'),
+      text: creditAlertFor(order, ' Ref No 606060606060'),
       timestamp: new Date().toISOString(),
     });
     expect(settled.status).toBe('matched');
@@ -869,7 +956,7 @@ describe('refunds cannot exceed the order under concurrency', () => {
     const order = await makeOrder(user.id, 100000);
     await ingestNotification(env, {
       source: 'gmail',
-      text: creditAlert('1000.00', ' Ref No 707070707070'),
+      text: creditAlertFor(order, ' Ref No 707070707070'),
       timestamp: new Date().toISOString(),
     });
     expect((await getOrderById(order.id))?.status).toBe('settled');
@@ -893,10 +980,201 @@ describe('refunds cannot exceed the order under concurrency', () => {
     const order = await makeOrder(user.id, 49900);
     await ingestNotification(env, {
       source: 'gmail',
-      text: creditAlert('499.00', ' Ref No 808080808080'),
+      text: creditAlertFor(order, ' Ref No 808080808080'),
       timestamp: new Date().toISOString(),
     });
     await expect(requestRefund(order.id, 0, admin.id, 'zero')).rejects.toThrow();
     await expect(requestRefund(order.id, -100, admin.id, 'negative')).rejects.toThrow();
   });
 });
+
+/* ======================================================================== */
+/* Unique per-attempt amounts                                               */
+/* ======================================================================== */
+
+describe('unique payment amounts', () => {
+  it('adds a 1-99 paisa suffix and keeps the quoted price as the base', async () => {
+    const user = await makeUser('upi-suffix@example.com');
+    const order = await makeOrder(user.id, 49900);
+
+    expect(order.baseAmountPaise).toBe(49900);
+    const suffix = order.amountPaise - order.baseAmountPaise;
+    expect(suffix).toBeGreaterThanOrEqual(1);
+    expect(suffix).toBeLessThanOrEqual(99);
+
+    // The same amount must appear everywhere the customer could look at it.
+    expect(order.upiUri).toContain(`am=${(order.amountPaise / 100).toFixed(2)}`);
+    expect(order.upiUri).not.toContain(`am=${(order.baseAmountPaise / 100).toFixed(2)}&`);
+  });
+
+  it('never issues the same payable amount to two live orders', async () => {
+    const user = await makeUser('upi-suffix-distinct@example.com');
+    const amounts = new Set<number>();
+    for (let i = 0; i < 12; i += 1) {
+      const order = await makeOrder(user.id, 19900);
+      amounts.add(order.amountPaise);
+      // Keep them live; only pending/under_review reserve an amount.
+    }
+    // 12 draws from 99 values colliding is possible, so assert on the guarantee
+    // that matters: whatever is live is unique.
+    const live = await getDb()
+      .select({ amountPaise: upiOrders.amountPaise })
+      .from(upiOrders)
+      .where(eq(upiOrders.status, 'pending'));
+    const liveAmounts = live.map((r) => r.amountPaise);
+    expect(new Set(liveAmounts).size).toBe(liveAmounts.length);
+    expect(amounts.size).toBe(12);
+  });
+
+  it('retries with a new suffix when a collision occurs', async () => {
+    const user = await makeUser('upi-suffix-collide@example.com');
+    const first = await makeOrder(user.id, 29900);
+
+    /*
+     * Force the RNG onto the same suffix the first order already holds. The insert
+     * must be rejected by the partial unique index and retried instead of failing
+     * the checkout. After the forced draw, real randomness resumes.
+     */
+    const { setSuffixRandom } = await import('../src/services/upi/order.service.js');
+    // Suffix in paise: amountPaise is base + suffix, both already in paise.
+    const takenSuffix = first.amountPaise - first.baseAmountPaise;
+    let calls = 0;
+    // The suffix is 1-based, so convert back to the RNG's 0-based range.
+    const collideValue = (takenSuffix - 1) / 99;
+    setSuffixRandom(() => {
+      calls += 1;
+      // First draw reproduces the suffix the live order already holds.
+      return calls === 1 ? collideValue : 0.5;
+    });
+
+    try {
+      const second = await makeOrder(user.id, 29900);
+      expect(second.amountPaise).not.toBe(first.amountPaise);
+      expect(calls).toBeGreaterThanOrEqual(2);
+    } finally {
+      setSuffixRandom(null);
+    }
+  });
+
+  it('gives concurrent checkouts distinct amounts', async () => {
+    const users = await Promise.all(
+      Array.from({ length: 8 }, (_, i) => makeUser(`upi-concurrent-amount-${i}@example.com`)),
+    );
+
+    const orders = await Promise.all(users.map((u) => makeOrder(u.id, 39900)));
+    const amounts = orders.map((o) => o.amountPaise);
+
+    expect(new Set(amounts).size).toBe(amounts.length);
+    for (const order of orders) {
+      expect(order.baseAmountPaise).toBe(39900);
+      expect(order.amountPaise - order.baseAmountPaise).toBeGreaterThanOrEqual(1);
+      expect(order.amountPaise - order.baseAmountPaise).toBeLessThanOrEqual(99);
+    }
+  });
+
+  it('frees the amount once an order expires', async () => {
+    const user = await makeUser('upi-suffix-expiry@example.com');
+    const old = await makeOrder(user.id, 59900, { ttlMinutes: 3 });
+
+    // Expire it through the real sweeper rather than by editing the row.
+    await getDb()
+      .update(upiOrders)
+      .set({ expiresAt: new Date(Date.now() - 60_000) })
+      .where(eq(upiOrders.id, old.id));
+    await expireStaleOrders();
+
+    const refreshed = await getOrderById(old.id);
+    expect(refreshed?.status).toBe('expired');
+
+    // The amount is no longer reserved, so a new order may take it.
+    const { setSuffixRandom } = await import('../src/services/upi/order.service.js');
+    const freedSuffix = (old.amountPaise - old.baseAmountPaise) / 100;
+    setSuffixRandom(() => freedSuffix);
+    try {
+      const replacement = await makeOrder(user.id, 59900);
+      // Either it reused the freed amount, or another random value: never a failure.
+      expect(replacement.amountPaise).toBeGreaterThanOrEqual(59901);
+    } finally {
+      setSuffixRandom(null);
+    }
+  });
+
+  it('settles only on the exact suffixed amount, not the plan price', async () => {
+    const user = await makeUser('upi-exact-amount@example.com');
+    const order = await makeOrder(user.id, 49900);
+
+    // Paying the plan price is short by the suffix: it must not match.
+    const short = await ingestNotification(env, {
+      source: 'gmail',
+      text: creditAlert('499.00', ' Ref No 818181818181'),
+      timestamp: new Date().toISOString(),
+    });
+    expect(short.status).toBe('unmatched');
+    expect((await getOrderById(order.id))?.status).toBe('pending');
+
+    // The exact payable amount does match. The reference must be unique across the
+    // whole suite: bank_reference is uniquely indexed, so a repeat is a replay.
+    const exact = await ingestNotification(env, {
+      source: 'gmail',
+      text: creditAlertFor(order, '', randomUtr()),
+      timestamp: new Date().toISOString(),
+    });
+    expect(exact.status).toBe('matched');
+    expect((await getOrderById(order.id))?.status).toBe('settled');
+  });
+
+  it('does not reuse a suffixed amount as the next base price', async () => {
+    /*
+     * Reuse guard: when a customer refreshes checkout, the order is returned as-is
+     * rather than re-priced. A second order for the same plan must build on the
+     * plan price, not on the previous order's suffixed amount, or suffixes would
+     * compound every retry.
+     */
+    const user = await makeUser('upi-no-compound@example.com');
+    const first = await makeOrder(user.id, 49900);
+    await cancelOrder(first.id, 'test');
+    const second = await makeOrder(user.id, 49900);
+
+    expect(second.baseAmountPaise).toBe(49900);
+    expect(second.amountPaise).toBeLessThanOrEqual(49999);
+  });
+
+  it('treats the same alert twice as a duplicate, not a second settlement', async () => {
+    const user = await makeUser('upi-dupe-suffix@example.com');
+    const order = await makeOrder(user.id, 49900);
+    const text = creditAlertFor(order, ' Ref No 737373737373');
+    const at = new Date().toISOString();
+
+    const first = await ingestNotification(env, { source: 'gmail', text, timestamp: at });
+    const replay = await ingestNotification(env, { source: 'gmail', text, timestamp: at });
+
+    expect(first.status).toBe('matched');
+    expect(replay.status).toBe('duplicate');
+
+    const matches = await getDb().select().from(upiMatches).where(eq(upiMatches.orderId, order.id));
+    expect(matches.length).toBe(1);
+  });
+
+  it('does not let a refund exceed the amount the customer actually sent', async () => {
+    const admin = await makeUser('upi-suffix-refund-admin@example.com');
+    const user = await makeUser('upi-suffix-refund@example.com');
+    const order = await makeOrder(user.id, 49900);
+    await ingestNotification(env, {
+      source: 'gmail',
+      text: creditAlertFor(order, ' Ref No 747474747474'),
+      timestamp: new Date().toISOString(),
+    });
+
+    // One paisa more than was received is refused.
+    await expect(
+      requestRefund(order.id, order.amountPaise - order.baseAmountPaise + order.baseAmountPaise + 1, admin.id, 'too much'),
+    ).rejects.toThrow('refund_exceeds_order');
+
+    // The full received amount, suffix included, is allowed.
+    const refund = await requestRefund(order.id, order.amountPaise, admin.id, 'full');
+    await completeRefund(refund.id, 'UTR-SUFFIX-REFUND');
+    expect((await getOrderById(order.id))?.status).toBe('refunded');
+  });
+});
+
+

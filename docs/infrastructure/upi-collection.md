@@ -32,12 +32,26 @@ What *is* guaranteed, and tested:
   which itself returns `already_settled` on any repeat.
 - **Duplicate alerts are suppressed** by a unique hash of the message and a partial
   unique index on the bank UTR.
-- **Ambiguity never auto-approves.** If two orders share an amount, the credit is held
-  for a human, not guessed.
+- **Each payment attempt gets its own payable amount.** The plan price is kept as
+  `base_amount_paise`; the amount the customer is asked to send is that price plus a
+  random 1-99 paisa suffix (`amount_paise`). Two people buying the same plan at the
+  same time therefore never share a number, so a credit maps to one live order.
+  PostgreSQL enforces this with a partial unique index on `amount_paise` over
+  `pending`/`under_review` orders; a losing concurrent insert retries with a new
+  suffix instead of failing the checkout.
+
+  **This is collision avoidance, not proof of payment.** The suffix narrows
+  ambiguity so the matcher has less to guess; it never settles anything. Settlement
+  still requires a matching credit, a bank reference, and the dedupe rules below,
+  and the amount alone is never treated as evidence that money arrived.
+- **Ambiguity never auto-approves.** If two live orders somehow share an amount, the
+  credit is held for a human, not guessed.
 - **A forged request cannot reach the parser.** Ingest requires an HMAC-SHA256
   signature over the raw body, verified with a timing-safe compare.
 - **A client cannot change the payee or amount.** The QR and intent links are rendered
   server-side from a frozen URI stored with the order; the browser only displays them.
+  The frozen URI quotes the suffixed amount, so the QR, the app intents and the label
+  always agree.
 
 ---
 
@@ -283,14 +297,19 @@ settlement, receipt, and invoice path as every other provider.
 
 ## 9. Test coverage
 
-`apps/api/test/upi.test.ts` (44 tests) covers parsing against real bank message shapes,
+`apps/api/test/upi.test.ts` (60 tests) covers parsing against real bank message shapes,
 risk scoring, URI/QR construction, and — against real Postgres — settlement, double
 settlement, duplicate suppression, amount mismatch, expiry, ambiguous amounts, concurrent
-ingest, manual approval, and refunds.
+ingest, manual approval, and refunds. It also covers unique amounts specifically:
+distinct live amounts, suffix range, collision retry, concurrent checkouts, amount release
+on expiry, exact-amount matching (paying the base price does not settle), no suffix
+compounding on retry, and refund caps.
 
-`apps/api/test/upi-api.test.ts` (16 tests) covers the HTTP layer: auth-before-config
-ordering, admin-only access, signature verification (missing, wrong, tampered body), and
-the signed happy path.
+`apps/api/test/upi-api.test.ts` (23 tests) covers the HTTP layer: auth-before-config
+ordering, admin-only access, signature verification (missing, wrong, tampered body), the
+timestamp-bound signature, and the signed happy path. It asserts that the checkout
+response quotes the suffixed amount consistently in the QR, every app intent and the
+label.
 
 Run both:
 
@@ -304,6 +323,10 @@ DATABASE_URL_TEST="postgres://postgres:postgres@127.0.0.1:5433/examdump_test" np
 ## 10. Known limitations
 
 - **Not bank-verified.** Stated throughout; see §1. This is the main one.
+- **Suffixes reduce, not remove, ambiguity.** 99 amounts per price, so more than 99
+  simultaneous live checkouts of the same plan would exhaust the space and the checkout
+  fails with `amount_reservation_failed` rather than reusing an amount. That is the safe
+  failure: it never silently merges two payments.
 - **Email delivery latency.** Bank alerts can arrive seconds to minutes late. The order
   window is 15 minutes by default; a payment made at the last second may be observed
   after expiry and rejected. The buyer is told to refresh before paying again.
