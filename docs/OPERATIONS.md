@@ -38,13 +38,24 @@ anything.
 cd ~/projects/examdump-pro
 git fetch && git checkout <commit>
 cd deploy
-./redeploy-api.sh
+
+# Only when a variable changed in Doppler.
+doppler run --project examdump-pro --config prd -- ./redeploy-api.sh --sync-env
+
+sudo ./redeploy-api.sh
 ```
 
 `deploy/redeploy-api.sh` builds, verifies the image, stages the new container and
 waits for `/api/health/ready` **before** stopping the old one, then swaps, reloads
 nginx and verifies routing. It rolls back automatically on failure and accepts
-`--rollback`, `--build-only`, `--no-build` and `--dry-run`.
+`--rollback`, `--build-only`, `--no-build`, `--dry-run`, `--sync-env` and
+`--sync-env --from-container`.
+
+**The environment comes from a file, not from the shell.** `podman create
+--env-file` reads `/tmp/examdump-api.env`; a `doppler run` prefix on a plain deploy
+syncs nothing, so a newly added secret appears to deploy and quietly is not there.
+Run `--sync-env` under `doppler run` first. An empty incoming value never blanks a
+working one. `npm run test:deploy` covers both guarantees.
 
 See [DEPLOYMENT.md](../DEPLOYMENT.md) for the full procedure.
 

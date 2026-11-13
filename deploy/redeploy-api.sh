@@ -33,6 +33,22 @@
 #   ./redeploy-api.sh --no-build          # redeploy the existing :latest
 #   ./redeploy-api.sh --rollback           # revert to the saved previous image
 #   ./redeploy-api.sh --dry-run            # print the plan, change nothing
+#   ./redeploy-api.sh --sync-env           # overlay the ambient (Doppler) env into the env file
+#   ./redeploy-api.sh --sync-env --from-container   # seed from the live container first
+#
+# ENVIRONMENT INJECTION
+#   The API container is created with `podman create --env-file`, so variables
+#   come from that FILE, not from the shell that runs this script. Putting
+#   `doppler run ...` in front of a plain deploy therefore changes nothing - the
+#   file wins. Run `--sync-env` under `doppler run` first, then deploy:
+#
+#     doppler run --project examdump-pro --config prd -- ./redeploy-api.sh --sync-env
+#     sudo ./redeploy-api.sh --no-build
+#
+#   Podman treats env-file lines literally (no quote stripping), so values are
+#   normalised on the way in. An empty incoming value never overwrites a working
+#   one; removing a variable is a deliberate edit of the file, not an accident of
+#   an emptier environment.
 #
 # REQUIREMENTS: rootful podman (`sudo`), the API container env file, nginx
 # container present. Run from the deploy/ directory.
@@ -46,13 +62,23 @@ CONTAINER_NAME="examdump-pro_api_1"
 IMAGE_REPO="localhost/examdump-pro_api"
 NETWORK="examdump-pro_examdump"
 NETWORK_ALIAS="api"
+# NOTE: deliberately not named DOPPLER_PROJECT/DOPPLER_CONFIG - `doppler run`
+# sets those itself, so reusing the names would silently shadow the defaults.
+ENV_SOURCE_PROJECT="${ENV_SOURCE_PROJECT:-examdump-pro}"
+ENV_SOURCE_CONFIG="${ENV_SOURCE_CONFIG:-prd}"
 NGINX_CONTAINER="examdump-pro_nginx_1"
 POSTGRES_CONTAINER="examdump-pro_postgres_1"
 
+SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 STATE_DIR="/var/lib/examdump-deploy"
 PREVIOUS_IMAGE_FILE="${STATE_DIR}/previous-image"
+
+# The container is created from an env FILE, not from the ambient environment.
+# `podman create --env-file` is the only way to reproduce the container's 100+
+# variables without re-rendering compose (which is not how it was created).
+ENV_FILE="${ENV_FILE:-/tmp/examdump-api.env}"
 
 # How long to wait for the new container to report ready before giving up.
 READY_TIMEOUT_SECONDS="${READY_TIMEOUT_SECONDS:-120}"
@@ -63,6 +89,8 @@ BUILD_ONLY=0
 NO_BUILD=0
 DO_ROLLBACK=0
 DRY_RUN=0
+SYNC_ENV=0
+FROM_CONTAINER=0
 # Name of the not-yet-swapped container, so the EXIT trap knows what to clean up.
 STAGED_CONTAINER=""
 
@@ -87,6 +115,8 @@ while [[ $# -gt 0 ]]; do
     --no-build)   NO_BUILD=1 ;;
     --rollback)   DO_ROLLBACK=1 ;;
     --dry-run)    DRY_RUN=1 ;;
+    --sync-env)   SYNC_ENV=1 ;;
+    --from-container) FROM_CONTAINER=1 ;;
     -h|--help)    sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)            die "unknown argument: $1" ;;
   esac
@@ -125,15 +155,16 @@ preflight() {
   as_root podman network exists "${NETWORK}" \
     || die "network ${NETWORK} is missing"
 
-  # An env file is the only reliable way to reproduce the container's 100+
-  # variables without re-rendering compose (which is not how it was created).
-  if [[ ! -f "${ENV_FILE:-/tmp/examdump-api.env}" ]]; then
-    die "API env file not found at ${ENV_FILE:-/tmp/examdump-api.env}.
-       Generate it from the running container or from Doppler:
+  if [[ ! -f "${ENV_FILE}" ]]; then
+    die "API env file not found at ${ENV_FILE}.
+       Generate it from the running container, then overlay Doppler:
          sudo podman inspect ${CONTAINER_NAME} --format '{{range .Config.Env}}{{println .}}{{end}}' \\
-           | grep -v '^PATH=' > /tmp/examdump-api.env"
+           | grep -v '^PATH=' > ${ENV_FILE}
+         doppler run --project examdump-pro --config prd -- ${SCRIPT_NAME} --sync-env
+       When not already inside \`doppler run\`, seed from the live container:
+         ${SCRIPT_NAME} --sync-env --from-container"
   fi
-  ok "env file present (${ENV_FILE:-/tmp/examdump-api.env})"
+  ok "env file present (${ENV_FILE})"
 }
 
 # ---------------------------------------------------------------------------
@@ -202,7 +233,7 @@ create_container() {
   as_root podman create \
     --name "${name}" \
     --restart unless-stopped \
-    --env-file "${ENV_FILE:-/tmp/examdump-api.env}" \
+    --env-file "${ENV_FILE}" \
     --network "${NETWORK}" \
     --network-alias "${NETWORK_ALIAS}" \
     --expose 4000 \
@@ -428,8 +459,201 @@ print_summary() {
 }
 
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Environment synchronisation
+# ---------------------------------------------------------------------------
+#
+# WHY THIS EXISTS
+# ---------------
+# `podman create --env-file` treats every line as a LITERAL `KEY=VALUE`. It does
+# not strip quotes and does not interpret escapes. That has two consequences:
+#
+#   Doppler's `secrets download --format env` writes `LOG_LEVEL="info"`. Fed
+#   straight in, the API receives the six-character string `"info"` and the env
+#   schema rejects it - so the container never becomes ready. That failure is
+#   loud and harmless.
+#
+#   The other direction is worse. A variable that is simply ABSENT from the file
+#   silently falls back to the image default. When a rotation empties a value, or
+#   when an env file is rebuilt from stale data, the API boots "successfully"
+#   with a wrong or blank secret and nobody notices. That is exactly how a freshly
+#   added `UPI_SECRETS_KEY` was missed by an apparently successful deployment.
+#
+# So the file is normalised before use, and an empty incoming value NEVER
+# overwrites a non-empty existing one. Deliberate removal requires deleting the
+# key from the file by hand.
+
+# Strip one layer of matching surrounding quotes, because Doppler adds them.
+_unquote() {
+  local v="$1"
+  if [[ ${#v} -ge 2 ]]; then
+    if [[ "$v" == \"*\" || "$v" == \'*\' ]]; then
+      v="${v:1:${#v}-2}"
+    fi
+  fi
+  printf '%s' "$v"
+}
+
+# Normalise one KEY=VALUE line into unquoted form. Prints nothing for lines that
+# are blank, comments, or malformed. Never prints the value to the log.
+_normalise_line() {
+  local line="$1"
+  [[ -z "$line" ]] && return 0
+  [[ "$line" == \#* ]] && return 0
+  [[ "$line" != *=* ]] && return 0
+  local k="${line%%=*}"
+  [[ "$k" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 0
+  local v="${line#*=}"
+  v="$(_unquote "$v")"
+  printf '%s=%s\n' "$k" "$v"
+}
+
+sync_env() {
+  local target="${ENV_FILE}"
+  local incoming
+  incoming="$(mktemp)"
+  local merged
+  merged="$(mktemp)"
+  # NOTE: no `trap ... RETURN` here. A RETURN trap is not scoped to this
+  # function - it fires when ANY function returns, so it deleted these files
+  # after the first helper call and the merge silently wrote nothing.
+  # Cleanup is done explicitly on every exit path below.
+
+  # Seed: the live container is the source of truth for everything not supplied
+  # by Doppler, because it carries variables that exist nowhere else.
+  if [[ "${FROM_CONTAINER}" -eq 1 ]] || [[ ! -s "${target}" ]]; then
+    as_root podman container exists "${CONTAINER_NAME}" \
+      || { rm -f "${incoming}" "${merged}"; die "--from-container requested but ${CONTAINER_NAME} does not exist"; }
+    as_root podman inspect "${CONTAINER_NAME}" \
+      --format '{{range .Config.Env}}{{println .}}{{end}}' \
+      | grep -v '^PATH=' | grep -v '^$' > "${target}.seed" \
+      || { rm -f "${incoming}" "${merged}"; die "could not read the environment of ${CONTAINER_NAME}"; }
+    chmod 600 "${target}.seed"
+  fi
+
+  # What is being overlaid: the ambient environment when run under `doppler run`,
+  # otherwise nothing (existing file wins).
+  if [[ "${FROM_CONTAINER}" -eq 1 ]]; then
+    : > "${incoming}"
+  else
+    # Only take variables the Doppler project actually defines.
+    #
+    # Copying the whole ambient environment would drag in the caller's shell -
+    # PATH, SSH_CLIENT, the agent's own variables, even unrelated credentials
+    # such as a local MongoDB URI. Those have no business inside the API
+    # container and several of them would be a leak.
+    #
+    # `doppler run` does not mark which variables it injected, so the project
+    # name list is the only reliable filter. When Doppler is not present (a
+    # plain shell), nothing is overlaid and the existing file is preserved.
+    local allow="${incoming}.allow"
+    if command -v doppler >/dev/null 2>&1 \
+      && doppler secrets --project "${ENV_SOURCE_PROJECT}" --config "${ENV_SOURCE_CONFIG}" --only-names >"${allow}" 2>/dev/null; then
+      # Table output: strip box drawing, keep bare identifiers.
+      sed -e 's/[│┌┐└┘├┤─]//g' -e 's/^ *//' -e 's/ *$//' "${allow}" \
+        | grep -E '^[A-Za-z_][A-Za-z0-9_]*$' | sort -u > "${allow}.names"
+      env -0 | tr '\0' '\n' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' \
+        | awk -F= 'NR==FNR{ok[$1];next} ($1 in ok)' "${allow}.names" - \
+        | grep -vE '^(DOPPLER_[A-Z_]*|PATH|HOME|PWD|OLDPWD|SHELL|SHLVL|USER|LOGNAME|TERM|LANG|HOSTNAME|_|MONGODB_[A-Z_]*|POSTGRES_[A-Z_]*)=' \
+        > "${incoming}" || true
+      rm -f "${allow}.names"
+    else
+      warn "doppler not available; keeping the existing env file values unchanged"
+      : > "${incoming}"
+    fi
+    rm -f "${allow}"
+  fi
+
+  local seed_file="${target}.seed"
+  if [[ ! -f "${seed_file}" ]]; then
+    # The env file is usually root-owned (it is produced by podman under sudo),
+    # so read it back through the same privilege that owns it and work on a
+    # private copy. Writing the target happens via install at the end.
+    seed_file="${incoming}.seed"
+    if as_root test -f "${target}" 2>/dev/null; then
+      as_root cat "${target}" > "${seed_file}" \
+        || die "cannot read ${target}"
+    else
+      : > "${seed_file}"
+    fi
+  fi
+
+  # Build merged output: start from the seed, then let incoming win where it has
+  # a NON-EMPTY value.
+  declare -A incoming_map=()
+  local line k v
+  while IFS= read -r line; do
+    local norm
+    norm="$(_normalise_line "${line}")"
+    [[ -z "${norm}" ]] && continue
+    k="${norm%%=*}"
+    v="${norm#*=}"
+    incoming_map["${k}"]="$v"
+  done < "${incoming}"
+
+  local applied=0 skipped=0
+  while IFS= read -r line; do
+    local norm
+    norm="$(_normalise_line "${line}")"
+    [[ -z "${norm}" ]] && continue
+    k="${norm%%=*}"
+    v="${norm#*=}"
+    if [[ -n "${incoming_map[${k}]+set}" ]]; then
+      local new="${incoming_map[${k}]}"
+      if [[ -z "${new}" && -n "${v}" ]]; then
+        # Refuse to blank a working value: keep the existing one and say so.
+        # `continue` here would drop the variable from the file entirely, which
+        # is the very failure this guard exists to prevent.
+        skipped=$((skipped + 1))
+        printf '%s=%s\n' "${k}" "${v}" >> "${merged}"
+        unset 'incoming_map[${k}]'
+        continue
+      fi
+      printf '%s=%s\n' "${k}" "${new}" >> "${merged}"
+      applied=$((applied + 1))
+      unset 'incoming_map[${k}]'
+    else
+      printf '%s=%s\n' "${k}" "${v}" >> "${merged}"
+    fi
+  done < "${seed_file}"
+
+  # Anything new from Doppler that the seed did not have.
+  for k in "${!incoming_map[@]}"; do
+    v="${incoming_map[${k}]}"
+    [[ -z "${v}" ]] && continue
+    printf '%s=%s\n' "${k}" "${v}" >> "${merged}"
+    applied=$((applied + 1))
+  done
+
+  [[ -s "${merged}" ]] || { rm -f "${incoming}" "${merged}" "${seed_file}"; die "env sync produced no variables; refusing to write an empty env file"; }
+
+  if ! install -m 600 "${merged}" "${target}" 2>/dev/null; then
+    as_root install -m 600 -o root -g root "${merged}" "${target}" \
+      || { rm -f "${incoming}" "${merged}" "${seed_file}"; die "cannot write ${target}"; }
+  fi
+  # Only the derived seed is removable. When the seed fell back to the target
+  # itself, deleting it here would delete the file we just wrote.
+  rm -f "${incoming}" "${merged}"
+  [[ "${seed_file}" == "${target}.seed" ]] && rm -f "${seed_file}"
+  true
+
+  ok "env file sync: ${applied} value(s) updated, ${skipped} empty value(s) rejected"
+  # `as_root` cannot redirect a file into a non-root process, so count via a
+  # subshell that runs cat under the owning privilege.
+  log "target: ${target} ($(as_root cat "${target}" | wc -l) variables)"
+}
+
 main() {
   log "examdump API redeploy"
+
+  # Environment is settled before any other check, because everything downstream
+  # reads it.
+  if [[ "${SYNC_ENV}" -eq 1 ]]; then
+    sync_env
+    return
+  fi
+
   preflight
 
   if [[ "${DO_ROLLBACK}" -eq 1 ]]; then

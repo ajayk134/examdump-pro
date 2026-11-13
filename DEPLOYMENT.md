@@ -10,14 +10,48 @@ Single Oracle Cloud VM, rootful Podman, Doppler for secrets, nginx for TLS.
 Use the script. It is the only procedure that has been tested against this host.
 
 ```bash
-cd ~/projects/examdump-pro
-sudo podman inspect examdump-pro_api_1 \
-  --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -v '^PATH=' \
-  > /tmp/examdump-api.env && sudo chmod 600 /tmp/examdump-api.env
+cd ~/projects/examdump-pro/deploy
 
-cd deploy
-./redeploy-api.sh            # build, verify image, stage, health-check, swap, nginx
+# 1. Settle the environment file from Doppler, then from the live container.
+#    Run this whenever a variable changed in Doppler.
+doppler run --project examdump-pro --config prd -- ./redeploy-api.sh --sync-env
+
+# 2. Deploy.
+sudo ./redeploy-api.sh
 ```
+
+### Why the two steps are separate
+
+The API container is created with `podman create --env-file`, so its variables
+come from **a file**, never from the shell that invoked the script. Prefixing a
+deploy with `doppler run` therefore changes nothing — the file always wins, and an
+unchanged file means an unchanged environment.
+
+That is how a newly added secret can sit in Doppler while deployment reports
+success. `--sync-env` is the step that actually moves values into the file.
+
+`podman create --env-file` also treats every line literally: it does not strip
+quotes and does not interpret escapes. Doppler's `secrets download --format env`
+emits `LOG_LEVEL="info"`, which the API would receive as the six-character string
+`"info"` and reject — so `--sync-env` normalises quoting on the way in.
+
+Two guarantees, both covered by `deploy/test-env-sync.sh`:
+
+- an **empty** incoming value never overwrites a working one — removing a
+  variable is a deliberate edit of the file, not a side effect of a leaner
+  environment;
+- values containing spaces, `=`, `#` or quotes survive unchanged.
+
+`--sync-env` writes the file `0600` and never logs a value.
+
+### First-time setup on a fresh host
+
+```bash
+cd deploy
+./redeploy-api.sh --sync-env --from-container   # seed from the running container
+```
+
+Run this to regenerate `/tmp/examdump-api.env` if it is missing.
 
 The script:
 
