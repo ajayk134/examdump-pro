@@ -30,6 +30,7 @@ import {
 import type { Env } from '../../config/env.js';
 import { settlePayment } from '../subscription.service.js';
 import { buildUpiUri, sanitizeNote } from './uri.js';
+import { resolveUpiConfig } from './config.service.js';
 import { parseBankNotification } from './parser.js';
 import {
   DEFAULT_RISK_CONFIG,
@@ -123,7 +124,13 @@ function pickSuffix(): number {
  * carry a matching amount and a bank reference and pass the dedupe rules.
  */
 export async function createUpiOrder(env: Env, input: CreateOrderInput): Promise<UpiOrder> {
-  if (!env.UPI_PAYEE_VPA) throw new Error('upi_not_configured');
+  /*
+   * The payee now comes from the resolved configuration, which prefers the
+   * dashboard value and falls back to the environment. Reading `env` directly
+   * here would let the dashboard show one VPA while the QR encodes another.
+   */
+  const config = await resolveUpiConfig(env);
+  if (!config.payeeVpa) throw new Error('upi_not_configured');
   if (!Number.isSafeInteger(input.amountPaise) || input.amountPaise <= 0) {
     throw new Error('invalid_amount');
   }
@@ -134,7 +141,7 @@ export async function createUpiOrder(env: Env, input: CreateOrderInput): Promise
   const db = getDb();
   const ttlMinutes = Math.min(Math.max(input.ttlMinutes ?? env.UPI_ORDER_TTL_MINUTES, 3), 120);
   const baseAmountPaise = input.amountPaise;
-  const payeeName = env.UPI_PAYEE_NAME || 'ExamDump';
+  const payeeName = config.payeeName || 'ExamDump';
 
   let lastError: unknown = null;
 
@@ -144,7 +151,7 @@ export async function createUpiOrder(env: Env, input: CreateOrderInput): Promise
 
     const amountPaise = baseAmountPaise + pickSuffix();
     const upiUri = buildUpiUri({
-      payeeVpa: env.UPI_PAYEE_VPA,
+      payeeVpa: config.payeeVpa,
       payeeName,
       // The customer transfers the suffixed amount, so the QR must say so.
       amountPaise,
@@ -160,7 +167,7 @@ export async function createUpiOrder(env: Env, input: CreateOrderInput): Promise
           paymentId: input.paymentId,
           amountPaise,
           baseAmountPaise,
-          payeeVpa: env.UPI_PAYEE_VPA,
+          payeeVpa: config.payeeVpa,
           payeeName,
           upiUri,
           planId: input.planId ?? null,
@@ -383,6 +390,13 @@ export async function ingestNotification(env: Env, input: IngestInput): Promise<
   const db = getDb();
   const parsed = parseBankNotification({ text: input.text, timestamp: input.timestamp });
 
+  /*
+   * Resolved once, up front: the risk screen needs the payee it is screening
+   * against, and the auto-approve decision below needs the operator's current
+   * switch. Both may now come from the dashboard rather than the environment.
+   */
+  const upiConfig = await resolveUpiConfig(env);
+
   const observedAt = parsed?.observedAt ?? null;
   const dedupeKey = dedupeKeyFor(input.source, [
     parsed?.bankReferenceNumber ?? null,
@@ -409,7 +423,7 @@ export async function ingestNotification(env: Env, input: IngestInput): Promise<
 
   const config = DEFAULT_RISK_CONFIG;
   const screen = screenNotification(parsed, {
-    payeeVpa: env.UPI_PAYEE_VPA || '',
+    payeeVpa: upiConfig.payeeVpa || '',
     maxAmountPaise: env.UPI_NOTIFICATION_MAX_PAISE,
   });
   if (!screen.ok) {
@@ -525,7 +539,7 @@ export async function ingestNotification(env: Env, input: IngestInput): Promise<
    * credit settled automatically, which silently defeated the documented first
    * -deployment rule of running with auto-approve off.
    */
-  if (!env.UPI_AUTO_APPROVE && approvable.length >= 1) {
+  if (!upiConfig.autoApprove && approvable.length >= 1) {
     const best = approvable.sort((a, b) => b.assessment.confidence - a.assessment.confidence)[0]!;
     await db
       .update(upiNotifications)

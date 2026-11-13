@@ -14,7 +14,8 @@
 
 import type { Env } from '../../config/env.js';
 import { expireStaleOrders } from './order.service.js';
-import { gmailObserverConfigured, pollGmailOnce } from './gmail-observer.js';
+import { pollGmailOnce } from './gmail-observer.js';
+import { isGmailObserverConfigured, resolveUpiConfig } from './config.service.js';
 
 let pollTimer: NodeJS.Timeout | null = null;
 let expiryTimer: NodeJS.Timeout | null = null;
@@ -35,10 +36,25 @@ export const upiWorkerState = {
   lastError: null as string | null,
 };
 
+/**
+ * Decide on every tick whether polling should happen.
+ *
+ * The observer used to be switched on once, at boot, from environment variables.
+ * Now the dashboard can connect or disconnect the mailbox while the process is
+ * running, so the check has to be repeated. It reads the resolver's short-TTL
+ * cache, which means a dashboard change takes effect within seconds without a
+ * restart and without a database query per tick.
+ */
 async function runPoll(env: Env): Promise<void> {
   if (polling) return;
   polling = true;
   try {
+    const config = await resolveUpiConfig(env);
+    if (!isGmailObserverConfigured(config)) {
+      // Deliberately quiet on every tick; the reason is visible in the admin
+      // status endpoint and was logged once when the worker started.
+      return;
+    }
     const result = await pollGmailOnce(env);
     upiWorkerState.lastPollAt = new Date();
     upiWorkerState.lastPollResult = {
@@ -102,29 +118,42 @@ export function startUpiWorker(env: Env): void {
   expiryTimer = setInterval(() => void runExpiry(), 60_000);
   expiryTimer.unref?.();
 
-  if (gmailObserverConfigured(env) && env.UPI_GMAIL_POLL_SECONDS > 0) {
+  /*
+   * The poll timer is installed whenever an interval is configured, and each tick
+   * asks the resolver whether the observer is currently connected. Gating the
+   * timer itself on credentials would have frozen the worker in whatever state it
+   * booted in, so connecting the mailbox from the dashboard would need a restart.
+   */
+  if (env.UPI_GMAIL_POLL_SECONDS > 0) {
     pollTimer = setInterval(() => void runPoll(env), env.UPI_GMAIL_POLL_SECONDS * 1000);
     pollTimer.unref?.();
     // First poll shortly after boot so a restart does not wait a full interval.
     setTimeout(() => void runPoll(env), 5_000).unref?.();
-    console.log(
-      JSON.stringify({
-        level: 30,
-        msg: 'upi.worker_started',
-        pollSeconds: env.UPI_GMAIL_POLL_SECONDS,
-        autoApprove: env.UPI_AUTO_APPROVE,
-      }),
-    );
-  } else {
-    console.log(
-      JSON.stringify({
-        level: 30,
-        msg: 'upi.worker_started',
-        observer: 'disabled',
-        reason: gmailObserverConfigured(env) ? 'poll_interval_zero' : 'not_configured',
-      }),
-    );
   }
+
+  void resolveUpiConfig(env, true)
+    .then((config) => {
+      console.log(
+        JSON.stringify({
+          level: 30,
+          msg: 'upi.worker_started',
+          pollSeconds: env.UPI_GMAIL_POLL_SECONDS,
+          observer: isGmailObserverConfigured(config) ? 'enabled' : 'disabled',
+          reason: isGmailObserverConfigured(config)
+            ? undefined
+            : env.UPI_GMAIL_POLL_SECONDS > 0
+              ? 'not_configured'
+              : 'poll_interval_zero',
+          // Reported from resolved config, not env, so the log matches reality.
+          autoApprove: config.autoApprove,
+          paymentsEnabled: config.paymentsEnabled,
+          payeeVpaConfigured: Boolean(config.payeeVpa),
+        }),
+      );
+    })
+    .catch(() => {
+      console.log(JSON.stringify({ level: 30, msg: 'upi.worker_started', config: 'unavailable' }));
+    });
 }
 
 export function stopUpiWorker(): void {

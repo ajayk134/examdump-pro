@@ -106,7 +106,15 @@ async function main(): Promise<void> {
    * worker: the state that matters is in Postgres, so a restart resumes cleanly
    * and a second instance would only duplicate polls.
    */
-  if (env.PAYMENTS_ENABLED && env.UPI_PAYEE_VPA) {
+  /*
+   * The worker now starts whenever the interval is configured, rather than only
+   * when the environment looked complete at boot. The mailbox can be connected
+   * from the dashboard while the process is running, and each tick re-checks
+   * whether polling should actually happen; see `worker.ts:runPoll`.
+   *
+   * Only a zero interval disables it outright.
+   */
+  if (env.UPI_GMAIL_POLL_SECONDS > 0) {
     const { startUpiWorker } = await import('./services/upi/worker.js');
     startUpiWorker(env);
   }

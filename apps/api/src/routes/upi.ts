@@ -26,8 +26,9 @@ import {
   getOrderById,
 } from '../services/upi/order.service.js';
 import { renderQrSvg } from '../services/upi/qr.js';
-import { UPI_APPS, buildUpiIntentUri, isValidVpa } from '../services/upi/uri.js';
+import { UPI_APPS, buildUpiIntentUri } from '../services/upi/uri.js';
 import { formatPaise } from '../services/upi/money.js';
+import { isUpiAvailable, resolveUpiConfig } from '../services/upi/config.service.js';
 
 const createOrderSchema = z.object({
   planId: z.string().min(1),
@@ -94,28 +95,31 @@ export function orderViewStatus(status: string): OrderViewStatus {
 }
 
 /** Is UPI collection configured well enough to offer it? */
-export function upiAvailable(env: Env): boolean {
-  return Boolean(env.PAYMENTS_ENABLED && env.UPI_PAYEE_VPA && isValidVpa(env.UPI_PAYEE_VPA));
+export async function upiAvailable(env: Env): Promise<boolean> {
+  return isUpiAvailable(await resolveUpiConfig(env));
 }
 
 export async function upiRoutes(app: FastifyInstance, env: Env): Promise<void> {
-  app.get('/status', async () => ({
-    available: upiAvailable(env),
-    autoApprove: env.UPI_AUTO_APPROVE,
-    payeeName: env.UPI_PAYEE_NAME,
-    orderTtlMinutes: env.UPI_ORDER_TTL_MINUTES,
-    /*
-     * Stated explicitly so the UI can say it in plain words: a notification is
-     * how we learn about the transfer, not proof from the bank that it settled.
-     */
-    verification: 'notification_based',
-  }));
+  app.get('/status', async () => {
+    const config = await resolveUpiConfig(env);
+    return {
+      available: isUpiAvailable(config),
+      autoApprove: config.autoApprove,
+      payeeName: config.payeeName,
+      orderTtlMinutes: env.UPI_ORDER_TTL_MINUTES,
+      /*
+       * Stated explicitly so the UI can say it in plain words: a notification is
+       * how we learn about the transfer, not proof from the bank that it settled.
+       */
+      verification: 'notification_based',
+    };
+  });
 
   app.post('/orders', async (request) => {
     // Authenticate before revealing whether the feature is configured, so an
     // anonymous caller cannot probe the deployment's payment state.
     const { user } = await requireAuth(request, env);
-    if (!upiAvailable(env)) throw badRequest('UPI payment is not available right now.');
+    if (!(await upiAvailable(env))) throw badRequest('UPI payment is not available right now.');
     const input = parseOrThrow(createOrderSchema, request.body);
 
     // Price is recomputed here from plan + coupon; the browser's number is never used.
@@ -207,6 +211,13 @@ async function presentOrder(
   const review =
     viewStatus === 'pending' || viewStatus === 'processing' ? await findPendingCredit(order) : null;
 
+  /*
+   * Read from resolved config: auto-approval is now an operator setting in the
+   * database, and the checkout copy must describe what actually happened to this
+   * order rather than what the environment said at boot.
+   */
+  const autoApprove = (await resolveUpiConfig(env)).autoApprove;
+
   return {
     id: order.id,
     reference: order.reference,
@@ -256,7 +267,7 @@ async function presentOrder(
      * for a human-reviewed match and an automatic one, because they are not the
      * same guarantee and the payer is entitled to know which they got.
      */
-    verification: env.UPI_AUTO_APPROVE ? 'automatic_match' : 'reviewed_match',
+    verification: autoApprove ? 'automatic_match' : 'reviewed_match',
     expiresAt: order.expiresAt.toISOString(),
     settledAt: order.settledAt?.toISOString() ?? null,
     createdAt: order.createdAt.toISOString(),

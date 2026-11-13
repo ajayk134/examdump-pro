@@ -213,6 +213,22 @@ const envSchema = z.object({
   /** Long-lived refresh token for that mailbox, read-only Gmail access. */
   UPI_GOOGLE_REFRESH_TOKEN: z.string().optional(),
   /**
+   * Base64 of 32 random bytes, used to encrypt dashboard-entered credentials
+   * (Gmail client secret and refresh token) at rest. Generate with:
+   *   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+   *
+   * Deliberately NOT editable from the dashboard: a key the application can read
+   * on request is not protection against that application being compromised.
+   * Without it, dashboard credential entry is disabled and only the environment
+   * fallback works.
+   */
+  UPI_SECRETS_KEY: z.string().optional(),
+  /**
+   * Exact redirect URI registered on the Google OAuth client. Used both by the
+   * CLI handshake and by the dashboard Connect flow.
+   */
+  UPI_OAUTH_REDIRECT_URI: z.string().optional(),
+  /**
    * Shared secret for the SMS-observer bridge. The bridge signs each forwarded
    * message with this, so the endpoint is useless to anyone without it.
    */

@@ -248,7 +248,68 @@ export const upiRefunds = pgTable(
   (t) => [index('upi_refunds_order_idx').on(t.orderId), index('upi_refunds_status_idx').on(t.status)],
 );
 
+/**
+ * Operator-editable UPI configuration.
+ *
+ * Before this table existed the whole integration was configured by editing
+ * environment variables and re-running an OAuth script on the host. That made
+ * routine changes (a new payee VPA, reconnecting the mailbox) a deploy.
+ *
+ * Exactly one row is used, with `key = 'global'`, mirroring `settings`.
+ *
+ * Two rules govern every column here:
+ *
+ *  - Credentials are stored **only** encrypted (`*_enc`), never in clear. The
+ *    encryption key lives in Doppler, so a database dump alone does not yield a
+ *    usable Gmail token.
+ *  - A NULL means "not configured here"; the resolver then falls back to the
+ *    environment. That keeps an env-only deployment working exactly as before
+ *    and makes rollback a matter of clearing this row.
+ */
+export const upiConfig = pgTable('upi_config', {
+  key: text('key').primaryKey().default('global'),
+
+  /** UPI id that receives money. Checkout is unavailable until this is valid. */
+  payeeVpa: text('payee_vpa'),
+  payeeName: text('payee_name'),
+
+  /**
+   * Accepting money and detecting payments are deliberately separate switches.
+   * The observer must be provable before checkout is opened, because a working
+   * detector with checkout closed costs nothing while the reverse takes money
+   * it cannot confirm.
+   */
+  /*
+   * Nullable on purpose. NULL means "no dashboard opinion, use the environment",
+   * so an environment-only deployment is unaffected by this table existing.
+   * An explicit true/false is an operator decision and outranks the environment.
+   */
+  paymentsEnabled: boolean('payments_enabled'),
+  gmailEnabled: boolean('gmail_enabled'),
+
+  /** Never turned on by the dashboard without an explicit, confirmed action. */
+  autoApprove: boolean('auto_approve'),
+
+  /** Mailbox address, used as the `UPI_GMAIL_USER` equivalent. */
+  gmailUser: text('gmail_user'),
+  gmailClientId: text('gmail_client_id'),
+  /** AES-256-GCM envelopes; see `lib/secretbox.ts`. */
+  gmailClientSecretEnc: text('gmail_client_secret_enc'),
+  gmailRefreshTokenEnc: text('gmail_refresh_token_enc'),
+
+  /** Provenance and health of the current connection. */
+  gmailConnectedAt: timestamp('gmail_connected_at', { withTimezone: true }),
+  gmailConnectedEmail: text('gmail_connected_email'),
+  gmailScopes: text('gmail_scopes'),
+  gmailLastVerifiedAt: timestamp('gmail_last_verified_at', { withTimezone: true }),
+
+  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt,
+});
+
 export type UpiOrder = typeof upiOrders.$inferSelect;
 export type UpiNotification = typeof upiNotifications.$inferSelect;
 export type UpiMatch = typeof upiMatches.$inferSelect;
 export type UpiRefund = typeof upiRefunds.$inferSelect;
+export type UpiConfig = typeof upiConfig.$inferSelect;
+export type NewUpiConfig = typeof upiConfig.$inferInsert;

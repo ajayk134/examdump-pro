@@ -38,7 +38,12 @@ import {
   requestRefund,
   upiStats,
 } from '../services/upi/order.service.js';
-import { gmailObserverConfigured, pollGmailOnce } from '../services/upi/gmail-observer.js';
+import { pollGmailOnce } from '../services/upi/gmail-observer.js';
+import {
+  isGmailObserverConfigured,
+  resolveUpiConfig,
+} from '../services/upi/config.service.js';
+
 
 const matchSchema = z.object({
   orderId: z.string().uuid(),
@@ -57,6 +62,7 @@ const completeRefundSchema = z.object({
 export async function adminUpiRoutes(app: FastifyInstance, env: Env): Promise<void> {
   app.get('/upi/overview', async (request) => {
     await requirePermission(request, env, 'payments.read');
+    const config = await resolveUpiConfig(env);
     const stats = await upiStats();
     const db = getDb();
     const [observerRow] = await db
@@ -68,9 +74,17 @@ export async function adminUpiRoutes(app: FastifyInstance, env: Env): Promise<vo
 
     return {
       ...stats,
-      observerConfigured: gmailObserverConfigured(env),
-      autoApprove: env.UPI_AUTO_APPROVE,
-      payeeVpa: env.UPI_PAYEE_VPA ?? null,
+      observerConfigured: isGmailObserverConfigured(config),
+      autoApprove: config.autoApprove,
+      payeeVpa: config.payeeVpa,
+      paymentsEnabled: config.paymentsEnabled,
+      gmailEnabled: config.gmailEnabled,
+      gmailConnectedEmail: config.gmailConnectedEmail,
+      gmailConnectedAt: config.gmailConnectedAt?.toISOString() ?? null,
+      gmailLastVerifiedAt: config.gmailLastVerifiedAt?.toISOString() ?? null,
+      /* When each setting comes from the dashboard versus the environment, so a
+       * surprising value is explainable instead of mysterious. */
+      configSource: config.source,
       /*
        * Surfaced in the dashboard so nobody has to remember it: approvals come
        * from bank alerts, not from the bank's settlement records.

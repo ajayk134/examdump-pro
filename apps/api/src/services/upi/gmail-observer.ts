@@ -17,6 +17,11 @@
 import type { Env } from '../../config/env.js';
 import { parseBankEmail } from './parser.js';
 import { ingestNotification, recordObserverPoll, type IngestResult } from './order.service.js';
+import {
+  isGmailObserverConfigured,
+  resolveUpiConfig,
+  type EffectiveUpiConfig,
+} from './config.service.js';
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me';
@@ -30,13 +35,15 @@ interface AccessToken {
 
 let cachedToken: AccessToken | null = null;
 
-export function gmailObserverConfigured(env: Env): boolean {
-  return Boolean(
-    env.UPI_GOOGLE_CLIENT_ID &&
-      env.UPI_GOOGLE_CLIENT_SECRET &&
-      env.UPI_GOOGLE_REFRESH_TOKEN &&
-      env.UPI_GMAIL_USER,
-  );
+/**
+ * Whether the observer can poll.
+ *
+ * Credentials may now come from the dashboard (encrypted in `upi_config`) or
+ * from the environment, so the check belongs to the config resolver rather than
+ * to `env`. Kept as a function here so existing callers and tests are unchanged.
+ */
+export async function gmailObserverConfigured(env: Env): Promise<boolean> {
+  return isGmailObserverConfigured(await resolveUpiConfig(env));
 }
 
 /**
@@ -45,15 +52,15 @@ export function gmailObserverConfigured(env: Env): boolean {
  * Refresh tokens are long-lived; access tokens last an hour. Caching with a
  * safety margin avoids a token request on every poll.
  */
-async function getAccessToken(env: Env): Promise<string> {
+async function getAccessToken(config: EffectiveUpiConfig): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) {
     return cachedToken.value;
   }
 
   const body = new URLSearchParams({
-    client_id: env.UPI_GOOGLE_CLIENT_ID as string,
-    client_secret: env.UPI_GOOGLE_CLIENT_SECRET as string,
-    refresh_token: env.UPI_GOOGLE_REFRESH_TOKEN as string,
+    client_id: config.gmailClientId as string,
+    client_secret: config.gmailClientSecret as string,
+    refresh_token: config.gmailRefreshToken as string,
     grant_type: 'refresh_token',
   });
 
@@ -204,7 +211,8 @@ export function normalizeObserverQuery(query: string | undefined): { query: stri
  * from well-known alert senders so we do not scan the whole mailbox every minute.
  */
 export async function pollGmailOnce(env: Env): Promise<ObserverRunResult> {
-  if (!gmailObserverConfigured(env)) {
+  const config = await resolveUpiConfig(env);
+  if (!isGmailObserverConfigured(config)) {
     return { configured: false, scanned: 0, ingested: 0, matched: 0, widened: 0 };
   }
 
@@ -214,7 +222,7 @@ export async function pollGmailOnce(env: Env): Promise<ObserverRunResult> {
   let widened = 0;
 
   try {
-    const token = await getAccessToken(env);
+    const token = await getAccessToken(config);
     const authHeaders = { Authorization: `Bearer ${token}` };
 
     const normalized = normalizeObserverQuery(env.UPI_GMAIL_QUERY);

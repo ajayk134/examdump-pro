@@ -57,6 +57,13 @@
       "when": 1762500000000,
       "tag": "0007_upi_amount_suffix",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794500001000,
+      "tag": "0008_upi_config",
+      "breakpoints": true
     }
   ]
 }
