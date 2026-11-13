@@ -327,7 +327,8 @@ export const gmailOauthStates = pgTable(
      * to `upi_config` once Google has confirmed the credentials.
      */
     clientId: text('client_id').notNull().default(''),
-    clientSecret: text('client_secret').notNull().default(''),
+    /* Encrypted with the same key as the durable credentials. */
+    clientSecretEnc: text('client_secret_enc').notNull().default(''),
     createdAt,
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   },

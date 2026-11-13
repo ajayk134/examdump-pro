@@ -11,6 +11,12 @@ const envSchema = z.object({
   API_HOST: z.string().default('0.0.0.0'),
   WEB_ORIGIN: z.string().default('http://localhost:3000'),
   PUBLIC_WEB_URL: z.string().default('http://localhost:3000'),
+  /**
+   * Origin the API is reachable on from a browser, when it differs from the web
+   * app. Only needed for building the OAuth redirect URI; leave unset when the
+   * API and web app share an origin, which is the current deployment.
+   */
+  API_PUBLIC_URL: z.string().optional(),
   PUBLIC_API_URL: z.string().default('http://localhost:4000'),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),

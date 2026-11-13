@@ -291,11 +291,13 @@ export async function adminUpiConfigRoutes(app: FastifyInstance, env: Env): Prom
       userAgent: request.headers['user-agent'] ?? '',
     });
 
-    const url = new URL(consentUrl(env, state));
-    url.searchParams.set('client_id', input.clientId);
-
+    /*
+     * Built with the submitted client id directly. An earlier version built the
+     * URL from the environment client id and then overwrote the parameter, which
+     * worked but meant the consent URL was correct only because of the override.
+     */
     return {
-      url: url.toString(),
+      url: consentUrl(env, state, input.clientId),
       redirectUri: redirectUri(env),
       scope: 'https://www.googleapis.com/auth/gmail.readonly',
     };

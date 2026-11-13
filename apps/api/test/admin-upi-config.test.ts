@@ -387,17 +387,19 @@ describe('state token lifecycle', () => {
     await registerVerifiedUser(ctx.app, { email });
     const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
-    const state = await issueState(ctx.env, user!.id, {
+    /* The client secret is encrypted on the state row, so the key is required. */
+    const stateEnv = { ...ctx.env, UPI_SECRETS_KEY: TEST_KEY };
+    const state = await issueState(stateEnv, user!.id, {
       clientId: 'client-id',
       clientSecret: 'client-secret',
     });
 
-    const first = await consumeState(ctx.env, state);
+    const first = await consumeState(stateEnv, state);
     expect(first.adminId).toBe(user!.id);
     expect(first.clientId).toBe('client-id');
 
     /* Replay must fail: this is the prepared-link attack. */
-    await expect(consumeState(ctx.env, state)).rejects.toThrow(/not recognised/);
+    await expect(consumeState(stateEnv, state)).rejects.toThrow(/not recognised/);
   });
 
   it('rejects an expired state', async () => {
@@ -410,7 +412,7 @@ describe('state token lifecycle', () => {
       state: 'expired-state-token',
       adminId: user!.id,
       clientId: 'c',
-      clientSecret: 's',
+      clientSecretEnc: seal('s', Buffer.from(TEST_KEY, 'base64')),
       expiresAt: new Date(Date.now() - 1000),
     });
 

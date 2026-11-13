@@ -20,6 +20,76 @@ UPI_AUTO_APPROVE=false
 
 `GET /api/upi/status` reflects this and returns `available:false`.
 
+## Configuration
+
+Most of the integration is configured at **Admin → UPI → Gateway settings**
+rather than by editing environment variables. See
+[UPI_SETUP.md](UPI_SETUP.md) for the full checklist; the shape is:
+
+| What | Where |
+| --- | --- |
+| Merchant UPI ID and payee name | Dashboard |
+| Gmail mailbox connection | Dashboard (`Connect Gmail`) |
+| Accept payments / watch mailbox / automatic approval | Three independent switches in the dashboard |
+| `UPI_SECRETS_KEY` | Doppler only |
+| `UPI_OAUTH_REDIRECT_URI` | Doppler or `API_PUBLIC_URL` |
+
+### Where values come from
+
+Settings live in the `upi_config` table. Precedence:
+
+1. a value saved in the dashboard wins;
+2. a value not saved there falls back to the environment, so an environment-only
+   deployment behaves exactly as before;
+3. a stored value that fails validation is ignored with a logged warning, because
+   a malformed row must never be able to take checkout down.
+
+`GET /api/admin-ops/upi/config` reports the source of each setting (`db`, `env` or
+`unset`), so a surprising value is explainable instead of mysterious.
+
+### Credentials
+
+The Gmail client secret and refresh token are stored **only** as AES-256-GCM
+envelopes (`lib/secretbox.ts`). The key is `UPI_SECRETS_KEY`, is held in Doppler,
+and is deliberately not dashboard-editable: a key the application can read on
+request is not protection against the application being compromised. A database
+dump alone therefore does not yield a usable Gmail token.
+
+No API response returns a credential. The configuration endpoint reports presence
+as `gmail.hasClientSecret` / `gmail.hasRefreshToken` booleans and nothing else.
+
+### The Connect handshake
+
+```
+dashboard "Connect Gmail"
+   │  POST /admin-ops/upi/config/gmail/start   (payments.manage)
+   │    → single-use state, bound to this admin, expires in 10 min
+   │    → client secret stored encrypted on that state row
+   ▼
+Google consent screen  (scope: gmail.readonly only)
+   │  redirect to /api/admin-ops/upi/config/gmail/callback
+   ▼
+callback
+   │  state redeemed (DELETE ... RETURNING, so replay finds nothing)
+   │  code exchanged → refresh token
+   │  token *verified* by minting an access token and listing one message
+   │  → encrypted with UPI_SECRETS_KEY → stored in upi_config
+   ▼
+dashboard shows Connected + last successful poll
+```
+
+The callback cannot require an admin session, because Google redirects a browser
+there. `state` is what carries the security: it is bound to the admin who started
+the flow, is single-use, and expires. A bad state stops before the code exchange,
+so a prepared consent link cannot attach an attacker's mailbox to this account.
+
+Credentials are verified **before** storage. A token that works but cannot read
+Gmail is a connection that looks healthy and silently drops every payment.
+
+Disconnect revokes the token at Google first, then clears the local copy and the
+switches that depended on it, and says plainly when Google did not confirm the
+revocation.
+
 ## The automated path, end to end
 
 ```
@@ -210,16 +280,22 @@ held for human review or accepted automatically by explicit operator choice.
 Follow **[UPI_SETUP.md](UPI_SETUP.md)** for the full manual checklist. The short
 version:
 
-1. Set `UPI_PAYEE_VPA` and `UPI_PAYEE_NAME`.
-2. Configure **one** alert source: Gmail OAuth (via
-   `npm run upi:gmail-oauth -w @examdump/api`) or the SMS ingest secret.
-3. Set `PAYMENTS_ENABLED=true`. **Leave `UPI_AUTO_APPROVE=false`.**
-4. Restart the API.
-5. Send one small real transfer.
-6. Confirm the checkout page shows *Verifying your payment*, and the match appears
+1. Set `UPI_SECRETS_KEY` in Doppler (32 random bytes, base64). Without it the
+   dashboard Connect flow is disabled and credentials cannot be stored.
+2. Save the merchant UPI ID at **Admin → UPI → Gateway settings**.
+3. Connect the payment mailbox there: paste the OAuth client ID and secret, and
+   register the exact redirect URI the panel shows on the Google OAuth client.
+   Press **Test connection** once connected. (The terminal handshake,
+   `npm run upi:gmail-oauth`, still works as a fallback.)
+4. Turn on **Watch the payment mailbox**. Leave **Accept UPI payments** off until
+   detection has been proven.
+5. Only then enable **Accept UPI payments**. **Leave automatic approval off.**
+6. Send one small real transfer.
+7. Confirm the checkout page shows *Verifying your payment*, and the match appears
    in the admin review queue — not as settled.
-7. Compare against the actual bank statement before approving.
-8. Only consider auto-approval after many manual matches have proven reliable.
+8. Compare against the actual bank statement before approving.
+9. Only consider automatic approval after many manual matches have proven
+   reliable; it needs a typed confirmation and a connected observer.
 
 ## Related
 

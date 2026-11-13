@@ -20,7 +20,8 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Env } from '../../config/env.js';
 import { getDb } from '../../db/client.js';
 import { gmailOauthStates } from '../../db/schema/index.js';
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { eq, lt } from 'drizzle-orm';
+import { open, parseKey, seal } from '../../lib/secretbox.js';
 
 const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -40,6 +41,23 @@ export class OAuthError extends Error {
 }
 
 /**
+ * Origin the API is reachable on from a browser.
+ *
+ * `PUBLIC_WEB_URL` is the origin the *browser* uses. In this deployment the web
+ * app and the API share one origin, so `<web>/api/...` resolves to the API. That
+ * coincidence must not be relied on silently: if the API is ever given its own
+ * host, deriving the redirect from the web origin produces a URI Google rejects
+ * with `redirect_uri_mismatch` - and the operator only discovers that after they
+ * have already approved consent in Google.
+ *
+ * `API_PUBLIC_URL` exists for that case. The dashboard shows the URI that will
+ * actually be sent, so a mismatch is visible before the handshake, not after it.
+ */
+function apiOrigin(env: Env): string {
+  return (env.API_PUBLIC_URL || env.PUBLIC_WEB_URL).replace(/\/$/, '');
+}
+
+/**
  * The redirect URI registered on the Google OAuth client.
  *
  * Must match byte-for-byte what Google has on file, so it is configuration
@@ -48,8 +66,7 @@ export class OAuthError extends Error {
  */
 export function redirectUri(env: Env): string {
   if (env.UPI_OAUTH_REDIRECT_URI) return env.UPI_OAUTH_REDIRECT_URI;
-  // Falls back to the documented path on the public API origin.
-  return `${env.PUBLIC_WEB_URL.replace(/\/$/, '')}/api/admin-ops/upi/config/gmail/callback`;
+  return `${apiOrigin(env)}/api/admin-ops/upi/config/gmail/callback`;
 }
 
 /**
@@ -72,14 +89,42 @@ export async function issueState(
    * accumulate on every Connect click. */
   await db.delete(gmailOauthStates).where(lt(gmailOauthStates.expiresAt, new Date()));
 
+  /*
+   * The client secret is encrypted here too, not just once it reaches
+   * `upi_config`. It sits on this row for up to ten minutes, and those ten
+   * minutes are the window in which a database read (a backup, a replica, a
+   * support query) would otherwise hand out a working OAuth client secret. The
+   * key is already required for this flow, so there is no reason to hold it in
+   * clear.
+   */
+  const key = requireSecretsKey(env);
+
   await db.insert(gmailOauthStates).values({
     state,
     adminId,
     clientId: client.clientId,
-    clientSecret: client.clientSecret,
+    clientSecretEnc: seal(client.clientSecret, key),
     expiresAt: new Date(Date.now() + STATE_TTL_MS),
   });
   return state;
+}
+
+/** The key that encrypts credentials. Required for the dashboard flow. */
+function requireSecretsKey(env: Env): Buffer {
+  if (!env.UPI_SECRETS_KEY) {
+    throw new OAuthError(
+      'secrets_key_missing',
+      'UPI_SECRETS_KEY is not configured, so credentials cannot be stored securely.',
+    );
+  }
+  try {
+    return parseKey(env.UPI_SECRETS_KEY);
+  } catch {
+    throw new OAuthError(
+      'secrets_key_invalid',
+      'UPI_SECRETS_KEY is not a valid 32-byte base64 key.',
+    );
+  }
 }
 
 export interface ConsumedState {
@@ -111,12 +156,25 @@ export async function consumeState(env: Env, state: string): Promise<ConsumedSta
       'This sign-in link has expired. Start again from the dashboard.',
     );
   }
-  return { adminId: row.adminId, clientId: row.clientId, clientSecret: row.clientSecret };
+
+  let clientSecret: string;
+  try {
+    clientSecret = open(row.clientSecretEnc, requireSecretsKey(env));
+  } catch {
+    /* A key that changed between Connect and callback is not recoverable here;
+     * the operator simply starts again. */
+    throw new OAuthError(
+      'credentials_unreadable',
+      'The stored credentials for this sign-in could not be read. Start again from the dashboard.',
+    );
+  }
+
+  return { adminId: row.adminId, clientId: row.clientId, clientSecret };
 }
 
-export function consentUrl(env: Env, state: string): string {
+export function consentUrl(env: Env, state: string, clientId: string): string {
   const params = new URLSearchParams({
-    client_id: env.UPI_GOOGLE_CLIENT_ID ?? '',
+    client_id: clientId,
     redirect_uri: redirectUri(env),
     response_type: 'code',
     scope: SCOPE,

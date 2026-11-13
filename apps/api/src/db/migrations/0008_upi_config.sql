@@ -64,7 +64,9 @@ CREATE TABLE IF NOT EXISTS "gmail_oauth_states" (
   -- most ten minutes, then deleted; the durable encrypted copy lands in
   -- upi_config once Google has confirmed the credentials.
   "client_id" text NOT NULL DEFAULT '',
-  "client_secret" text NOT NULL DEFAULT '',
+  -- Encrypted, not clear: this row lives for ten minutes, which is long enough
+  -- for a backup or replica read to hand out a working OAuth client secret.
+  "client_secret_enc" text NOT NULL DEFAULT '',
   "created_at" timestamp with time zone NOT NULL DEFAULT now(),
   "expires_at" timestamp with time zone NOT NULL
 );
