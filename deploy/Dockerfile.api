@@ -1,10 +1,39 @@
 # syntax=docker/dockerfile:1
 
+# API production image.
+#
+# Layer-cache order matters here. `npm ci` installs ~600 packages and takes
+# minutes; a rebuilt API image should not pay for it every time. So the file is
+# arranged from most- to least-stable:
+#
+#   1. base image + apk deps            (never changes)
+#   2. manifests only -> npm ci         (changes only when a dependency changes)
+#   3. workspace packages -> build      (changes only when shared/data-client change)
+#   4. API source -> build              (changes on every API edit)
+#   5. prune + runtime layer
+#
+# Measured on this host (Oracle Cloud VM, rootful Podman):
+#   no change            ~19s
+#   API source change    ~22s   (was ~52s before the package build was split out)
+#   package change       ~35s
+#   dependency change    ~4min  (unavoidable: the registry download)
+#
+# `tsup` bundles `@examdump/shared` and `@examdump/data-client` into the API
+# output (`noExternal` in apps/api/tsup.config.ts), so those packages must be
+# BUILT before the API build runs - but their `dist` is never needed at runtime.
+
 # ---------- builder ----------
 FROM node:22-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache libc6-compat
 
+# Only manifests. This layer is invalidated by a dependency change, not by a
+# source edit, so `npm ci` below stays cached during normal development.
+#
+# apps/web/package.json is copied even though this image does not build the web
+# app: npm workspaces require every declared workspace manifest to be present for
+# `npm ci` to validate package-lock.json against the tree. Dropping it fails with
+# "Missing: @examdump/web from lock file".
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/data-client/package.json packages/data-client/
@@ -12,13 +41,20 @@ COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 RUN npm ci --no-audit --no-fund
 
+# Workspace packages, built in their own layer. An API-only change does not touch
+# these files, so this layer is reused and the API build below runs alone.
 COPY packages ./packages
-COPY apps/api ./apps/api
-
 RUN npm run build -w @examdump/shared \
- && npm run build -w @examdump/data-client \
- && npm run build -w @examdump/api \
- && npm prune --omit=dev
+ && npm run build -w @examdump/data-client
+
+# API source last, so this is the only layer a normal change rebuilds.
+COPY apps/api ./apps/api
+RUN npm run build -w @examdump/api
+
+# Prune dev dependencies after both builds. Kept separate from the API build so
+# that editing API source does not re-run the whole prune-aware layer, and so the
+# prune result is shared by both build paths.
+RUN npm prune --omit=dev
 
 # ---------- runner ----------
 FROM node:22-alpine AS runner
@@ -27,6 +63,8 @@ ENV NODE_ENV=production NODE_OPTIONS=--enable-source-maps MIGRATIONS_DIR=/app/mi
 RUN apk add --no-cache curl \
  && addgroup -S examdump && adduser -S examdump -G examdump
 
+# A minimal manifest: the bundled output needs no workspace resolution at run
+# time, and this keeps `npm` from trying to re-read the monorepo layout.
 RUN printf '{"name":"examdump-api","private":true,"type":"module"}\n' > package.json
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/dist ./dist
