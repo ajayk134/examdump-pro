@@ -139,6 +139,11 @@ services:
       UPI_SMS_INGEST_SECRET: ${UPI_SMS_INGEST_SECRET:-}
       UPI_GMAIL_LABEL: ${UPI_GMAIL_LABEL:-INBOX}
       UPI_GMAIL_QUERY: ${UPI_GMAIL_QUERY:-in:anywhere}
+      # Encrypts dashboard-entered credentials at rest. Absent means the dashboard
+      # Connect flow is disabled and only the values above are used.
+      UPI_SECRETS_KEY: ${UPI_SECRETS_KEY:-}
+      # Exact redirect URI registered on the Google OAuth client.
+      UPI_OAUTH_REDIRECT_URI: ${UPI_OAUTH_REDIRECT_URI:-}
       # ExamDump Pay adapter selection (see docs/infrastructure/mail-and-pay.md)
       PAYMENT_ADAPTER: ${PAYMENT_ADAPTER:-none}
       PAYMENT_METHODS: ${PAYMENT_METHODS:-upi,card}

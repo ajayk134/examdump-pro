@@ -156,10 +156,42 @@ to the `X-UPI-Timestamp` header. A request whose exact bytes were not captured i
 refused; the signature is never computed over re-serialised JSON. No endpoint
 accepts a "mark this order paid" instruction.
 
-### Admin — `admin.ts`, `admin-ops.ts`, `admin-email.ts`, `admin-upi.ts`
+### Admin — `admin.ts`, `admin-ops.ts`, `admin-email.ts`, `admin-upi.ts`,
+`admin-upi-config.ts`
 
 Mounted under `/api/admin` and `/api/admin-ops`. Guarded by `requireAdmin` or
 `requirePermission(...)`. Full inventory: `GET /api/docs`.
+
+#### UPI gateway configuration — `admin-upi-config.ts`
+
+Mounted under `/api/admin-ops`.
+
+| Method | Path | Permission |
+| --- | --- | --- |
+| GET | `/api/admin-ops/upi/config` | `payments.read` |
+| PATCH | `/api/admin-ops/upi/config` | `payments.manage` |
+| PATCH | `/api/admin-ops/upi/config/switches` | `payments.manage` |
+| POST | `/api/admin-ops/upi/config/payee/validate` | `payments.manage` |
+| POST | `/api/admin-ops/upi/config/gmail/start` | `payments.manage` |
+| GET | `/api/admin-ops/upi/config/gmail/callback` | `state` token (see below) |
+| POST | `/api/admin-ops/upi/config/gmail/test` | `payments.manage` |
+| DELETE | `/api/admin-ops/upi/config/gmail` | `payments.manage` |
+
+`GET /upi/config` returns the payee, the three switches, Gmail connection state
+and, per setting, which source is in effect (`db`, `env` or `unset`).
+**No response on these routes contains a credential.** Presence is reported as
+`gmail.hasClientSecret` / `gmail.hasRefreshToken` booleans.
+
+`PATCH /upi/config/switches` accepts `paymentsEnabled`, `gmailEnabled` and
+`autoApprove`. Setting `autoApprove: true` additionally requires
+`confirm: "CONFIRM"`, and is refused unless the Gmail observer is connected.
+Enabling `paymentsEnabled` is refused while no valid payee VPA is configured.
+
+`gmail/callback` is the Google OAuth redirect target, so it cannot require an
+admin session. Its security is the `state` parameter: 32 random bytes issued to
+the admin who started the flow, single-use (redeemed by `DELETE ... RETURNING`)
+and valid for ten minutes. It always redirects to the dashboard with a
+`?gmail=connected|denied|bad_state|failed` outcome rather than rendering JSON.
 
 ### Mail — `email-preferences.ts`, `admin-email.ts`
 

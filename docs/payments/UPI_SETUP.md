@@ -45,12 +45,29 @@ Therefore:
 | Does it need to be a business account? | No. A personal VPA works. Volume limits are your bank's concern. |
 | Can it be changed later? | Yes, but orders already shown to a customer keep the VPA they were quoted (`upi_orders.payee_vpa` is a snapshot). |
 
-Record it. You will set `UPI_PAYEE_VPA` to it in step 4.
+Record it. You will enter it in the dashboard (step 4).
 
 ## 2. Choose at least one alert source
 
 You need **at least one**. Both is better: they are independent, so a missed email
 does not become a missed payment.
+
+> **The dashboard now covers routine setup.** Admin → UPI → **Gateway settings**
+> lets you save the merchant UPI ID, connect the Gmail account and flip the
+> switches without editing environment variables or running a script on the host.
+> The terminal handshake described below still works and is the fallback when the
+> dashboard is unavailable, but it is no longer the only way in.
+>
+> Two things the dashboard cannot do for you, because they are not application
+> settings:
+>
+> - create the Google Cloud project, OAuth client and consent screen (below);
+> - set `UPI_SECRETS_KEY` in Doppler. It is the key that encrypts credentials the
+>   dashboard stores, and it is deliberately not editable from the dashboard: a
+>   key the application can read on request is not protection against the
+>   application being compromised. Without it the Connect button is disabled.
+>
+> Branches below describe the Google Cloud setup, which is the same either way.
 
 ### Option A — Gmail observer (recommended primary)
 
@@ -162,7 +179,25 @@ Must be present:
 
 If any is missing, run `npm run migrate -w @examdump/api` inside `doppler run`.
 
-## 4. Set the environment
+## 4. Configure the gateway
+
+Two routes, pick one. They are equivalent; the dashboard wins where both set a
+value.
+
+### 4a. From the dashboard (normal path)
+
+1. Deploy with payments still off, then open **Admin → UPI → Gateway settings**.
+2. Save the **merchant UPI ID** (and the payee name shown to the payer).
+3. Connect the mailbox: paste the OAuth **client ID** and **client secret**, and
+   register the exact redirect URI the panel displays on the Google OAuth client.
+4. Press **Test connection** once connected.
+5. Leave **Accept UPI payments** off and **Automatic approval** off until step 7
+   has been completed.
+
+Only `UPI_SECRETS_KEY` and `UPI_OAUTH_REDIRECT_URI` still need to be set on the
+server for this to work; everything else the panel shows can be edited there.
+
+### 4b. From the environment (fallback)
 
 Doppler project `examdump-pro`, config `prd`. Never put these in a file.
 
@@ -185,6 +220,14 @@ UPI_NOTIFICATION_MAX_PAISE=50000000
 UPI_GMAIL_POLL_SECONDS=60
 UPI_GMAIL_QUERY=in:anywhere
 ```
+
+### Which value wins?
+
+A value saved in the dashboard outranks the environment. A value not saved there
+falls back to the environment, so an environment-only deployment behaves exactly
+as before. A stored value that fails validation is ignored with a logged warning
+rather than breaking checkout. `GET /api/admin-ops/upi/config` reports the source
+of each setting (`db`, `env` or `unset`).
 
 ## 5. Deploy with payments still off
 
@@ -237,12 +280,10 @@ raw text.
 
 ## 8. Only then consider automation
 
-Run with `UPI_AUTO_APPROVE=false` until you have matched **at least twenty** real
-payments by hand and every one appeared as `processing` within a minute. Then:
-
-```
-UPI_AUTO_APPROVE=true
-```
+Run with automatic approval **off** until you have matched **at least twenty**
+real payments by hand and every one appeared as `processing` within a minute. Only
+then, in Admin → UPI → Gateway settings, type `CONFIRM` and enable **Automatic
+approval** (or set `UPI_AUTO_APPROVE=true` if you are configuring by environment).
 
 What you are accepting by doing this: a forged or spoofed bank alert that matches
 an open amount and reference will now grant a plan with no human in the loop. The
@@ -267,14 +308,20 @@ Reconcile against your bank statement on a schedule regardless
 
 ## Exact list of secrets to set
 
+Anything marked *dashboard* can be entered in Admin → UPI → Gateway settings
+instead, and is then stored encrypted in `upi_config`. Set it in Doppler only if
+you are configuring by environment.
+
 | Secret | Where it comes from |
 | --- | --- |
-| `UPI_PAYEE_VPA` | Your bank / UPI app |
-| `UPI_PAYEE_NAME` | Your choice; shown in the payer's app |
-| `UPI_GOOGLE_CLIENT_ID` | Google Cloud Console → Credentials |
-| `UPI_GOOGLE_CLIENT_SECRET` | Google Cloud Console → Credentials |
-| `UPI_GOOGLE_REFRESH_TOKEN` | `npm run upi:gmail-oauth` handshake |
-| `UPI_GMAIL_USER` | The dedicated payment mailbox address |
+| `UPI_SECRETS_KEY` | Server only. Generate 32 random bytes (base64). **Required for the dashboard Connect flow**; cannot be set from the dashboard |
+| `UPI_OAUTH_REDIRECT_URI` | Server only. Must match the Google OAuth client exactly |
+| `UPI_PAYEE_VPA` | Your bank / UPI app (dashboard) |
+| `UPI_PAYEE_NAME` | Your choice; shown in the payer's app (dashboard) |
+| `UPI_GOOGLE_CLIENT_ID` | Google Cloud Console → Credentials (dashboard) |
+| `UPI_GOOGLE_CLIENT_SECRET` | Google Cloud Console → Credentials (dashboard, encrypted) |
+| `UPI_GOOGLE_REFRESH_TOKEN` | Dashboard Connect flow, or `npm run upi:gmail-oauth` (encrypted) |
+| `UPI_GMAIL_USER` | The dedicated payment mailbox address (dashboard) |
 | `UPI_SMS_INGEST_SECRET` | `openssl rand -hex 32` |
 | `UPI_OAUTH_REDIRECT_URI` | Optional; only if not using the playground URI |
 

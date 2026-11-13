@@ -160,7 +160,27 @@ Deliverability guidance: `docs/infrastructure/email-deliverability-audit.md`.
 | `UPI_GOOGLE_CLIENT_ID` | O | — | OAuth for the observer mailbox |
 | `UPI_GOOGLE_CLIENT_SECRET` | O/S | — | |
 | `UPI_GOOGLE_REFRESH_TOKEN` | O/S | — | Long-lived; rotate if leaked |
-| `UPI_SMS_INGEST_SECRET` | O/S | — | Shared secret for forwarded SMS |
+| `UPI_SMS_INGEST_SECRET` | **S** | — | Shared secret for forwarded SMS |
+| `UPI_SECRETS_KEY` | O/S | — | Base64 of 32 random bytes. Encrypts dashboard-entered credentials in `upi_config`. **Required for the dashboard Connect flow**; without it that flow is disabled and only the environment fallback works. Never make this dashboard-editable: a key the app can read on demand is not protection against the app being compromised. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
+| `UPI_OAUTH_REDIRECT_URI` | O | — | Exact redirect URI registered on the Google OAuth client. Defaults to `<PUBLIC_WEB_URL>/api/admin-ops/upi/config/gmail/callback`. Must match byte-for-byte, which is why it is configuration rather than derived from a `Host` header |
+
+### Values the dashboard can override
+
+`UPI_PAYEE_VPA`, `UPI_PAYEE_NAME`, `UPI_AUTO_APPROVE`, `UPI_GMAIL_USER`,
+`UPI_GOOGLE_CLIENT_ID`, `UPI_GOOGLE_CLIENT_SECRET` and
+`UPI_GOOGLE_REFRESH_TOKEN` can all be set from Admin → UPI → **Gateway settings**.
+
+Precedence is straightforward and deliberate:
+
+1. A value saved in the dashboard wins.
+2. A value not saved there falls back to the environment, so an environment-only
+   deployment behaves exactly as it did before `upi_config` existed.
+3. A dashboard value that fails validation is ignored with a logged warning and
+   the environment value is used, because a malformed row must never be able to
+   take checkout down.
+
+The GET response reports which source is in effect (`source.payeeVpa` etc.), so a
+surprising value is explainable rather than mysterious.
 
 Alert-parsing credentials grant read access to a mailbox. Treat them as highly
 sensitive and scope them to the narrowest possible mailbox/label.

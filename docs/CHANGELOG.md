@@ -6,6 +6,17 @@ All notable changes to ExamDump Pro.
 
 ### Added
 
+- **UPI gateway configuration from the admin dashboard.** The merchant UPI ID,
+  the Gmail connection and the payment/observer/auto-approval switches can now be
+  managed at Admin → UPI → Gateway settings, removing routine environment-variable
+  edits and the host-side OAuth script. Settings live in `upi_config`; credentials
+  are encrypted at rest with AES-256-GCM (`UPI_SECRETS_KEY`, kept in Doppler).
+  Dashboard values take precedence over environment values, and a malformed stored
+  value is ignored in favour of the environment rather than throwing. Collecting
+  money and watching the mailbox are independent switches. Automatic approval stays
+  off, requires a typed confirmation, and is refused unless the observer is
+  connected.
+
 - Unique payable amount per UPI order: the plan price plus a random 0–99 paise
   suffix, so an incoming bank alert matches exactly one active order. Enforced by
   the partial unique index `upi_orders_active_amount_idx`; creation retries on

@@ -200,6 +200,79 @@ export function buildOpenApi(publicWebUrl: string) {
           },
         },
       },
+      '/admin-ops/upi/config': {
+        get: {
+          tags: ['UPI'],
+          summary: 'Read UPI gateway settings',
+          description:
+            'Requires `payments.read`. Returns the payee, the three switches, Gmail connection state and the source of each value (`db`, `env` or `unset`). No credential is ever returned; presence is reported as booleans.',
+          responses: { 200: ok('Current configuration'), 401: err('Unauthorized'), 403: err('Missing payments.read') },
+        },
+        patch: {
+          tags: ['UPI'],
+          summary: 'Update the merchant UPI ID',
+          description: 'Requires `payments.manage`. Rejects a malformed UPI ID with a message the UI can show directly.',
+          responses: { 200: ok('Saved'), 400: err('Invalid UPI ID'), 403: err('Missing payments.manage') },
+        },
+      },
+      '/admin-ops/upi/config/switches': {
+        patch: {
+          tags: ['UPI'],
+          summary: 'Toggle payment acceptance, the observer, or automatic approval',
+          description:
+            'Requires `payments.manage`. Payment collection is refused while no valid payee is configured; the observer cannot be enabled without a stored Gmail connection; `autoApprove: true` additionally requires `confirm: "CONFIRM"` and a connected observer.',
+          responses: {
+            200: ok('Saved'),
+            400: err('Payee, connection or confirmation requirement not met'),
+            403: err('Missing payments.manage'),
+          },
+        },
+      },
+      '/admin-ops/upi/config/payee/validate': {
+        post: {
+          tags: ['UPI'],
+          summary: 'Check a UPI ID without saving it',
+          description:
+            'Requires `payments.manage`. Format validation only: confirming that money reaches a UPI ID needs a real transfer, which this deliberately does not attempt.',
+          responses: { 200: ok('{valid, message}'), 403: err('Missing payments.manage') },
+        },
+      },
+      '/admin-ops/upi/config/gmail/start': {
+        post: {
+          tags: ['UPI'],
+          summary: 'Begin the Gmail OAuth handshake',
+          description:
+            'Requires `payments.manage`. Returns the Google consent URL for scope `gmail.readonly` plus the exact redirect URI that must be registered on the OAuth client. Refused when `UPI_SECRETS_KEY` is not configured, because the result could not be stored securely.',
+          responses: { 200: ok('{url, redirectUri, scope}'), 400: err('Credential storage unavailable'), 403: err('Missing payments.manage') },
+        },
+      },
+      '/admin-ops/upi/config/gmail/callback': {
+        get: {
+          tags: ['UPI'],
+          summary: 'Google OAuth redirect target',
+          description:
+            'Reached by the browser, so it does not require an admin session. Security is the single-use, admin-bound `state` parameter (32 random bytes, ten minute expiry). Always redirects to the dashboard with `?gmail=connected|denied|bad_state|failed`.',
+          responses: { 302: { description: 'Redirect to the admin dashboard with an outcome' } },
+        },
+      },
+      '/admin-ops/upi/config/gmail/test': {
+        post: {
+          tags: ['UPI'],
+          summary: 'Verify the stored Gmail credentials',
+          description:
+            'Requires `payments.manage`. Mints an access token and lists one message, which proves the granted scope is sufficient rather than merely that the token exists.',
+          responses: { 200: ok('{ok, message, email}'), 400: err('No connection stored'), 403: err('Missing payments.manage') },
+        },
+      },
+      '/admin-ops/upi/config/gmail': {
+        delete: {
+          tags: ['UPI'],
+          summary: 'Disconnect the payment mailbox',
+          description:
+            'Requires `payments.manage`. Revokes the refresh token at Google, then clears the stored credentials and the observer and automatic-approval switches.',
+          responses: { 200: ok('{ok, revokedAtGoogle, message}'), 403: err('Missing payments.manage') },
+        },
+      },
     },
     externalDocs: { url: `${publicWebUrl}/api/docs`, description: 'Full documentation' },
   };

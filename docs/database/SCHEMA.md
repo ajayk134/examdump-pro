@@ -59,6 +59,8 @@ sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c '\dt'
 | `upi_refunds` | UPI-specific refunds, offline payout reference |
 | `upi_risk_events` | scoring decisions, flags, rejection reasons |
 | `upi_observer_state` | Gmail observer cursor / health |
+| `upi_config` | operator-editable UPI settings; credentials stored encrypted |
+| `gmail_oauth_states` | single-use OAuth `state` tokens for the dashboard Connect flow |
 
 ### Mail (schema/mail.ts)
 
