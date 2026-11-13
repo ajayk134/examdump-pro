@@ -38,9 +38,22 @@ anything.
 cd ~/projects/examdump-pro
 git fetch && git checkout <commit>
 cd deploy
-doppler run --project examdump-pro --config prd -- \
-  podman compose -p examdump-pro up -d --build
+./redeploy-api.sh
 ```
+
+`deploy/redeploy-api.sh` builds, verifies the image, stages the new container and
+waits for `/api/health/ready` **before** stopping the old one, then swaps, reloads
+nginx and verifies routing. It rolls back automatically on failure and accepts
+`--rollback`, `--build-only`, `--no-build` and `--dry-run`.
+
+See [DEPLOYMENT.md](../DEPLOYMENT.md) for the full procedure.
+
+### Why not `podman compose up`
+
+The running containers were created by individual `podman run` commands, so they
+are not compose-managed. `podman compose up` targets a pod they are not members of
+and has been observed leaving the API on the **old image while reporting success**.
+Compose in this repo reproduces *settings*, not the live stack.
 
 ### Why not `sudo podman compose` directly
 
@@ -51,9 +64,9 @@ unless explicitly allowed. Run compose as your own user with
 
 ### The 502 trap
 
-`nginx.conf` proxies to `server api:4000`, and **nginx resolves that name once at
-startup**. Recreating the API container gives it a new IP; nginx keeps routing to
-the dead one and returns `502 Bad Gateway`.
+The deployed `nginx.conf` proxies to `server examdump-pro_api_1:4000`, and **nginx
+resolves that name once at startup**. Recreating the API container gives it a new
+IP; nginx keeps routing to the dead one and returns `502 Bad Gateway`.
 
 After any API recreation:
 
@@ -62,11 +75,15 @@ sudo podman exec examdump-pro_nginx_1 nginx -s reload
 ```
 
 Symptoms if you skip it: `/api/health` returns 502, API logs look perfectly
-healthy, and `getent hosts api` inside nginx resolves correctly.
+healthy, and `getent hosts examdump-pro_api_1` inside nginx resolves correctly.
 
-### Required network aliases
+`redeploy-api.sh` performs the reload and then verifies routing through nginx, so
+the deployed container cannot come up unreachable without the script failing.
 
-`deploy/docker-compose.yml` declares explicit aliases:
+### Required network aliases (compose only)
+
+These aliases matter only if the stack is ever recreated *through compose*; the live
+containers are addressed by container name. `deploy/docker-compose.yml` declares:
 
 ```yaml
 # postgres service

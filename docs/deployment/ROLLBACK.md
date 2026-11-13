@@ -8,15 +8,29 @@ in order of preference.
 Because migrations are additive, older code usually runs fine against a newer
 schema — new nullable columns are simply ignored.
 
+**Use the script.** It stages the previous image, waits for health, swaps and reloads
+nginx — and it is the only path tested on this host:
+
+```bash
+cd ~/projects/examdump-pro/deploy
+./redeploy-api.sh --rollback
+```
+
+`--rollback` reads the image recorded in `/var/lib/examdump-deploy/previous-image`
+(written by the last successful deploy). If you need an older image than that one,
+tag it as `latest` first and run a normal deploy:
+
 ```bash
 cd ~/projects/examdump-pro
 git checkout <previous-commit>
+sudo podman tag <image-id> localhost/examdump-pro_api:latest
 cd deploy
-doppler run --project examdump-pro --config prd -- \
-  podman compose -p examdump-pro up -d --build api web
-sudo podman exec examdump-pro_nginx_1 nginx -s reload
-curl -s -o /dev/null -w '%{http_code}\n' https://<domain>/api/health
+./redeploy-api.sh --no-build
 ```
+
+Do **not** use `podman compose up` for this. The containers are not compose-managed
+and compose has been observed reporting success while leaving the old image
+running. See [DEPLOYMENT.md](../../DEPLOYMENT.md).
 
 **When this fails:** if the newer migration added a `NOT NULL` column **without a
 default**, old code that inserts into that table breaks. This exact case happened
