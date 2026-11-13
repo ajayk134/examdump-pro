@@ -16,7 +16,12 @@ Implemented 2026-11-13. Read this before changing anything in either network.
 - `10.89.0.67` — ExamDump side
 - `10.90.0.254` — YouPI side (stable, must not change)
 
-YouPI is expected at `10.90.0.2` with DNS alias `youpi-app`.
+YouPI is expected at `10.90.0.2` with DNS alias `youpi-app` and a **pinned MAC**
+`02:59:4f:11:00:02`. The pinned MAC is required, not cosmetic — see
+[Stable identity](#stable-identity) below.
+
+Reserved addresses on `youpi-net`: `.1` gateway, `.2` YouPI application,
+`.254` nginx. Assign only from `.100` and above for anything else.
 
 ## Why this exists
 
@@ -100,11 +105,45 @@ network change:
 | nginx → YouPI | 200 |
 | nginx → api | 200 |
 
+## Stable identity
+
+Podman assigns a **random MAC** to every new container. nginx has no `NET_ADMIN`
+capability, so it cannot flush or repair its own ARP cache. The combination
+breaks connectivity on every YouPI recreation:
+
+1. a new YouPI container gets a new MAC at the same address `.2`;
+2. nginx keeps the previous MAC cached as a complete (`0x2`) ARP entry;
+3. packets go to a MAC that no longer exists and are silently dropped;
+4. the stale entry survives long enough to block requests indefinitely.
+
+Measured on 5 unpinned recreations: **3 of 5 cycles failed completely**, including
+via DNS alias. A host-side `ip neigh flush dev podman2` does not reach the
+container netns. Warming the path from another container does not help either.
+
+**The fix is pinning the MAC**, so the address/MAC pair is invariant and the
+cached entry stays valid:
+
+```bash
+podman run -d --name youpi-app \
+  --network youpi-net:ip=10.90.0.2,mac=02:59:4f:11:00:02 \
+  --network-alias youpi-app
+```
+
+Measured with the MAC pinned: **8 of 8 recreation cycles succeeded**, every one
+answering 200 on both the static IP and the alias.
+
+If a container must be recreated with a different MAC, connectivity recovers on
+its own once the stale entry ages out to `FAILED` and is re-resolved — but that
+window is unbounded and must not be relied on. Always pin.
+
 ## Known pitfalls
 
-- **Stale ARP.** Restarting a container on `youpi-net` gives it a new MAC. Other
-  containers can keep a stale neighbour entry and time out. Fix from the client:
-  `ip neigh flush <target>` or `ip neigh flush dev eth0`.
+- **Stale ARP.** Restarting a container on `youpi-net` gives it a new MAC and
+  nginx cannot clear its own cache. Pin the MAC (see above); do not rely on
+  flushing, which requires `NET_ADMIN` that the nginx container does not have.
+- **Network recreation detaches interfaces.** After `podman network rm` and
+  recreate, existing containers keep stale interface state until recreated.
+  Re-run the verification matrix afterwards; the guard itself survives.
 - **Dynamic IPs break the allow.** If `10.90.0.254` changes, verification fails
   loudly — pin the address on recreation, never rely on Podman assignment.
 - **`policy accept` must stay.** Changing it to `drop` affects all host
