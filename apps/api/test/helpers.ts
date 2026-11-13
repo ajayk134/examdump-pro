@@ -74,7 +74,9 @@ export interface TestContext {
   cleanup: () => Promise<void>;
 }
 
-export async function createTestContext(): Promise<TestContext> {
+export async function createTestContext(
+  options: { loggerStream?: (line: string) => void } = {},
+): Promise<TestContext> {
   const url = process.env.DATABASE_URL_TEST ?? DEFAULT_DATABASE_URL_TEST;
 
   const env = loadEnv({
@@ -173,7 +175,11 @@ export async function createTestContext(): Promise<TestContext> {
     }),
   );
 
-  const app = await buildApp({ env, logger: process.env.TEST_LOGS === "1" });
+  const app = await buildApp(
+    options.loggerStream
+      ? { env, loggerStream: options.loggerStream }
+      : { env, logger: process.env.TEST_LOGS === '1' },
+  );
 
   return {
     app,

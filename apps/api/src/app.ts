@@ -34,9 +34,86 @@ import { adminUpiConfigRoutes } from './routes/admin-upi-config.js';
 import { healthRoutes } from './routes/health.js';
 import { supportRoutes } from './routes/support.js';
 
+/**
+ * Query parameters whose values must never reach a log sink.
+ *
+ * OAuth authorization codes are bearer-equivalent for a short window, and a
+ * state token is what authorises a callback. Both arrived in the request URL and
+ * Fastify's default request serializer writes the whole URL - so a live code was
+ * landing in `podman logs`, where anyone with log access could lift it.
+ *
+ * Names are matched case-insensitively, and the parameter list itself is
+ * preserved so a log still shows *which* parameters were present. Only the
+ * values are censored: losing the shape of a request would make the logs less
+ * useful than they are safe.
+ */
+const SENSITIVE_QUERY_PARAMS = new Set([
+  'code',
+  'state',
+  'access_token',
+  'refresh_token',
+  'id_token',
+  'token',
+  'client_secret',
+  'code_verifier',
+  'session',
+  'sessionid',
+  'api_key',
+  'apikey',
+  'password',
+]);
+
+export function redactQueryString(rawUrl: string | undefined): string | undefined {
+  if (!rawUrl) return rawUrl;
+  const qIndex = rawUrl.indexOf('?');
+  if (qIndex === -1) return rawUrl;
+
+  const path = rawUrl.slice(0, qIndex);
+  const params = new URLSearchParams(rawUrl.slice(qIndex + 1));
+  let touched = false;
+
+  for (const key of [...params.keys()]) {
+    if (SENSITIVE_QUERY_PARAMS.has(key.toLowerCase())) {
+      params.set(key, '[redacted]');
+      touched = true;
+    }
+  }
+
+  /* Nothing sensitive: return the original string untouched. */
+  if (!touched) return rawUrl;
+  return `${path}?${params.toString()}`;
+}
+
+/**
+ * Fastify request serializer. Replaces the default (which echoes the raw URL) so
+ * that no transport - stdout, a log file, an external sink - can ever receive a
+ * live authorization code.
+ */
+export function redactSensitiveQuery(request: {
+  method?: string;
+  url?: string;
+  host?: string;
+  remoteAddress?: string;
+  remotePort?: number;
+}): Record<string, unknown> {
+  return {
+    method: request.method,
+    url: redactQueryString(request.url),
+    host: request.host,
+    remoteAddress: request.remoteAddress,
+    remotePort: request.remotePort,
+  };
+}
+
 export interface BuildAppOptions {
   env?: Env;
   logger?: boolean;
+  /**
+   * Destination for log lines, used by tests to assert on what would actually be
+   * written. Without it the logger writes to stdout and the assertion becomes
+   * impossible.
+   */
+  loggerStream?: (line: string) => void;
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -47,7 +124,12 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       options.logger === false
         ? false
         : {
+            ...(options.loggerStream
+              ? { stream: { write: (line: string) => options.loggerStream!(line) } }
+              : {}),
             level: env.LOG_LEVEL,
+            /* Without this Fastify logs the raw URL, authorization codes included. */
+            serializers: { req: redactSensitiveQuery },
             redact: {
               paths: [
                 'req.headers.authorization',
@@ -57,7 +139,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
                 'req.body.currentPassword',
                 'req.body.newPassword',
                 'req.body.idToken',
+                'req.body.clientSecret',
+                'req.body.code',
+                'req.body.state',
                 '*.password',
+                '*.clientSecret',
               ],
               censor: '[redacted]',
             },
