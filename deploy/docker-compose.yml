@@ -222,4 +222,20 @@ networks:
     driver: bridge
 
 volumes:
+  #
+  # `name:` is deliberately explicit.
+  #
+  # The project is named `examdump-pro`, so declaring a volume as `pgdata:` would
+  # resolve to `examdump-pro_pgdata`. The production database does NOT live there:
+  # it lives in the unprefixed `pgdata` volume, created by the original manual
+  # `podman run` before this compose file existed. Without this line, running
+  # `podman-compose up` mounts the wrong volume - a stale copy from an earlier
+  # migration - and silently serves an old database. Pinning the name keeps
+  # compose and the running stack on one volume.
+  #
+  # Verify before any compose run:
+  #   podman inspect examdump-pro_postgres_1 --format '{{range .Mounts}}{{.Name}}{{end}}'
+  #   # must print: pgdata
+  #
   pgdata:
+    name: pgdata
