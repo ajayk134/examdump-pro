@@ -13,7 +13,17 @@ import { catalogExams, catalogProviders, userStats, users } from '../src/db/sche
 import { hashPassword } from '../src/lib/passwords.js';
 import { randomReferralCode } from '../src/lib/tokens.js';
 
-const DEFAULT_DATABASE_URL_TEST = 'postgres://postgres:postgres@127.0.0.1:5433/examdump_test';
+/*
+ * The suite refuses to run without an explicit test database, so a developer
+ * cannot accidentally truncate a real one. Any reachable Postgres works:
+ *
+ *   podman run -d --rm -p 5433:5432 -e POSTGRES_PASSWORD=postgres postgres:16-alpine
+ *   DATABASE_URL_TEST=postgres://postgres:postgres@127.0.0.1:5433/examdump_test npm test
+ *
+ * There is no default on purpose: a hardcoded fallback silently points at
+ * whatever happens to be listening on that port.
+ */
+const DEFAULT_DATABASE_URL_TEST = '';
 
 const question = (n: number) => ({
   Title: `Exam topic ${Math.ceil(n / 2)} question ${n} discussion - ExamTopics`,

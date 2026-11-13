@@ -1,5 +1,16 @@
 # UPI collection (self-hosted, no payment gateway)
 
+> **RETIRED — removed from the application.**
+>
+> The embedded UPI gateway described here was removed from ExamDump Pro. The
+> tables (`upi_*`) and migrations `0006`–`0008` are intentionally left in place;
+> all of them are empty. UPI collection is being replaced by YouPI-PG V2 running
+> as a standalone gateway, so this document is kept only as a record of the
+> original design and its reasoning. Nothing below is live code.
+>
+> What remains in the application is the generic `'upi'` *payment method* used by
+> the Razorpay/HyperSwitch adapters, which is unrelated to this subsystem.
+
 ExamDump Pro can collect plan payments directly into its own UPI account, without a
 payment gateway. A buyer scans a QR (or taps an app intent), transfers money, and our
 server learns about the transfer from the bank's own alert — either an email in a

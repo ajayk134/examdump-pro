@@ -4,6 +4,24 @@ All notable changes to ExamDump Pro.
 
 ## [Unreleased]
 
+### Removed
+
+- **The embedded UPI gateway.** Self-collected UPI (QR checkout, Gmail/SMS
+  notification observers, matching and the Admin -> UPI dashboard) is removed in
+  favour of YouPI-PG V2 as a standalone gateway. Deleted: 4 routes, the
+  `services/upi/` subsystem (11 modules), the UPI schema module, the OAuth CLI
+  script, 5 test suites, 3 web components and 2 guides.
+  Retained deliberately: `payments/adapter.ts` and `razorpay.adapter.ts` (the
+  generic `'upi'` payment method), `hyperswitch.client.ts`, `lib/secretbox.ts`,
+  migrations `0006`-`0008` and the seven `upi_*` tables, all empty.
+  Card and Razorpay checkout are unaffected.
+
+### Changed
+
+- `helpers.ts` no longer defaults to a hardcoded test database URL. `npm test`
+  requires `DATABASE_URL_TEST`, so a stray Postgres on port 5433 can never be
+  silently truncated.
+
 ### Fixed
 
 - **Gmail Connect no longer demands a hand-typed client secret.** The dashboard

@@ -63,7 +63,7 @@ routes/                one file per feature; registered in app.ts
   analytics.ts leaderboard.ts notifications.ts support.ts ai.ts
   subscriptions.ts payments.ts coupons.ts referrals.ts
   upi.ts upi-ingest.ts
-  admin.ts admin-ops.ts admin-email.ts admin-upi.ts
+  admin.ts admin-ops.ts admin-email.ts
   email-preferences.ts health.ts
 
 services/

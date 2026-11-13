@@ -34,9 +34,10 @@ export class SecretboxError extends Error {
 /**
  * Turn the configured key into raw bytes.
  *
- * The key is supplied as base64 in `UPI_SECRETS_KEY`. A plain-text key shorter
- * than 32 bytes is rejected rather than silently stretched: a short key would
- * look configured while providing far less strength than AES-256 implies.
+ * The key is supplied as base64 by whichever subsystem needs it. A plain-text
+ * key shorter than 32 bytes is rejected rather than silently stretched: a short
+ * key would look configured while providing far less strength than AES-256
+ * implies.
  */
 export function parseKey(keyBase64: string): Buffer {
   const trimmed = (keyBase64 ?? '').trim();

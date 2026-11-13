@@ -52,8 +52,6 @@ export default function PricingPage() {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
   const [paymentsEnabled, setPaymentsEnabled] = useState(false);
-  // Direct UPI collection is independent of the card gateway.
-  const [upiEnabled, setUpiEnabled] = useState(false);
   const [, setMockPayments] = useState(true);
   const [freeQuestions, setFreeQuestions] = useState(5);
 
@@ -76,10 +74,6 @@ export default function PricingPage() {
     const data = await get<PlansResponse>('/subscriptions/plans');
     setPlans(data.plans);
     setPaymentsEnabled(data.paymentsEnabled);
-    // Best-effort: a failure here must not break the page, card checkout still works.
-    void get<{ available: boolean }>('/upi/status')
-      .then((s) => setUpiEnabled(s.available))
-      .catch(() => setUpiEnabled(false));
     setMockPayments(data.mockPayments);
     setFreeQuestions(data.freeQuestionsPerExam ?? 5);
     if (user) setMe(await get<MeResponse>('/subscriptions/me'));
@@ -187,20 +181,6 @@ export default function PricingPage() {
         return;
       }
 
-      /*
-       * No card gateway, but direct UPI is configured: send the buyer to the QR
-       * checkout. That page creates its own pending payment row, so nothing is
-       * granted until a bank alert is matched.
-       */
-      if (upiEnabled) {
-        const qs = new URLSearchParams({ planId: selectedPlan });
-        if (coupon.trim()) qs.set('coupon', coupon.trim());
-        // Exam-scoped plans need the chosen exams, or the server rejects the order.
-        selectedExams.forEach((e) => qs.append('examKey', e.key));
-        window.location.href = `/checkout/upi?${qs.toString()}`;
-        return;
-      }
-
       // No gateway configured: only ever allowed off production, and the API
       // labels the resulting payment as simulated.
       await post('/payments/mock-activate', {
@@ -239,7 +219,7 @@ export default function PricingPage() {
         ) : null}
       </header>
 
-      {!paymentsEnabled && !upiEnabled ? (
+      {!paymentsEnabled ? (
         <Alert tone="warning" title="Live payments are not enabled on this environment">
           Card/UPI checkout needs the payment gateway keys configured on the server. Until then plan
           activation is simulated for testing only and no money is charged.
@@ -427,11 +407,7 @@ export default function PricingPage() {
               onClick={() => void startCheckout()}
             >
               <IconSparkles className="h-4 w-4" />
-              {paymentsEnabled
-                ? 'Continue to payment'
-                : upiEnabled
-                  ? 'Pay with UPI'
-                  : 'Activate (test mode)'}
+              {paymentsEnabled ? 'Continue to payment' : 'Activate (test mode)'}
             </button>
             {!paymentsEnabled ? (
               <span className="text-xs text-content-muted">No charge is made in test mode.</span>

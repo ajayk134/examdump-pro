@@ -370,64 +370,6 @@ export async function createPaymentOrder(env: Env, user: User, input: CreateOrde
   };
 }
 
-/**
- * Create a *pending* payment row for a UPI self-collection checkout.
- *
- * There is no gateway here: the customer pays our VPA directly and a bank
- * notification is what eventually calls `settlePayment()`. No entitlement is
- * granted at this point, exactly as with card checkout.
- */
-export async function createUpiPaymentOrder(
-  env: Env,
-  user: User,
-  input: { planId: string; billingPeriod?: 'monthly' | 'yearly'; couponCode?: string; examKeys?: string[] },
-) {
-  const quote = await quotePlan(user.id, {
-    planId: input.planId,
-    examKeys: input.examKeys,
-    couponCode: input.couponCode,
-  });
-
-  const db = getDb();
-  const orderRef = `upi_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-
-  const [payment] = await db
-    .insert(payments)
-    .values({
-      userId: user.id,
-      subscriptionId: null,
-      amountMinor: quote.totalMinor,
-      discountMinor: quote.discountMinor,
-      currency: quote.currency,
-      status: 'pending',
-      provider: 'upi',
-      // Replaced by the bank reference once a notification settles this payment.
-      providerRef: orderRef,
-      orderRef,
-      description: `${quote.plan.name} — awaiting UPI transfer`,
-      metadata: {
-        planId: quote.plan.id,
-        examKeys: quote.examKeys,
-        couponCode: quote.couponCode,
-        grossMinor: quote.grossMinor,
-        billingPeriod: input.billingPeriod ?? 'monthly',
-      },
-    })
-    .returning();
-  if (!payment) throw new Error('Failed to persist the UPI payment order.');
-
-  await recordAudit({
-    actorId: user.id,
-    actorEmail: user.email,
-    action: 'payment.upi_checkout_started',
-    targetType: 'payment',
-    targetId: payment.id,
-    metadata: { planId: quote.plan.id, amountMinor: quote.totalMinor, orderRef },
-  });
-
-  return { payment, quote };
-}
-
 export interface SettleResult {
   paymentId: string;
   status: 'pending' | 'succeeded' | 'failed' | 'already_settled' | 'ignored';
