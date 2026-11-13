@@ -188,8 +188,11 @@ value.
 
 1. Deploy with payments still off, then open **Admin → UPI → Gateway settings**.
 2. Save the **merchant UPI ID** (and the payee name shown to the payer).
-3. Connect the mailbox: paste the OAuth **client ID** and **client secret**, and
-   register the exact redirect URI the panel displays on the Google OAuth client.
+3. Connect the mailbox. With `UPI_GOOGLE_CLIENT_ID` and `UPI_GOOGLE_CLIENT_SECRET`
+   set on the server, the panel uses them by default and asks for nothing — just
+   press **Connect Gmail**. (Tick *Use a different Google project* to supply a
+   different pair instead.) First register the exact redirect URI the panel
+   displays on the Google OAuth client.
 4. Press **Test connection** once connected.
 5. Leave **Accept UPI payments** off and **Automatic approval** off until step 7
    has been completed.

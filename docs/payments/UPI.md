@@ -56,7 +56,18 @@ request is not protection against the application being compromised. A database
 dump alone therefore does not yield a usable Gmail token.
 
 No API response returns a credential. The configuration endpoint reports presence
-as `gmail.hasClientSecret` / `gmail.hasRefreshToken` booleans and nothing else.
+as `gmail.hasClientSecret` / `gmail.hasRefreshToken` / `gmail.serverCredentialsConfigured`
+booleans and nothing else.
+
+The dashboard uses the server's configured client by default; a different Google
+project can be supplied per-connection without a deploy. Credentials live only on
+the single-use state row (encrypted) until Google confirms them, so the token
+exchange always uses the exact client id, secret and redirect URI the consent
+screen was started with.
+
+Authorization codes and `state` tokens are redacted from request logs by a Fastify
+request serializer (`redactSensitiveQuery` in `app.ts`), so a live code cannot be
+recovered from log output.
 
 ### The Connect handshake
 

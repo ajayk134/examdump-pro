@@ -70,9 +70,27 @@ const switchesSchema = z.object({
 
 const validateVpaSchema = z.object({ payeeVpa: z.string().max(320) });
 
+/*
+ * Both fields are optional. Omitting them means "use the credentials this server
+ * is already configured with", which is the normal case: the operator set
+ * UPI_GOOGLE_CLIENT_ID / UPI_GOOGLE_CLIENT_SECRET in Doppler.
+ *
+ * Before this, the dashboard demanded a hand-typed pair even when the server
+ * held them, so the token exchange ran against whatever had been pasted into a
+ * form. One wrong character produced a generic "connection could not be
+ * completed" with no way to tell what had gone wrong.
+ *
+ * Empty strings are treated as absent so a blank form field is not a failure.
+ */
+const optionalCredential = z
+  .string()
+  .max(300)
+  .optional()
+  .transform((v) => (v && v.trim().length > 0 ? v.trim() : undefined));
+
 const startSchema = z.object({
-  clientId: z.string().min(10).max(300),
-  clientSecret: z.string().min(4).max(300),
+  clientId: optionalCredential,
+  clientSecret: optionalCredential,
 });
 
 /** Redeem the code, verify it, and store the encrypted result. */
@@ -113,6 +131,13 @@ async function completeConnection(
   return { email };
 }
 
+/** Reduce a caller-supplied OAuth error marker to a short, safe identifier. */
+function safeOAuthErrorCode(raw: string | undefined): string {
+  if (!raw) return 'unknown';
+  const cleaned = raw.trim().toLowerCase();
+  return /^[a-z0-9_.-]{1,40}$/.test(cleaned) ? cleaned : 'unknown';
+}
+
 export async function adminUpiConfigRoutes(app: FastifyInstance, env: Env): Promise<void> {
   /* ------------------------------------------------------------------ read */
   app.get('/upi/config', async (request) => {
@@ -149,6 +174,12 @@ export async function adminUpiConfigRoutes(app: FastifyInstance, env: Env): Prom
         /* Presence only. The values themselves never leave the server. */
         hasClientSecret: Boolean(config.gmailClientSecret),
         hasRefreshToken: Boolean(config.gmailRefreshToken),
+        /**
+         * True when a usable client id/secret pair is already resolved on the
+         * server, so the dashboard can default to using it instead of asking the
+         * operator to paste one that is already configured.
+         */
+        serverCredentialsConfigured: Boolean(config.gmailClientId && config.gmailClientSecret),
         /**
          * Whether credentials can be stored at all. Without the encryption key
          * the Connect button is disabled here rather than failing after the
@@ -268,16 +299,31 @@ export async function adminUpiConfigRoutes(app: FastifyInstance, env: Env): Prom
     }
 
     /*
-     * The client id and secret are supplied here rather than read from `env`
-     * because the point of this flow is configuring a new Google project without
-     * a deploy. They are held on the state row so the callback - which receives
-     * only a code - can complete the exchange, and are encrypted at rest only
-     * once Google has confirmed them.
+     * Credentials: request body first, then whatever the server resolves.
+     *
+     * The body is still honoured so an operator can point at a different Google
+     * project without a deploy. The common path supplies nothing and inherits
+     * the deployment's own configuration, which is what the UI offers by
+     * default. `resolveUpiConfig` prefers a dashboard-stored pair over the
+     * environment, so all three sources line up with one precedence order.
      */
-    const state = await issueState(env, auth.user.id, {
-      clientId: input.clientId,
-      clientSecret: input.clientSecret,
-    });
+    const config = await resolveUpiConfig(env);
+    const clientId = input.clientId ?? config.gmailClientId ?? undefined;
+    const clientSecret = input.clientSecret ?? config.gmailClientSecret ?? undefined;
+
+    if (!clientId || !clientSecret) {
+      throw badRequest(
+        'No Google OAuth client is configured. Set UPI_GOOGLE_CLIENT_ID and UPI_GOOGLE_CLIENT_SECRET on the server, or provide them here to use a different Google project.',
+      );
+    }
+
+    /*
+     * Held on the state row so the callback - which receives only a code - can
+     * complete the exchange with exactly the values the consent screen was
+     * started with. A different pair at that point would produce a confusing
+     * Google error rather than an honest one.
+     */
+    const state = await issueState(env, auth.user.id, { clientId, clientSecret });
 
     await recordAudit({
       actorId: auth.user.id,
@@ -286,7 +332,10 @@ export async function adminUpiConfigRoutes(app: FastifyInstance, env: Env): Prom
       targetType: 'upi_config',
       targetId: 'gmail',
       /* The tail only, enough to tell two clients apart without recording one. */
-      metadata: { clientIdSuffix: input.clientId.slice(-12) },
+      metadata: {
+        clientIdSuffix: clientId.slice(-12),
+        credentialSource: input.clientId === undefined ? 'server' : 'request',
+      },
       ip: request.ip,
       userAgent: request.headers['user-agent'] ?? '',
     });
@@ -297,7 +346,7 @@ export async function adminUpiConfigRoutes(app: FastifyInstance, env: Env): Prom
      * worked but meant the consent URL was correct only because of the override.
      */
     return {
-      url: consentUrl(env, state, input.clientId),
+      url: consentUrl(env, state, clientId),
       redirectUri: redirectUri(env),
       scope: 'https://www.googleapis.com/auth/gmail.readonly',
     };
@@ -321,7 +370,12 @@ export async function adminUpiConfigRoutes(app: FastifyInstance, env: Env): Prom
         action: 'admin.upi_gmail_connect_failed',
         targetType: 'upi_config',
         targetId: 'gmail',
-        metadata: { reason: query.error },
+        /*
+         * `query.error` arrives from the caller and can be anything at all, so it
+         * is reduced to a short identifier before being stored. A free-form value
+         * from a URL should not become arbitrary text in the audit trail.
+         */
+        metadata: { code: safeOAuthErrorCode(query.error) },
         ip: request.ip,
       });
       return dashboard({ tab: 'upi', gmail: 'denied' });
@@ -367,12 +421,25 @@ export async function adminUpiConfigRoutes(app: FastifyInstance, env: Env): Prom
     } catch (err) {
       const message =
         err instanceof OAuthError ? err.message : 'The connection could not be completed.';
+
+      /*
+       * Record the stable error CODE, not just prose. The previous version stored
+       * the sentence alone, so a failed exchange left nothing to diagnose beyond
+       * "it did not work" - the operator could not tell a bad secret from a
+       * rejected code or a missing scope.
+       *
+       * Only the code and the caller-supplied OAuth `error` value are recorded.
+       * Neither carries a secret, an authorization code or a token.
+       */
       await recordAudit({
         actorId: consumed.adminId,
         action: 'admin.upi_gmail_connect_failed',
         targetType: 'upi_config',
         targetId: 'gmail',
-        metadata: { reason: message.slice(0, 200) },
+        metadata: {
+          code: err instanceof OAuthError ? err.code : 'unexpected_error',
+          reason: message.slice(0, 200),
+        },
         ip: request.ip,
       });
       return dashboard({ tab: 'upi', gmail: 'failed', detail: message.slice(0, 160) });

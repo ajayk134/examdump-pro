@@ -4,6 +4,22 @@ All notable changes to ExamDump Pro.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Gmail Connect no longer demands a hand-typed client secret.** The dashboard
+  required both OAuth fields even when the server already held a correct pair,
+  so the token exchange ran against whatever had been pasted into the form and
+  failed with a generic "connection could not be completed". It now uses
+  `UPI_GOOGLE_CLIENT_ID` / `UPI_GOOGLE_CLIENT_SECRET` by default, with an opt-in
+  field for a different Google project.
+- **Authorization codes and `state` tokens were being written to the API request
+  log.** Fastify's default request serializer echoes the full URL. A request
+  serializer now censors sensitive query parameters by name, keeping the
+  parameter list visible so logs stay useful.
+- **Failed OAuth connections recorded no diagnosable reason.** The audit row now
+  carries a stable error code (and Google's `error` marker, reduced to a safe
+  identifier) instead of only a prose sentence.
+
 ### Added
 
 - **UPI gateway configuration from the admin dashboard.** The merchant UPI ID,

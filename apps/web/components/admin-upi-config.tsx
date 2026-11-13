@@ -40,6 +40,7 @@ interface ConfigResponse {
     lastVerifiedAt: string | null;
     hasClientSecret: boolean;
     hasRefreshToken: boolean;
+    serverCredentialsConfigured: boolean;
     canStoreCredentials: boolean;
     lastPollAt: string | null;
     lastSuccessAt: string | null;
@@ -82,6 +83,9 @@ export function UpiGatewaySettings() {
 
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
+  /* Default: use the pair the server already has. An operator only reaches for
+   * the fields when pointing at a different Google project. */
+  const [useCustomCredentials, setUseCustomCredentials] = useState(false);
   const [confirmText, setConfirmText] = useState('');
 
   const load = useCallback(async () => {
@@ -163,9 +167,11 @@ export function UpiGatewaySettings() {
   async function startConnect() {
     setBusy(true);
     try {
+      const custom = useCustomCredentials;
       const result = await post<{ url: string }>('/admin-ops/upi/config/gmail/start', {
-        clientId: clientId.trim(),
-        clientSecret: clientSecret.trim(),
+        /* Omitted when using the server's own credentials; the API then resolves
+         * them from the deployment configuration. */
+        ...(custom ? { clientId: clientId.trim(), clientSecret: clientSecret.trim() } : {}),
       });
       /* Full navigation, not a popup: Google blocks OAuth in embedded frames. */
       window.location.href = result.url;
@@ -431,33 +437,66 @@ export function UpiGatewaySettings() {
               {config.redirectUri}
             </code>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-content-secondary">Client ID</span>
-                <input
-                  className="input font-mono text-xs"
-                  value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  placeholder="…apps.googleusercontent.com"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-content-secondary">Client secret</span>
-                <input
-                  className="input font-mono text-xs"
-                  type="password"
-                  value={clientSecret}
-                  onChange={(e) => setClientSecret(e.target.value)}
-                  placeholder="stored encrypted, never shown again"
-                />
-              </label>
-            </div>
+            {gmail.serverCredentialsConfigured ? (
+              <div className="rounded border border-line-subtle bg-surface-secondary p-3">
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={useCustomCredentials}
+                    onChange={(e) => setUseCustomCredentials(e.target.checked)}
+                  />
+                  <span>
+                    <span className="text-content-primary">Use a different Google project</span>
+                    <span className="block text-xs text-content-muted">
+                      {useCustomCredentials
+                        ? 'Enter the client ID and secret below.'
+                        : 'This server is already configured with OAuth credentials. Leave this off to use them.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+            ) : (
+              <Alert tone="warning" title="No OAuth client configured on the server">
+                Set <span className="font-mono">UPI_GOOGLE_CLIENT_ID</span> and{' '}
+                <span className="font-mono">UPI_GOOGLE_CLIENT_SECRET</span> in Doppler, or enter them below
+                to use a different Google project.
+              </Alert>
+            )}
+
+            {(!gmail.serverCredentialsConfigured || useCustomCredentials) && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="text-content-secondary">Client ID</span>
+                  <input
+                    className="input font-mono text-xs"
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    placeholder="…apps.googleusercontent.com"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="text-content-secondary">Client secret</span>
+                  <input
+                    className="input font-mono text-xs"
+                    type="password"
+                    value={clientSecret}
+                    onChange={(e) => setClientSecret(e.target.value)}
+                    placeholder="stored encrypted, never shown again"
+                  />
+                </label>
+              </div>
+            )}
 
             <div className="flex justify-end">
               <button
                 type="button"
                 className="btn-primary text-sm"
-                disabled={busy || !gmail.canStoreCredentials || !clientId.trim() || !clientSecret.trim()}
+                disabled={
+                  busy ||
+                  !gmail.canStoreCredentials ||
+                  (useCustomCredentials && (!clientId.trim() || !clientSecret.trim()))
+                }
                 onClick={() => void startConnect()}
               >
                 Connect Gmail
