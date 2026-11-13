@@ -307,7 +307,35 @@ export const upiConfig = pgTable('upi_config', {
   updatedAt,
 });
 
+/**
+ * Single-use OAuth state for the dashboard Connect flow.
+ *
+ * Deleted the moment it is redeemed, so a replay finds nothing. `admin_id` binds
+ * the handshake to the admin who started it: a state issued to one operator
+ * cannot be completed by another.
+ */
+export const gmailOauthStates = pgTable(
+  'gmail_oauth_states',
+  {
+    state: text('state').primaryKey(),
+    adminId: uuid('admin_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * Held in clear for the life of this row (at most ten minutes) because the
+     * OAuth redirect carries only a code. The durable, encrypted copy is written
+     * to `upi_config` once Google has confirmed the credentials.
+     */
+    clientId: text('client_id').notNull().default(''),
+    clientSecret: text('client_secret').notNull().default(''),
+    createdAt,
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [index('gmail_oauth_states_expiry_idx').on(t.expiresAt)],
+);
+
 export type UpiOrder = typeof upiOrders.$inferSelect;
+export type GmailOauthState = typeof gmailOauthStates.$inferSelect;
 export type UpiNotification = typeof upiNotifications.$inferSelect;
 export type UpiMatch = typeof upiMatches.$inferSelect;
 export type UpiRefund = typeof upiRefunds.$inferSelect;

@@ -47,3 +47,26 @@ CREATE TABLE IF NOT EXISTS "upi_config" (
 -- only useful guarantee is that the singleton exists once. Insert it here so
 -- later code never has to handle a missing row on a read path.
 INSERT INTO "upi_config" ("key") VALUES ('global') ON CONFLICT ("key") DO NOTHING;
+
+-- Single-use OAuth state tokens for the dashboard Connect flow.
+--
+-- The terminal handshake had no state parameter because the operator was the
+-- only actor. In a browser an attacker can hand an admin a prepared consent URL
+-- and end up with their own mailbox attached to this account, so the state value
+-- is generated server-side, bound to the admin, and deleted on first use.
+--
+-- Rows are short-lived (10 minutes) and swept opportunistically on the next
+-- Connect click.
+CREATE TABLE IF NOT EXISTS "gmail_oauth_states" (
+  "state" text PRIMARY KEY,
+  "admin_id" uuid NOT NULL REFERENCES "users" ("id") ON DELETE CASCADE,
+  -- Carried here because the OAuth redirect returns only a code. Present for at
+  -- most ten minutes, then deleted; the durable encrypted copy lands in
+  -- upi_config once Google has confirmed the credentials.
+  "client_id" text NOT NULL DEFAULT '',
+  "client_secret" text NOT NULL DEFAULT '',
+  "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+  "expires_at" timestamp with time zone NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS "gmail_oauth_states_expiry_idx" ON "gmail_oauth_states" ("expires_at");

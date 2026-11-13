@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { get, post } from '@/lib/api';
+import { UpiGatewaySettings } from '@/components/admin-upi-config';
 import { useToast } from '@/components/providers';
 import {
   Alert,
@@ -231,6 +232,11 @@ export function AdminUpiPanel() {
           </p>
         )}
       </Card>
+
+      {/* Configuration lives below the live numbers: an operator looking for
+          "what is happening" reads the counters first, and settings are for when
+          something needs changing. */}
+      <UpiGatewaySettings />
 
       {unmatched.length > 0 && (
         <>

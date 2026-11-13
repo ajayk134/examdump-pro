@@ -30,6 +30,7 @@ import { emailPreferenceRoutes } from './routes/email-preferences.js';
 import { upiRoutes } from './routes/upi.js';
 import { upiIngestRoutes } from './routes/upi-ingest.js';
 import { adminUpiRoutes } from './routes/admin-upi.js';
+import { adminUpiConfigRoutes } from './routes/admin-upi-config.js';
 import { healthRoutes } from './routes/health.js';
 import { supportRoutes } from './routes/support.js';
 
@@ -197,6 +198,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       await api.register(async (r) => upiRoutes(r, env), { prefix: '/upi' });
       await api.register(async (r) => upiIngestRoutes(r, env), { prefix: '/upi' });
       await api.register(async (r) => adminUpiRoutes(r, env), { prefix: '/admin-ops' });
+      await api.register(async (r) => adminUpiConfigRoutes(r, env), { prefix: '/admin-ops' });
     },
     { prefix: '/api' },
   );
