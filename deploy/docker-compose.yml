@@ -1,10 +1,17 @@
 # Production stack for the Oracle Cloud VM.
 #
-# Secrets are never written here. Run compose under Doppler so ${VARS} are
-# injected from the environment:
+# Secrets are never written here. Everything below is rendered from the Doppler
+# project at deploy time:
 #
 #   cd deploy
-#   doppler run --project examdump-pro --config prd -- docker compose up -d --build
+#   doppler run --project examdump-pro --config prd -- podman compose up -d --build
+#
+# IMPORTANT: this file is NOT how the running containers were created. They were
+# started with individual `podman run` commands, and the deployed nginx config
+# upstreams them by container name. Compose therefore only reproduces *settings*,
+# not the live stack. For the routine API deploy use `deploy/redeploy-api.sh`,
+# which replaces one container in place and preserves everything else. Read
+# docs/DEPLOYMENT.md and docs/operations/DEPLOYMENT_PROCEDURE.md first.
 #
 # (Or use the existing agent-keys/dev_personal project for a staging box.)
 name: examdump-pro
