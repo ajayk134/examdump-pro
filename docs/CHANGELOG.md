@@ -16,6 +16,19 @@ All notable changes to ExamDump Pro.
   migrations `0006`-`0008` and the seven `upi_*` tables, all empty.
   Card and Razorpay checkout are unaffected.
 
+### Fixed
+
+- **`redeploy-api.sh --rollback --dry-run` performed a real rollback.** `DRY_RUN`
+  was checked only inside the build and image-verification steps, so `--rollback`
+  stopped, renamed, restarted and removed production containers while reporting
+  that nothing had changed. `deploy` had the same class of defect: it removed
+  leftover containers before its own dry-run check. Every mutating path now gates
+  on a single `mutating` guard, dry runs print the exact steps and image IDs they
+  would use, and mutually exclusive modes are rejected instead of silently
+  ignoring one. Covered by `deploy/test-dry-run.sh` (27 cases), which includes an
+  assertion that the live container's image ID is unchanged after a rollback dry
+  run.
+
 ### Changed
 
 - `helpers.ts` no longer defaults to a hardcoded test database URL. `npm test`

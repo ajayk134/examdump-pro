@@ -51,6 +51,11 @@ nginx and verifies routing. It rolls back automatically on failure and accepts
 `--rollback`, `--build-only`, `--no-build`, `--dry-run`, `--sync-env` and
 `--sync-env --from-container`.
 
+`--dry-run` is honoured by every mode, including `--rollback` and `--sync-env`: it
+prints the planned steps and the image IDs it would act on, then exits without
+touching containers, images or the env file. Two modes at once are rejected. The
+property is covered by `deploy/test-dry-run.sh` (`npm run test:deploy`).
+
 **The environment comes from a file, not from the shell.** `podman create
 --env-file` reads `/tmp/examdump-api.env`; a `doppler run` prefix on a plain deploy
 syncs nothing, so a newly added secret appears to deploy and quietly is not there.

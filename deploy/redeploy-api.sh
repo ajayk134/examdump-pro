@@ -106,6 +106,36 @@ as_root() {
   if [[ "${EUID}" -eq 0 ]]; then "$@"; else sudo "$@"; fi
 }
 
+#
+# The single gate every mutating operation must pass through.
+#
+# `--dry-run` used to be honoured only inside `build_image` and
+# `verify_image_contents`, so `--rollback --dry-run` performed a real rollback
+# against the production container. Checking the flag ad hoc in each function is
+# what allowed that: the flag is easy to forget in a new code path and the
+# failure mode is silent production change, not an error.
+#
+# Intent instead: read-only commands run normally, and a mutating command is
+# REFUSED outright when the run is dry. Callers that know they are mutating ask
+# first (`mutating`) and describe the intent (`plan`), so a dry run prints what
+# would have happened and cannot execute it even if a later edit forgets a check.
+#
+mutating() { [[ "${DRY_RUN}" -eq 1 ]] && return 1 || return 0; }
+
+# Describe a would-be mutation and skip it. Returns 0 so callers can `return`.
+plan() { log "  (dry run) would $*"; }
+
+# Wrap a mutating command: real run executes it, dry run only describes it.
+# Unquoted "$@" is deliberate - quoting would collapse the command into one word.
+run_mutating() {
+  local description="$1"; shift
+  if mutating; then
+    "$@"
+  else
+    plan "${description}"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
@@ -122,6 +152,42 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+#
+# Reject combinations that cannot be honoured, before anything runs.
+#
+# The three modes are mutually exclusive entry points. Previously the first one
+# reached in `main` silently won and the others were ignored, which is how a user
+# could believe they were rolling back and get a build instead. Guessing is worse
+# than refusing: an operator who passes two modes has a different mental model of
+# what will happen than the script does.
+#
+validate_mode() {
+  local modes=0
+  [[ "${DO_ROLLBACK}" -eq 1 ]] && modes=$((modes + 1))
+  [[ "${SYNC_ENV}" -eq 1 ]] && modes=$((modes + 1))
+
+  (( modes <= 1 )) || die "--rollback and --sync-env are separate modes; pass only one"
+
+  [[ "${DO_ROLLBACK}" -eq 1 ]] && [[ "${BUILD_ONLY}" -eq 1 ]] \
+    && die "--rollback does not build; drop --build-only"
+
+  [[ "${SYNC_ENV}" -eq 1 ]] && [[ "${NO_BUILD}" -eq 1 ]] \
+    && die "--sync-env does not deploy; drop --no-build"
+
+  [[ "${SYNC_ENV}" -eq 1 ]] && [[ "${BUILD_ONLY}" -eq 1 ]] \
+    && die "--sync-env does not build; drop --build-only"
+
+  [[ "${FROM_CONTAINER}" -eq 1 ]] && [[ "${SYNC_ENV}" -eq 0 ]] \
+    && die "--from-container only applies to --sync-env"
+
+  [[ "${BUILD_ONLY}" -eq 1 ]] && [[ "${NO_BUILD}" -eq 1 ]] \
+    && die "--build-only and --no-build contradict each other"
+
+  return 0
+}
+
+validate_mode
 
 # ---------------------------------------------------------------------------
 # Preflight: fail before changing anything
@@ -263,12 +329,46 @@ wait_ready() {
   return 1
 }
 
+print_deploy_plan() {
+  local staged="$1"
+  local current="none"
+  if as_root podman container exists "${CONTAINER_NAME}" 2>/dev/null; then
+    current="$(as_root podman inspect "${CONTAINER_NAME}" --format '{{.Image}}' 2>/dev/null || echo unknown)"
+  fi
+
+  log "Would deploy ${IMAGE_REPO}:latest to ${CONTAINER_NAME}"
+  echo "    current image : ${current:0:12}"
+  echo "    new image     : ${NEW_IMAGE_ID:0:12}"
+  echo "    env file      : ${ENV_FILE}"
+  echo
+  echo "  Steps that WOULD run:"
+  echo "    1. remove any leftover ${staged} and ${CONTAINER_NAME}__prev"
+  echo "    2. create + start ${staged} from ${IMAGE_REPO}:latest"
+  echo "    3. wait for ${staged} to report ready (old container still serving)"
+  echo "    4. stop + rename ${CONTAINER_NAME} aside, rename ${staged} into place"
+  echo "    5. restart ${CONTAINER_NAME}, reload ${NGINX_CONTAINER}, verify routing"
+  echo "    6. record ${current:0:12} as the rollback image in ${PREVIOUS_IMAGE_FILE}"
+  echo
+  ok "dry run: nothing was changed"
+}
+
 # ---------------------------------------------------------------------------
 # Deploy
 # ---------------------------------------------------------------------------
 deploy() {
   local staged="${CONTAINER_NAME}__staged"
   local backup="${CONTAINER_NAME}__prev"
+
+  #
+  # Decide before touching anything. The two `rm -f` calls below used to run
+  # ahead of the dry-run check, so a dry run still deleted leftover containers.
+  # The plan is printed from read-only state and the function returns without a
+  # single mutation.
+  #
+  if ! mutating; then
+    print_deploy_plan "${staged}"
+    return 0
+  fi
 
   # Clear anything left by an interrupted earlier run.
   as_root podman rm -f "${staged}" >/dev/null 2>&1 || true
@@ -280,11 +380,6 @@ deploy() {
   fi
 
   log "Staging new container as ${staged}"
-  if [[ "${DRY_RUN}" -eq 1 ]]; then
-    log "  (dry run) create + start + wait_ready + swap + nginx reload"
-    return
-  fi
-
   # Run on EXIT, not ERR: `die` calls `exit`, which does not trigger an ERR trap,
   # so an ERR-only trap leaks the staged container whenever a check fails. This
   # trap is disarmed (`STAGED_CONTAINER=""`) once the container has been renamed
@@ -409,6 +504,17 @@ rollback() {
   target="$(cat "${PREVIOUS_IMAGE_FILE}")"
   as_root podman image exists "${target}" || die "previous image ${target} no longer exists"
 
+  #
+  # A dry run must stop here. Everything below stops, renames, restarts and
+  # removes containers. The guard is placed after the read-only validation so a
+  # dry run still reports a missing or expired previous image, and before the
+  # first mutation so nothing can be touched.
+  #
+  if ! mutating; then
+    print_rollback_plan "${target}"
+    return 0
+  fi
+
   local staged="${CONTAINER_NAME}__staged"
   as_root podman rm -f "${staged}" >/dev/null 2>&1 || true
 
@@ -440,6 +546,38 @@ rollback() {
   trap - EXIT
   ok "rolled back to ${target:0:12}"
   print_summary
+}
+
+# ---------------------------------------------------------------------------
+# Dry-run plan output
+# ---------------------------------------------------------------------------
+#
+# A dry run has to answer "what would this do?" precisely enough that an operator
+# can approve it. Reading the live state is safe and makes the plan concrete
+# (real image IDs, real container names) instead of a generic description.
+#
+print_rollback_plan() {
+  local target="$1"
+  local current="unknown"
+  if as_root podman container exists "${CONTAINER_NAME}" 2>/dev/null; then
+    current="$(as_root podman inspect "${CONTAINER_NAME}" --format '{{.Image}}' 2>/dev/null || echo unknown)"
+  fi
+
+  log "Would roll back ${CONTAINER_NAME}"
+  echo "    current image : ${current:0:12}"
+  echo "    target image  : ${target:0:12}"
+  echo
+  echo "  Steps that WOULD run:"
+  echo "    1. remove any leftover ${CONTAINER_NAME}__staged"
+  echo "    2. create + start ${CONTAINER_NAME}__staged on ${target:0:12}"
+  echo "    3. wait for ${CONTAINER_NAME}__staged to report ready"
+  echo "    4. stop ${CONTAINER_NAME} and rename it to ${CONTAINER_NAME}__bad"
+  echo "    5. rename ${CONTAINER_NAME}__staged to ${CONTAINER_NAME}"
+  echo "    6. restart ${CONTAINER_NAME} and wait for readiness"
+  echo "    7. reload ${NGINX_CONTAINER} and verify routing"
+  echo "    8. remove ${CONTAINER_NAME}__bad"
+  echo
+  ok "dry run: nothing was changed"
 }
 
 # ---------------------------------------------------------------------------
@@ -511,6 +649,29 @@ _normalise_line() {
 
 sync_env() {
   local target="${ENV_FILE}"
+
+  #
+  # A dry run must not read the live container's environment either: the values
+  # are secrets and writing them to a temp file is the thing being avoided. It
+  # reports what it would do from metadata only.
+  #
+  if ! mutating; then
+    local existing="absent"
+    [[ -s "${target}" ]] && existing="$(as_root wc -l < "${target}") variable(s)"
+    log "Would sync environment into ${target}"
+    echo "    current file : ${existing}"
+    echo "    seed from    : $( [[ "${FROM_CONTAINER}" -eq 1 ]] && echo "live container ${CONTAINER_NAME}" || echo 'existing file' )"
+    echo "    overlay from : Doppler ${ENV_SOURCE_PROJECT}/${ENV_SOURCE_CONFIG} (names only, no values read)"
+    echo
+    echo "  Steps that WOULD run:"
+    echo "    1. build the seed (existing file, or ${CONTAINER_NAME} env)"
+    echo "    2. overlay variables the Doppler project defines; never blank a set value"
+    echo "    3. install the merged file at ${target} with mode 0600"
+    echo
+    ok "dry run: nothing was changed"
+    return 0
+  fi
+
   local incoming
   incoming="$(mktemp)"
   local merged

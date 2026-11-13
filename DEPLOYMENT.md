@@ -67,7 +67,17 @@ The script:
 Measured on this host: ~28 s for an unchanged build, ~41 s after an API source
 change. It exits non-zero and leaves the running API untouched if any check fails.
 
-Useful flags: `--build-only`, `--no-build`, `--dry-run`, `--rollback`.
+Useful flags: `--build-only`, `--no-build`, `--dry-run`, `--rollback`,
+`--sync-env`, `--sync-env --from-container`.
+
+`--dry-run` applies to **every** mode. Combined with `--rollback`, `--dry-run` or
+`--sync-env` it prints the exact steps and image IDs it would use, then stops
+without removing, creating, renaming or restarting anything and without writing
+the env file. Conflicting modes (`--rollback --sync-env`, `--build-only
+--no-build`, `--from-container` without `--sync-env`) are refused before any work
+starts rather than silently letting one win. This is pinned down by
+`deploy/test-dry-run.sh`. Do not combine `--rollback` with `--dry-run` expecting a
+preview in older revisions; that combination used to perform a real rollback.
 
 ### Why not `podman-compose up`
 
