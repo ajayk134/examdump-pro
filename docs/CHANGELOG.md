@@ -7,14 +7,19 @@ All notable changes to ExamDump Pro.
 ### Removed
 
 - **The embedded UPI gateway.** Self-collected UPI (QR checkout, Gmail/SMS
-  notification observers, matching and the Admin -> UPI dashboard) is removed in
-  favour of YouPI-PG V2 as a standalone gateway. Deleted: 4 routes, the
-  `services/upi/` subsystem (11 modules), the UPI schema module, the OAuth CLI
-  script, 5 test suites, 3 web components and 2 guides.
+  notification observers, matching and the Admin -> UPI dashboard) is removed.
+  Deleted: 4 routes, the `services/upi/` subsystem (11 modules), the UPI schema
+  module, the OAuth CLI script, 5 test suites, 3 web components and 2 guides.
   Retained deliberately: `payments/adapter.ts` and `razorpay.adapter.ts` (the
   generic `'upi'` payment method), `hyperswitch.client.ts`, `lib/secretbox.ts`,
   migrations `0006`-`0008` and the seven `upi_*` tables, all empty.
-  Card and Razorpay checkout are unaffected.
+  Card and Razorpay checkout are unaffected. `PAYMENTS_ENABLED` remains `false`;
+  no payment gateway is wired into the running application.
+
+- **Payment-gateway integration prototype.** An experimental external gateway
+  deployment, its webhook route, service, tests and design notes were developed
+  but never shipped: the running API image never contained the code. All
+  artefacts are removed, leaving no unused integration surface.
 
 ### Fixed
 

@@ -82,7 +82,6 @@ docs/
     ADR-003.md  UPI unique amounts + notification matching
     ADR-004.md  JWT access + rotating opaque refresh
     ADR-005.md  single host, rootful Podman
-    ADR-006.md  Replace embedded UPI gateway with YouPI-PG V2
   infrastructure/              original design notes (UPI, mail/pay, deliverability)
 ```
 

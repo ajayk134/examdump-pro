@@ -4,9 +4,10 @@
 >
 > The embedded UPI gateway described here was removed from ExamDump Pro. The
 > tables (`upi_*`) and migrations `0006`–`0008` are intentionally left in place;
-> all of them are empty. UPI collection is being replaced by YouPI-PG V2 running
-> as a standalone gateway, so this document is kept only as a record of the
-> original design and its reasoning. Nothing below is live code.
+> all of them are empty. No payment gateway is connected to the running
+> application today: `PAYMENTS_ENABLED` is `false` and collection stays off.
+> This document is kept only as a record of the original design and its
+> reasoning. Nothing below is live code.
 >
 > What remains in the application is the generic `'upi'` *payment method* used by
 > the Razorpay/HyperSwitch adapters, which is unrelated to this subsystem.
