@@ -118,9 +118,12 @@ quota via `AI_DAILY_LIMIT_PREMIUM`. The provider key never leaves the server.
 | GET | `/api/payments/pay/:id/refundable` | remaining refundable amount |
 | POST | `/api/payments/webhook/hyperswitch` | HMAC verified |
 | POST | `/api/payments/webhook/razorpay` | HMAC verified |
+| POST | `/api/payments/pay/youpi/checkout` | YouPI-PG checkout; gated by `YOUPI_ENABLED` |
+| POST | `/api/payments/webhook/youpi` | HMAC-SHA256 (raw body); fulfils only on `RECONCILED` |
 
 Webhook routes accept no authentication header — they authenticate by signature
-over the raw body.
+over the raw body. The YouPI webhook additionally requires a fresh timestamp and
+is idempotent on `X-Gateway-Delivery-Id`; only `RECONCILED` reaches settlement.
 
 ### UPI — `upi.ts`, `upi-ingest.ts`
 

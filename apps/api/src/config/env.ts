@@ -187,6 +187,28 @@ const envSchema = z.object({
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
   DEFAULT_CURRENCY: z.string().length(3).default('INR'),
 
+  /* ---------------- YouPI-PG: standalone self-hosted UPI gateway ---------------- */
+  /**
+   * Opt-in switch for the YouPI-PG merchant integration.
+   *
+   * Deliberately separate from PAYMENTS_ENABLED: this deployment runs YouPI-PG
+   * with no bank credentials and no paired observers, and it can only ever
+   * settle a UPI payment on a `RECONCILED` event, which YouPI emits after an
+   * operator imports a bank-statement line that matches the payment on
+   * receiving account, amount and reference. `OBSERVED_SUCCESS` and
+   * `MANUAL_REVIEW` never settle.
+   */
+  YOUPI_ENABLED: booleanString,
+  /** Base URL of the YouPI-PG merchant API, e.g. https://pay-api.examdumppay.duckdns.org */
+  YOUPI_API_URL: z.string().url().optional(),
+  /** Merchant id issued by YouPI `POST /api/v1/admin/merchants` (or seeded). */
+  YOUPI_MERCHANT_ID: z.string().optional(),
+  /** Server-side merchant API key (X-Merchant-Key). Never exposed to a browser. */
+  YOUPI_MERCHANT_KEY: z.string().optional(),
+  /** HMAC-SHA256 secret YouPI signs webhook deliveries with (X-Gateway-Signature). */
+  YOUPI_WEBHOOK_SECRET: z.string().optional(),
+  /** Max accepted age (seconds) of a signed webhook timestamp, for replay defence. */
+  YOUPI_WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().positive().default(300),
 });
 
 export type Env = z.infer<typeof envSchema>;

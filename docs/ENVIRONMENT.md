@@ -144,6 +144,22 @@ Deliverability guidance: `docs/infrastructure/email-deliverability-audit.md`.
 | `RAZORPAY_KEY_SECRET` | O/S | — | |
 | `RAZORPAY_WEBHOOK_SECRET` | O/S | — | |
 
+## YouPI-PG (standalone gateway)
+
+Opt-in, independent of `PAYMENTS_ENABLED`. Fulfilment requires a `RECONCILED`
+bank-statement event.
+
+| Variable | Req | Default | Notes |
+| --- | --- | --- | --- |
+| `YOUPI_ENABLED` | O | `false` | Enables `POST /api/payments/pay/youpi/checkout` |
+| `YOUPI_API_URL` | C | — | Merchant API base, e.g. `https://pay-api.examdumppay.duckdns.org` |
+| `YOUPI_MERCHANT_ID` | C/S | — | Issued by the gateway |
+| `YOUPI_MERCHANT_KEY` | C/S | — | `X-Merchant-Key`; server-side only |
+| `YOUPI_WEBHOOK_SECRET` | C/S | — | HMAC-SHA256 webhook signing key |
+| `YOUPI_WEBHOOK_TOLERANCE_SECONDS` | O | `300` | Max accepted signature age (replay defence) |
+
+`C` = required to enable the integration, `S` = secret.
+
 ## UPI
 
 | Variable | Req | Default | Notes |

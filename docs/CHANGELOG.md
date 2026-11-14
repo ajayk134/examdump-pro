@@ -4,6 +4,18 @@ All notable changes to ExamDump Pro.
 
 ## [Unreleased]
 
+### Added
+
+- **YouPI-PG standalone UPI gateway integration.** Opt-in provider
+  (`YOUPI_ENABLED`) that creates a checkout on an independently deployed YouPI-PG
+  instance and receives its signed webhooks. The amount is always the server
+  quote; the webhook is HMAC-SHA256 verified over the raw bytes with a timestamp
+  replay window and `webhook_events` idempotency; and only a `RECONCILED`
+  bank-statement event reaches `settlePayment`. `OBSERVED_SUCCESS` and
+  `MANUAL_REVIEW` are recorded and never fulfil. `PAYMENTS_ENABLED` stays `false`.
+  New: `services/payments/youpi.client.ts`, two routes in `payments.ts`,
+  `test/youpi-integration.test.ts`, and `docs/deployment/YOUPI_PG_INTEGRATION.md`.
+
 ### Removed
 
 - **The embedded UPI gateway.** Self-collected UPI (QR checkout, Gmail/SMS

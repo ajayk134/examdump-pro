@@ -9,15 +9,16 @@
  *   GET  /payments/invoices/:id   - receipt detail
  *   POST /payments/webhook/hyperswitch - gateway webhooks (signature verified)
  */
+import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { and, eq } from 'drizzle-orm';
 import { checkoutSchema, changePlanSchema } from '@examdump/shared';
 import type { Env } from '../config/env.js';
 import { requireAuth } from '../lib/guards.js';
 import { parseOrThrow } from '../lib/validation.js';
-import { badRequest, forbidden, notFound } from '../lib/errors.js';
+import { badRequest, forbidden, notFound, serviceUnavailable } from '../lib/errors.js';
 import { getDb } from '../db/client.js';
-import { payments, users } from '../db/schema/index.js';
+import { payments, users, webhookEvents } from '../db/schema/index.js';
 import {
   activateMockPlan,
   createPaymentOrder,
@@ -40,6 +41,8 @@ import { resolveEntitlements } from '../services/entitlement.service.js';
 import { resolvePaymentAdapter, checkoutAvailable } from '../services/payments/registry.js';
 import { createCheckout, fetchGatewayStatus, refundableFor } from '../services/payments/checkout.service.js';
 import { razorpayAdapter } from '../services/payments/razorpay.adapter.js';
+import { assertAmountAllowed } from '../services/payments/adapter.js';
+import { createYoupiOrder, verifyYoupiWebhook, youpiConfigured } from '../services/payments/youpi.client.js';
 import { getSettings } from '../services/settings.service.js';
 
 /**
@@ -87,6 +90,8 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
           adapter: availability.adapterId,
           methods: availability.methods,
           reason: availability.reason,
+          // YouPI-PG standalone gateway: opt-in flag + whether credentials exist.
+          youpi: { enabled: Boolean(env.YOUPI_ENABLED), configured: youpiConfigured(env) },
         };
       })(),
     });
@@ -136,6 +141,224 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
       paidAt: payment.paidAt,
     });
   });
+
+  /**
+   * YouPI-PG checkout.
+   *
+   * Creates a session on the standalone YouPI gateway for a server-computed
+   * amount and returns its hosted checkout URL. The `MANUAL_UPI` method is used
+   * because YouPI gates automated UPI on a live SMS-observer heartbeat and this
+   * deployment runs Gmail-only. No money is taken and no entitlement is granted
+   * here; fulfilment happens only on a verified `RECONCILED` webhook.
+   *
+   * The feature is gated by YOUPI_ENABLED (independent of PAYMENTS_ENABLED).
+   */
+  app.post(
+    '/pay/youpi/checkout',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      if (!env.YOUPI_ENABLED) {
+        throw serviceUnavailable('YouPI-PG checkout is disabled on this deployment.');
+      }
+      if (!youpiConfigured(env)) {
+        throw serviceUnavailable('YouPI-PG is not configured.');
+      }
+      const { user } = await requireAuth(request, env);
+      if (!user.emailVerified) throw forbidden('Verify your email address before paying.');
+      const input = parseOrThrow(checkoutSchema, request.body);
+
+      // Server-side truth for the price — never the request body.
+      const quote = await quotePlan(user.id, {
+        planId: input.planId,
+        examKeys: input.examKeys,
+        examKey: input.examKey,
+        couponCode: input.couponCode,
+      });
+      if (quote.totalMinor <= 0) throw badRequest('This order has no chargeable amount.');
+      assertAmountAllowed(env, quote.totalMinor, quote.currency);
+
+      const origin = request.headers.origin ?? env.PUBLIC_WEB_URL;
+      const safeOrigin = /^https?:\/\//.test(origin) ? origin : env.PUBLIC_WEB_URL;
+      const ref = `edy_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+
+      const order = await createYoupiOrder(env, {
+        amountMinor: quote.totalMinor,
+        currency: quote.currency,
+        orderRef: ref,
+        description: `${quote.plan.name} — YouPI UPI`,
+        returnUrl: `${safeOrigin}/checkout/return?payment={payment_id}`,
+        metadata: {
+          planId: quote.plan.id,
+          examKeys: quote.examKeys.join(','),
+          couponCode: quote.couponCode ?? '',
+        },
+      });
+
+      const [payment] = await db()
+        .insert(payments)
+        .values({
+          userId: user.id,
+          subscriptionId: null,
+          amountMinor: quote.totalMinor,
+          discountMinor: quote.discountMinor,
+          currency: quote.currency,
+          status: 'pending',
+          // `upi` is the existing provider enum value; the gateway is tagged in metadata.
+          provider: 'upi',
+          providerRef: order.paymentId,
+          providerPaymentId: order.paymentId,
+          orderRef: ref,
+          description: `${quote.plan.name} — awaiting YouPI confirmation`,
+          metadata: {
+            provider: 'youpi',
+            youpiPaymentId: order.paymentId,
+            planId: quote.plan.id,
+            planName: quote.plan.name,
+            examKeys: quote.examKeys,
+            couponCode: quote.couponCode,
+            grossMinor: quote.grossMinor,
+          },
+        })
+        .returning();
+      if (!payment) throw serviceUnavailable('Failed to persist the payment order.');
+
+      return reply.code(201).send({
+        paymentId: payment.id,
+        orderRef: ref,
+        gatewayPaymentId: order.paymentId,
+        checkoutUrl: order.checkoutUrl,
+        amountMinor: payment.amountMinor,
+        currency: payment.currency,
+        status: payment.status,
+        adapter: 'youpi',
+        plan: { id: quote.plan.id, name: quote.plan.name },
+        note: 'YouPI UPI — the order is confirmed only after bank-statement reconciliation (RECONCILED).',
+      });
+    },
+  );
+
+  /**
+   * YouPI-PG webhook receiver.
+   *
+   * Security model:
+   *  - HMAC-SHA256 over the exact raw request bytes (timestamped V2 signature
+   *    preferred) with YOUPI_WEBHOOK_SECRET;
+   *  - replay defence via the signed timestamp tolerance and the unique
+   *    (provider, eventId) index on `webhook_events`;
+   *  - the amount and currency must equal the stored order;
+   *  - ONLY `RECONCILED` (settlementState `RECONCILED`) settles. `OBSERVED_SUCCESS`
+   *    and `MANUAL_REVIEW` are recorded and ignored — a bank alert is not proof
+   *    that money settled.
+   */
+  app.post(
+    '/webhook/youpi',
+    { config: { rateLimit: { max: 600, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const raw = requireRawBody(request as unknown as { rawBody?: unknown });
+      const verified = verifyYoupiWebhook(env, {
+        rawBody: raw,
+        headers: request.headers as Record<string, string | string[] | undefined>,
+      });
+
+      const payload = verified.payload ?? {};
+      const eventType = String(verified.event ?? payload.event ?? 'unknown');
+      const deliveryId = String(verified.deliveryId ?? payload.deliveryId ?? '');
+      const payloadHash = crypto.createHash('sha256').update(raw).digest('hex');
+      const eventId = deliveryId || payloadHash;
+
+      // Persist every delivery before doing anything: audit trail + idempotency.
+      const inserted = await db()
+        .insert(webhookEvents)
+        .values({
+          provider: 'youpi',
+          eventId,
+          eventType,
+          signatureValid: verified.verified,
+          payloadHash,
+          payload: payload as Record<string, unknown>,
+          status: verified.verified ? 'received' : 'rejected',
+          note: verified.reason ?? '',
+        })
+        .onConflictDoNothing()
+        .returning({ id: webhookEvents.id });
+
+      if (inserted.length === 0) {
+        // Same (provider, eventId) seen before — acknowledge without reprocessing.
+        return reply.send({ received: true, duplicate: true });
+      }
+
+      if (!verified.verified) {
+        request.log.warn({ ip: request.ip, reason: verified.reason }, 'youpi.webhook.invalid_signature');
+        return reply
+          .code(401)
+          .send({ error: { code: 'INVALID_SIGNATURE', message: 'Signature verification failed.' } });
+      }
+
+      // Never fulfil on anything but a reconciled bank statement.
+      if (eventType !== 'RECONCILED') {
+        return reply.send({
+          received: true,
+          ignored: true,
+          event: eventType,
+          note: 'Not a settlement event; recorded only.',
+        });
+      }
+      const settlementState = String(payload.settlementState ?? '');
+      if (settlementState !== 'RECONCILED') {
+        request.log.warn({ eventType, settlementState }, 'youpi.webhook.non_reconciled');
+        return reply.send({ received: true, ignored: true, note: 'settlementState is not RECONCILED.' });
+      }
+
+      const orderId = String(payload.orderId ?? '');
+      if (!orderId) {
+        return reply.code(400).send({ error: { code: 'MISSING_ORDER', message: 'Webhook has no orderId.' } });
+      }
+
+      const [stored] = await db().select().from(payments).where(eq(payments.orderRef, orderId)).limit(1);
+      if (!stored) {
+        request.log.warn({ orderId }, 'youpi.webhook.unknown_order');
+        return reply.code(404).send({ error: { code: 'UNKNOWN_ORDER', message: 'No matching order.' } });
+      }
+
+      const paidPaise = Number(payload.amountPaise);
+      const currency = String(payload.currency ?? '').toUpperCase();
+      if (!Number.isInteger(paidPaise) || paidPaise !== stored.amountMinor) {
+        request.log.error(
+          { orderId, expected: stored.amountMinor, received: payload.amountPaise },
+          'youpi.webhook.amount_mismatch',
+        );
+        return reply
+          .code(409)
+          .send({ error: { code: 'AMOUNT_MISMATCH', message: 'Amount does not match the order.' } });
+      }
+      if (currency !== stored.currency.toUpperCase()) {
+        request.log.error(
+          { orderId, expected: stored.currency, received: currency },
+          'youpi.webhook.currency_mismatch',
+        );
+        return reply
+          .code(409)
+          .send({ error: { code: 'CURRENCY_MISMATCH', message: 'Currency does not match the order.' } });
+      }
+
+      const outcome = await settlePayment(stored.id, {
+        gatewayStatus: 'succeeded',
+        providerPaymentId:
+          typeof payload.paymentId === 'string' ? payload.paymentId : stored.providerPaymentId ?? undefined,
+        source: 'upi',
+      }).catch((err) => {
+        request.log.error({ err, orderId }, 'youpi.webhook.settle_failed');
+        return null;
+      });
+
+      if (!outcome) {
+        return reply
+          .code(500)
+          .send({ error: { code: 'PROCESSING_FAILED', message: 'Webhook processing failed.' } });
+      }
+      return reply.send({ received: true, outcome });
+    },
+  );
 
   /**
    * Razorpay webhook.

@@ -30,6 +30,10 @@ with a replay window, and `webhook_events` provides idempotency. Reconciliation
 
 ## UPI
 
+> Historical: this describes the **removed** first-party UPI subsystem. The
+> replacement is the [YouPI-PG](#youpi-pg-standalone-upi-gateway) integration
+> below; the tables and constants referenced here remain but are unused.
+
 No callback exists for a personal VPA, so the only signal is a bank alert. Every
 order therefore requests a **unique amount**:
 
@@ -65,3 +69,30 @@ Integer paise everywhere. Never floats. `services/upi/money.ts`.
   permission.
 
 See [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+
+## YouPI-PG (standalone UPI gateway)
+
+[YouPI-PG](https://github.com/youpi-pg/YouPI-PG) is deployed as an **independent**
+self-hosted gateway (own OS user, runtime, SQLite database and systemd units). It
+is not an acquirer and has **no bank API and no scheduled pull**: its status is
+driven by notification observers (Gmail / Android SMS) and by an operator
+importing a bank-statement CSV.
+
+Integration (all off by default, gated by `YOUPI_ENABLED`, independent of
+`PAYMENTS_ENABLED`):
+
+- `POST /api/payments/pay/youpi/checkout` — server-quoted amount, creates a YouPI
+  `MANUAL_UPI` session, stores `provider='upi'` + the gateway id in
+  `payments.provider_payment_id` / `metadata.youpiPaymentId`, returns the hosted
+  checkout URL.
+- `POST /api/payments/webhook/youpi` — HMAC-SHA256 over the **raw bytes**
+  (`X-Gateway-Signature-V2`, timestamped), replay window
+  (`YOUPI_WEBHOOK_TOLERANCE_SECONDS`), idempotency via
+  `webhook_events (provider, event_id)`, amount/currency/order validation.
+
+**Fulfilment rule (non-negotiable):** only a `RECONCILED` event with
+`settlementState: RECONCILED` reaches `settlePayment`. `OBSERVED_SUCCESS` (a bank
+alert was attributed) and `MANUAL_REVIEW` are recorded and ignored — a
+notification is not proof that money settled. `SUCCESS` is COD/counter only.
+
+Deployment record and rollback: `docs/deployment/YOUPI_PG_INTEGRATION.md`.
