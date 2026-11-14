@@ -248,7 +248,7 @@ campaigns use `campaign:<campaignId>:<userId>` so a retried fan-out is safe.
 | `MAIL_CAMPAIGN_BATCH_SIZE` | `50` | Recipients per campaign fan-out |
 | `MAIL_LOCK_LEASE_SECONDS` | `300` | Claim lease before a row is considered abandoned |
 
-> `deploy/docker-compose.yml` forwards environment variables one by one. Any new
+> `/etc/examdump-pro/production.env` supplies environment variables. Any new
 > variable must be added there or the container silently uses the schema default.
 
 ### Admin Email Center

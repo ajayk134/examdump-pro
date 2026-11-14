@@ -14,9 +14,11 @@ browsers → nginx (:80/:443) → web (Next.js :3000)
                                                   → SMTP / AI / payment gateway
 ```
 
-Four containers on one host under rootful Podman:
-`deploy/docker-compose.yml`. Rationale and its limitations:
-[ADR-005](docs/decisions/ADR-005.md).
+Four **native systemd services** on one host; no container runtime:
+`nginx.service`, `examdump-web.service`, `examdump-api.service`,
+`postgresql.service`. The API, web server and database bind to loopback and only
+nginx holds public ports. See [DEPLOYMENT.md](DEPLOYMENT.md) and
+[docs/deployment/PRODUCTION.md](docs/deployment/PRODUCTION.md).
 
 ## Applications
 

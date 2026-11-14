@@ -12,7 +12,7 @@ nginx.
 | `api` | Node 22 alpine | internal :4000, also runs workers |
 | `postgres` | postgres:16-alpine | internal :5432 |
 
-No memory or CPU limits are set in `deploy/docker-compose.yml`. On a small VM this
+No memory or CPU limits are set on the systemd units. On a small VM this
 means one runaway container can starve the others. Adding `--memory` /
 `--cpus` limits is a reasonable hardening step once real usage is known.
 
@@ -52,7 +52,7 @@ recreated it gets a new IP and nginx keeps the stale one, returning 502 while th
 API is healthy. Always:
 
 ```bash
-sudo podman exec examdump-pro_nginx_1 nginx -s reload
+sudo systemctl reload nginx
 ```
 
 A more robust alternative is a `resolver` directive with `proxy_pass` to a

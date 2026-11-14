@@ -4,7 +4,7 @@
 documents the ones whose behaviour matters. Generated from the running database:
 
 ```bash
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c \
+sudo -u postgres psql -d examdump -c \
   "select tablename, indexname, indexdef from pg_indexes
    where schemaname='public' order by tablename;"
 ```

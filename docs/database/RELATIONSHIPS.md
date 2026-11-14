@@ -3,7 +3,7 @@
 Entity relationships as enforced by foreign keys in the running database.
 
 ```bash
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c "
+sudo -u postgres psql -d examdump -c "
 select tc.table_name, kcu.column_name, ccu.table_name as references
 from information_schema.table_constraints tc
 join information_schema.key_column_usage kcu on tc.constraint_name = kcu.constraint_name

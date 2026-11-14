@@ -7,42 +7,36 @@ affects the running system.
 ## Site is down
 
 ```bash
-# 1. are containers running?
-sudo podman ps
+# 1. are the units running?
+systemctl is-active nginx postgresql examdump-api examdump-web
 
 # 2. does the API answer locally?
-curl -s https://<domain>/api/health
+curl -s http://127.0.0.1:4000/api/health
 
 # 3. is nginx proxying to the right place?
-sudo podman logs --tail 20 examdump-pro_nginx_1
+sudo journalctl -u nginx -n 20
 ```
 
 | Finding | Cause | Fix |
 | --- | --- | --- |
-| No containers | host rebooted, podman not started | `podman compose up -d` |
-| API container "Created"/"Exited" | crash loop | `podman logs examdump-pro_api_1` |
-| 502, API healthy | nginx cached old API IP | `podman exec examdump-pro_nginx_1 nginx -s reload` |
-| 500 on all routes | database unreachable | check `podman ps`, `DATABASE_URL` |
-| Everything missing from `podman ps` | wrong store | check `sudo podman ps` |
+| Unit inactive | host rebooted, crash | `systemctl status examdump-api` |
+| API unit restarting | crash loop | `journalctl -u examdump-api -n 50` |
+| 502, API healthy | API not listening on 4000 | check `systemctl status examdump-api` |
+| 500 on all routes | database unreachable | check `systemctl status postgresql`, `DATABASE_URL` |
+| `curl 127.0.0.1:4000` refuses | service bound elsewhere | check `API_HOST=127.0.0.1` in the env file |
 
-### The rootful/rootless trap
+### `podman ps` is not production
 
-The host has **two** Podman stores. Production is rootful:
+ExamDump does not use containers. A rootless Podman store exists on this host for
+the unrelated Omniroute application, so `podman ps` may show containers that have
+nothing to do with ExamDump. Do not diagnose production from it.
 
-```bash
-sudo podman ps     # production
-podman ps          # unrelated / leftovers
-```
-
-An empty `podman ps` proves nothing about production. This exact confusion has
-caused a false "the stack is down and the database is corrupt" diagnosis while
-production was healthy.
 
 ## API crashes on start
 
 ```bash
-sudo podman logs --tail 40 examdump-pro_api_1 | jq -c '{msg, err: .err.message}' 2>/dev/null \
-  || sudo podman logs --tail 40 examdump-pro_api_1
+sudo journalctl -u examdump-api -n 40 | jq -c '{msg, err: .err.message}' 2>/dev/null \
+  || sudo journalctl -u examdump-api -n 40
 ```
 
 | Error | Cause | Fix |
@@ -56,18 +50,20 @@ sudo podman logs --tail 40 examdump-pro_api_1 | jq -c '{msg, err: .err.message}'
 ## Database
 
 ```bash
-sudo podman exec examdump-pro_postgres_1 pg_isready -U examdump -d examdump
-sudo podman logs --tail 30 examdump-pro_postgres_1
+pg_isready -h 127.0.0.1 -p 5432
+sudo journalctl -u postgresql -n 30
 ```
 
-**initdb permission error on start** — the volume contains foreign files:
+**initdb permission error on start** — the data directory is wrong or has foreign
+files (PostgreSQL refuses to run as root, and `initdb` requires a directory owned
+correctly):
 
 ```bash
-sudo podman volume inspect pgdata
-sudo podman run --rm -v pgdata:/v alpine ls -la /v | head
+sudo ls -la /var/lib/pgsql/data | head
+sudo journalctl -u postgresql -n 20
 ```
 
-Back up, prove the restore, then recreate the volume. Never delete first.
+Back up, prove the restore, then repair. Never delete the data directory first.
 
 **Too many connections** — pool exceeds `max_connections`:
 
@@ -106,12 +102,13 @@ worker did not start — check `MAIL_QUEUE_ENABLED`.
 
 ```bash
 df -h
-sudo podman system df          # image/container space
-sudo podman image prune -f     # dangling layers only
+journalctl --disk-usage
+sudo journalctl --vacuum-time=14d   # old service logs
+du -sh /var/backups/examdump        # backups, retention handled by the script
 ```
 
-Never `podman system prune -a` on the production host — it removes images the
-stack needs.
+Do not prune the rootless Podman storage on this host — it belongs to the
+unrelated Omniroute application.
 
 ## Related
 

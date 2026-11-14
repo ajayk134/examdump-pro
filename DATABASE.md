@@ -67,8 +67,8 @@ restore. See [ROLLBACK.md](docs/deployment/ROLLBACK.md).
 ## Verification
 
 ```bash
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c '\dt'
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -tAc \
+sudo -u postgres psql -d examdump -c '\dt'
+sudo -u postgres psql -d examdump -tAc \
   "select count(*) from drizzle.__drizzle_migrations;"
 ```
 

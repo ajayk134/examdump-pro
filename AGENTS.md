@@ -91,14 +91,15 @@ DATABASE_URL_TEST="postgres://postgres:postgres@127.0.0.1:5433/examdump_test" \
   file was written:
 
   ```bash
-  sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c '\d <table>'
+  sudo -u postgres psql -d examdump -c '\d <table>'
   ```
 
-- For a deploy, confirm the **running image** contains the change — a checked-out
+- For a deploy, confirm the **running service** contains the change — a checked-out
   commit does not prove it:
 
   ```bash
-  sudo podman exec examdump-pro_api_1 sh -c 'grep -l <symbol> /app/dist/*.js | wc -l'
+  systemctl status examdump-api
+  curl -s http://127.0.0.1:4000/api/health
   ```
 
 ## 5. Update documentation in the same commit
@@ -114,7 +115,7 @@ until the docs describing it are updated.
 | Auth, guards, permissions | `AUTH.md`, `docs/security/AUTHORIZATION.md` |
 | Payments / UPI | `PAYMENTS.md`, `docs/payments/*.md` |
 | Deployment, compose, nginx | `DEPLOYMENT.md`, `docs/deployment/*.md` |
-| Environment variable | `docs/ENVIRONMENT.md`, `.env.example`, `deploy/docker-compose.yml` |
+| Environment variable | `docs/ENVIRONMENT.md`, `.env.example`, `/etc/examdump-pro/production.env` |
 | Architecture, or a decision with lasting consequences | `ARCHITECTURE.md` + a new ADR in `docs/decisions/` |
 | File layout, new subsystem | `CODEBASE_MAP.md`, `docs/architecture/SERVICE_DEPENDENCIES.md` |
 | Frontend behaviour | `FRONTEND.md`, `UI_UX.md` |
@@ -156,15 +157,16 @@ The repository must carry the owner's GitHub identity, never an agent's.
 
 Things that have caused real incidents on this project:
 
-- **Two Podman stores exist.** Production is rootful (`sudo podman`). `podman ps`
-  being empty does not mean the stack is down.
-- **nginx caches the API container IP.** After recreating the API, run
-  `sudo podman exec examdump-pro_nginx_1 nginx -s reload` or the site returns 502
-  while the API is healthy.
-- **Migrations run at container start.** The database can move ahead of an older
-  image; a `NOT NULL` column without a default breaks the previous build.
-- **`sudo` strips exported variables.** Use `doppler run`, not
-  `sudo env FOO=$BAR`.
+- **ExamDump runs natively.** Four systemd units: `nginx`, `examdump-api`,
+  `examdump-web`, `postgresql`. There is no container for ExamDump — do not look
+  for one. Rootless Podman is present only for the unrelated Omniroute app.
+- **The API and web bind to loopback.** Only nginx holds :80/:443; a missing
+  public route is an nginx configuration issue, not an app crash.
+- **Migrations do not run at boot.** Run them explicitly before restarting the
+  API; a `NOT NULL` column without a default still breaks an older build.
+- **`sudo` strips exported variables.** The services read
+  `/etc/examdump-pro/production.env`; update that file rather than exporting in a
+  shell.
 
 ## 8. Commands
 
@@ -176,10 +178,10 @@ npm run typecheck
 npm run migrate -w @examdump/api
 npm run seed
 
-# throwaway database for tests
-podman run -d --name examdump-pg \
-  -e POSTGRES_PASSWORD=postgres -p 5433:5432 postgres:16-alpine
-DATABASE_URL_TEST="postgres://postgres:postgres@127.0.0.1:5433/examdump_test" npm test
+# tests need a scratch database; never point them at production
+createdb examdump_test
+DATABASE_URL_TEST="postgres://examdump@127.0.0.1:5432/examdump_test" npm test
+dropdb examdump_test
 
 # with secrets injected
 doppler run --project examdump-pro --config prd -- npm run dev

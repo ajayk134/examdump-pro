@@ -7,7 +7,7 @@ What survives what. Be honest about the gaps — this deployment has no redundan
 | Scenario | Impact | Recovery | RTO |
 | --- | --- | --- | --- |
 | API container crashes | site 500s | `restart: unless-stopped` restarts it | seconds |
-| API container OOM/unhealthy | 500 or 502 | restart; check `podman logs` | minutes |
+| API unit OOM/unhealthy | 500 or 502 | restart; check `journalctl -u examdump-api` | minutes |
 | nginx restart | brief 502 | start nginx | seconds |
 | Postgres container crashes | 500s, no data loss | container restarts, WAL replays | minutes |
 | Postgres volume corrupt | total data loss without backup | restore latest dump | 30–60 min |
@@ -35,7 +35,7 @@ Rough sequence on a new host:
 
 ```bash
 # 1. base host
-sudo dnf install -y podman podman-compose git
+sudo dnf install -y git nginx postgresql-server postgresql
 #    install doppler CLI, nginx, obtain TLS certificates
 
 # 2. code
@@ -45,19 +45,19 @@ npm run build -w @examdump/shared && npm run build -w @examdump/data-client
 
 # 3. database first — restore BEFORE starting the API
 cd deploy
-sudo podman compose -p examdump-pro up -d postgres
-sudo podman cp <dump> examdump-pro_postgres_1:/tmp/restore.pgdump
-sudo podman exec examdump-pro_postgres_1 \
+sudo systemctl start postgresql
+cat /var/backups/examdump/<dump> | sudo -u postgres pg_restore -d examdump
+sudo -u postgres \
   pg_restore --clean --if-exists --no-owner -U examdump -d examdump /tmp/restore.pgdump
 
 # 4. application
 doppler run --project examdump-pro --config prd -- \
-  podman compose -p examdump-pro up -d --build
-sudo podman exec examdump-pro_nginx_1 nginx -s reload
+  sudo systemctl restart examdump-api examdump-web
+sudo systemctl reload nginx
 
 # 5. verify
 curl -s https://<domain>/api/health
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -tAc \
+sudo -u postgres psql -d examdump -tAc \
   "select count(*) from users;"
 ```
 

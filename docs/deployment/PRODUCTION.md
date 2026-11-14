@@ -1,133 +1,79 @@
 # Production deployment
 
-Oracle Cloud VM, rootful Podman, single host. Secrets via Doppler.
+How ExamDump Pro actually runs on the production host.
 
-## Prerequisites
+## Topology
 
-- Podman (rootful available via `sudo`), `podman-compose`, `doppler` CLI
-- nginx config with a valid TLS certificate for the public domain
-- Doppler project `examdump-pro`, config `prd`, with every variable in
-  [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md)
-
-## First deploy
-
-```bash
-git clone https://github.com/ajayk134/examdump-pro.git ~/projects/examdump-pro
-cd ~/projects/examdump-pro
-
-npm ci
-npm run build -w @examdump/shared
-npm run build -w @examdump/data-client
-
-cd deploy
-doppler run --project examdump-pro --config prd -- \
-  podman compose -p examdump-pro up -d --build
-
-sleep 20
-sudo podman ps
-curl -s -o /dev/null -w '%{http_code}\n' https://<domain>/api/health
+```
+Internet :80/:443
+      │
+      ▼
+nginx.service                 host nginx 1.20, systemd
+  ├── /api/*            → 127.0.0.1:4000   examdump-api.service
+  ├── /api/ai/chat/*    → 127.0.0.1:4000   (streaming, buffering off)
+  ├── /api/payments/webhook/* → 127.0.0.1:4000
+  └── /*                → 127.0.0.1:3000   examdump-web.service
+                                    │
+                                    ▼
+                        postgresql.service  127.0.0.1:5432
+                        /var/lib/pgsql/data · database `examdump`
 ```
 
-The API container runs `node dist/migrate.js && node dist/index.js`, so the first
-start applies all migrations.
+Four systemd units, no container runtime. The API and web server bind to
+loopback; only nginx holds :80 and :443.
 
-## Routine deploy
+## Components
 
-```bash
-cd ~/projects/examdump-pro
-git fetch && git checkout <commit>
-
-cd deploy
-doppler run --project examdump-pro --config prd -- \
-  podman compose -p examdump-pro up -d --build
-
-# ALWAYS after the api container is recreated
-sudo podman exec examdump-pro_nginx_1 nginx -s reload
-
-curl -s -o /dev/null -w '%{http_code}\n' https://<domain>/api/health
-```
-
-Skipping the `nginx -s reload` produces a 502 while the API logs look healthy.
-This is the most common deploy mistake on this host.
-
-## Verifying the deploy actually took effect
-
-A checked-out commit does **not** prove the running container has it. Check the
-built bundle, not the repository:
-
-```bash
-sudo podman exec examdump-pro_api_1 \
-  sh -c 'grep -l baseAmountPaise /app/dist/*.js | wc -l'
-```
-
-`0` means the image predates that change.
-
-```bash
-# what commit is deployed
-git rev-parse HEAD
-
-# schema state
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -tAc \
-  "select count(*) from drizzle.__drizzle_migrations;"
-```
-
-## Two Podman stores — check before concluding anything
-
-| Store | Command | Role |
-| --- | --- | --- |
-| Rootful | `sudo podman` | **production** |
-| Rootless | `podman` | unrelated / leftovers |
-
-`podman ps` showing nothing does **not** mean production is down.
+| Component | Detail |
+|---|---|
+| API | Node 22.23.5, `/opt/examdump-pro/api/dist/index.js`, user `examdump` |
+| Web | Next.js 15 standalone, `/opt/examdump-pro/web`, user `examdump` |
+| Database | PostgreSQL 16.15, cluster `/var/lib/pgsql/data`, role `examdump` |
+| Proxy | nginx, vhost `/etc/nginx/conf.d/examdump.conf` |
+| TLS | Let's Encrypt, `/etc/letsencrypt/live/examtopicspro.duckdns.org` |
+| Secrets | Doppler `examdump-pro` / `prd` → `/etc/examdump-pro/production.env` |
 
 ## Secrets
 
-Never place a value in compose or an image. `doppler run` injects the environment.
+Doppler is the single source of truth. The rendered env file is mode `0640`,
+owned `root:examdump`, and readable only by the two service users. No secret is
+passed on a command line, written to the repository or printed in logs.
 
-`sudo` strips exported shell variables, so `sudo env FOO=$BAR podman compose` does
-not reliably work. Run compose as your own user with Doppler injecting variables.
+`PAYMENTS_ENABLED=false` and `UPI_AUTO_APPROVE=false` in production.
 
-## Health verification
+## nginx notes specific to this host
+
+- nginx 1.20 uses `listen 443 ssl http2;` — the `http2 on;` directive is 1.25+.
+- SELinux is enforcing. `/etc/letsencrypt` is labelled `cert_t` and
+  `/var/www/certbot` is `httpd_sys_content_t`; `httpd_can_network_connect` must be
+  on so nginx may proxy to loopback ports.
+- The ACME webroot is `/var/www/certbot`, shared with certbot.
+
+## Backups
+
+`/etc/cron.d/examdump-backup` runs `/usr/local/bin/examdump-backup` daily at
+02:30. It dumps with `pg_dump --format=custom` over the local socket into
+`/var/backups/examdump`, retaining 14 days. A failed dump leaves no partial file.
+
+Manual run and verification:
 
 ```bash
-curl -s https://<domain>/api/health
-# {"status":"ok","database":"connected","uptimeSeconds":N}
-
-curl -s https://<domain>/api/upi/status
-# {"available":false,"autoApprove":false,...}   while payments are dormant
+sudo /usr/local/bin/examdump-backup
+sudo sh -c 'pg_restore --list < /var/backups/examdump/<file>.pgdump' | head
 ```
 
-## Compose service notes
+Restore:
 
-| Service | Restart | Logging |
-| --- | --- | --- |
-| postgres | `unless-stopped` | json-file 10m × 5 |
-| api | `unless-stopped` | json-file 10m × 5 |
-| web | `unless-stopped` | json-file 10m × 5 |
-| nginx | `unless-stopped` | json-file 10m × 5 |
-
-No CPU/memory limits are set. On a small VM, one runaway container can starve the
-others; adding limits is worthwhile hardening once usage is understood.
-
-## Network aliases
-
-`deploy/docker-compose.yml` declares explicit aliases:
-
-```yaml
-networks:
-  examdump:
-    aliases: [postgres]    # postgres service
-    aliases: [api]         # api service
+```bash
+sudo systemctl stop examdump-api examdump-web
+sudo -u postgres dropdb examdump && sudo -u postgres createdb -O examdump examdump
+cat /var/backups/examdump/<file>.pgdump \
+  | sudo -u postgres pg_restore -d examdump --no-owner --no-privileges
+sudo systemctl start examdump-api examdump-web
 ```
 
-`DATABASE_URL` targets hostname `postgres` and nginx proxies to `server api:4000`.
-Compose's default alias is the *container name*, which is not what those
-consumers ask for. Removing these aliases breaks DNS on the next recreate.
+## Host dependencies kept for another application
 
-## Related
-
-- [Environment variables](ENVIRONMENT_VARIABLES.md)
-- [Backup and restore](BACKUP_RESTORE.md)
-- [Rollback](ROLLBACK.md)
-- [Disaster recovery](DISASTER_RECOVERY.md)
-- [Operations runbook](../OPERATIONS.md)
+Rootless Podman is still installed for **Omniroute**, which runs as
+`omniroute` and `omniroute-redis` in the `opc` user's rootless store. ExamDump
+does not use it. Do not remove Podman without migrating Omniroute first.

@@ -6,9 +6,9 @@ machine-readable.
 ## Accessing logs
 
 ```bash
-sudo podman logs --tail 100 examdump-pro_api_1
-sudo podman logs -f examdump-pro_api_1          # follow
-sudo podman logs --since 30m examdump-pro_api_1
+sudo journalctl -u examdump-api -n 100
+sudo journalctl -u examdump-api -f          # follow
+sudo journalctl -u examdump-api --since "30m"
 ```
 
 `LOG_LEVEL` (default `info`) controls verbosity. `debug` is very verbose — use it
@@ -16,7 +16,7 @@ briefly, never leave it on in production.
 
 ## Rotation
 
-Configured per service in `deploy/docker-compose.yml`:
+Logs go to the systemd journal, read with `journalctl -u <unit>`:
 
 ```yaml
 logging:
@@ -44,7 +44,7 @@ automatically. A typical line:
 Filter with `jq`:
 
 ```bash
-sudo podman logs --tail 500 examdump-pro_api_1 | \
+sudo journalctl -u examdump-api -n 500 | \
   jq -c 'select(.level >= 40) | {time, msg, err: .err.message}' | tail -20
 ```
 
@@ -78,7 +78,7 @@ outcomes, never payloads.
 ## Checking a deploy from logs
 
 ```bash
-sudo podman logs examdump-pro_api_1 | grep -E "started|Database is up to date"
+sudo journalctl -u examdump-api | grep -E "started|Database is up to date"
 ```
 
 A healthy start shows migrations up to date, the mail worker started, and the

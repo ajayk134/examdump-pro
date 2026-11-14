@@ -31,7 +31,7 @@ than no documentation, because it is trusted.
 | Auth, guards, RBAC, permissions | `AUTH.md`, `docs/security/AUTHORIZATION.md` |
 | Anything payment or UPI related | `PAYMENTS.md`, `docs/payments/*.md` |
 | Deployment, compose, nginx, Dockerfile | `DEPLOYMENT.md`, `docs/deployment/*.md` |
-| An environment variable | `docs/ENVIRONMENT.md`, `.env.example`, `deploy/docker-compose.yml` |
+| An environment variable | `docs/ENVIRONMENT.md`, `.env.example`, `/etc/examdump-pro/production.env` |
 | Architecture or a load-bearing decision | `ARCHITECTURE.md`, and add an ADR under `docs/decisions/` |
 | File layout or a new subsystem | `CODEBASE_MAP.md`, `docs/architecture/SERVICE_DEPENDENCIES.md` |
 | Frontend rendering or UI behaviour | `FRONTEND.md`, `UI_UX.md` |

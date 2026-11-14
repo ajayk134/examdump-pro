@@ -10,7 +10,7 @@ All runtime secrets come from **Doppler** (`project: examdump-pro`,
 | Doppler `examdump-pro/prd` | every runtime secret |
 | `.env.example` | variable **names** and shape only — no values |
 | `apps/api/src/config/env.ts` | validation and defaults |
-| `deploy/docker-compose.yml` | which variables each container receives |
+| `/etc/examdump-pro/production.env` | rendered env file the services load (0640, root:examdump) |
 
 `doppler.yaml` at the repo root currently points at `agent-keys/dev_personal`
 (local development). Production uses the explicit `examdump-pro/prd` reference
@@ -22,14 +22,16 @@ shown below — do not rely on the bare `doppler run`.
 # development
 doppler run --project examdump-pro --config prd -- npm run dev
 
-# production deploy
-cd deploy && doppler run --project examdump-pro --config prd -- \
-  podman compose -p examdump-pro up -d --build
+# production: render the env file the systemd units read
+doppler secrets download --project examdump-pro --config prd --no-file --format env \
+  | sudo tee /etc/examdump-pro/production.env >/dev/null
+sudo chmod 640 /etc/examdump-pro/production.env
+sudo chown root:examdump /etc/examdump-pro/production.env
+sudo systemctl restart examdump-api examdump-web
 ```
 
-`sudo` **strips exported shell variables**, so `sudo env FOO=$BAR podman compose`
-does not inject them reliably. Run compose as your own user with Doppler injecting
-the environment, or use `doppler run` under the same user.
+`sudo` **strips exported shell variables**, so `sudo env FOO=$BAR` does not inject
+them reliably. The env file is the only mechanism production uses.
 
 ## Secret inventory (names only)
 
@@ -81,7 +83,7 @@ not secrets, but are still not committed.
 Rotation procedure:
 
 1. Generate the new value and store it in Doppler.
-2. Restart the API so it picks up the change (`podman compose up -d api`).
+2. Restart the API so it picks up the change (`sudo systemctl restart examdump-api`).
 3. Verify: `/api/health`, then the specific feature.
 4. Remove the old value at the provider once verified.
 

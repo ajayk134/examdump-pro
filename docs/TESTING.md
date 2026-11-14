@@ -21,7 +21,9 @@ If `DATABASE_URL_TEST` is unset, the API tests fall back to
 `postgres://postgres:postgres@127.0.0.1:5433/examdump_test`. Start one with:
 
 ```bash
-podman run -d --name examdump-pg-test -p 5433:5432 \
+# native PostgreSQL is already installed; use a scratch database
+createdb examdump_test
+# postgres://examdump@127.0.0.1:5432/examdump_test \
   -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=examdump_test postgres:16-alpine
 ```
 

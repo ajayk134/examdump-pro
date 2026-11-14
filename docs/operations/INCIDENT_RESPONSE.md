@@ -14,18 +14,18 @@ Escalation and containment for the situations this system can actually produce.
 ## First five minutes
 
 ```bash
-# 1. are containers up?
-sudo podman ps
+# 1. are the services up?
+systemctl is-active nginx postgresql examdump-api examdump-web
 
 # 2. is the API answering?
 curl -s https://<domain>/api/health
 curl -s -o /dev/null -w '%{http_code}\n' https://<domain>/api/health
 
 # 3. what does the API say?
-sudo podman logs --tail 50 examdump-pro_api_1
+sudo journalctl -u examdump-api -n 50
 
 # 4. what does nginx say?
-sudo podman logs --tail 20 examdump-pro_nginx_1
+sudo journalctl -u nginx -n 20
 ```
 
 Do not restart anything before capturing logs — a restart destroys the evidence
@@ -38,7 +38,7 @@ This outranks availability. Losing money is worse than downtime.
 1. **Stop the bleeding** — set `PAYMENTS_ENABLED=false` in Doppler, then:
    ```bash
    cd deploy && doppler run -p examdump-pro -c prd -- \
-     podman compose -p examdump-pro up -d api
+     sudo systemctl restart examdump-api
    ```
 2. **Preserve evidence** — do not delete or update any `upi_*`, `payments`,
    `refunds` or `webhook_events` row.
@@ -54,13 +54,13 @@ This outranks availability. Losing money is worse than downtime.
 
 ```bash
 # container up but 502? nginx has a stale upstream
-sudo podman exec examdump-pro_nginx_1 nginx -s reload
+sudo systemctl reload nginx
 
 # API crash looping?
-sudo podman logs --tail 40 examdump-pro_api_1
+sudo journalctl -u examdump-api -n 40
 
 # database down?
-sudo podman exec examdump-pro_postgres_1 pg_isready -U examdump -d examdump
+pg_isready -h 127.0.0.1 -p 5432
 ```
 
 If the host is gone entirely, move to
@@ -73,8 +73,8 @@ unavailable."
 
 ```bash
 # is it the token or GitHub?
-sudo podman exec examdump-pro_api_1 printenv GITHUB_TOKEN >/dev/null && echo set || echo missing
-sudo podman logs --tail 30 examdump-pro_api_1 | grep -i dataset
+sudo -u examdump sh -c 'grep -q "^GITHUB_TOKEN=..*" /etc/examdump-pro/production.env' && echo set || echo missing
+sudo journalctl -u examdump-api -n 30 | grep -i dataset
 ```
 
 Causes: expired `GITHUB_TOKEN`, rate limiting, or the repository being renamed.

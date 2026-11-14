@@ -73,7 +73,7 @@ GitHub catalogue.
 ## Backup & restore
 
 `deploy/backup.sh` produces a custom-format `pg_dump` and `deploy/restore.sh`
-restores it. Both run `postgres:16-alpine` via podman/docker.
+restores it. Both use the native PostgreSQL 16 client tools.
 
 ```bash
 export DATABASE_URL="$(doppler secrets get DATABASE_URL --plain --project examdump-pro --config prd)"

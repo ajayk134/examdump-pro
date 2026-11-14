@@ -5,7 +5,7 @@ PostgreSQL 16, 52 tables, 154 indexes. Operations that matter.
 ## Configuration
 
 Defaults from the `postgres:16-alpine` image, overridden only by what
-`deploy/docker-compose.yml` sets (user, password, database). No `postgresql.conf`
+the native cluster provides (user, password, database). No `postgresql.conf`
 tuning is applied.
 
 If load increases, the first knobs, in order:
@@ -49,7 +49,7 @@ for this — check it during incidents.
 sweep, dataset re-sync) run:
 
 ```bash
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c "VACUUM (ANALYZE);"
+sudo -u postgres psql -d examdump -c "VACUUM (ANALYZE);"
 ```
 
 Check for tables that need it:

@@ -1,16 +1,19 @@
 # Deployment runbook — Oracle Cloud VM
 
-This describes a single-VM deployment with Docker/Podman Compose, nginx, Doppler
-and PostgreSQL. Nothing here overwrites existing services; choose free ports
-and a dedicated directory.
+How ExamDump Pro is deployed on the production host: **native systemd services**,
+host nginx, native PostgreSQL 16, Doppler for secrets.
+
+The authoritative, host-specific procedure lives in
+[PRODUCTION.md](deployment/PRODUCTION.md); this page is the general runbook.
 
 ## 0. Prerequisites
 
-- A VM with at least 2 vCPU / 4 GB RAM (Oracle Ampere or AMD is fine).
+- A VM with at least 2 vCPU / 4 GB RAM.
 - A domain or subdomain (e.g. `examdump.example.com`) with a DNS **A record** to
   the VM's public IP.
-- A PostgreSQL cluster and database user. In Atlas → *Network Access*, allow
-  the VM's public IP.
+- PostgreSQL 16 installed natively (`dnf module enable postgresql:16`).
+- Node.js 22 installed for building and running the application.
+- nginx installed natively, owning :80/:443.
 - A **read-only** GitHub fine-grained token for the private `exam-data` repo
   (Contents: Read).
 - A Doppler account/project. Production values go in `examdump-pro/prd`.
@@ -19,18 +22,15 @@ and a dedicated directory.
 
 ```bash
 sudo dnf update -y
-sudo dnf install -y git curl podman podman-compose
-# Optional (recommended): native Docker Engine + compose plugin instead of podman.
-# sudo dnf install -y dnf-plugins-core && ... (follow Docker's RHEL guide)
-
-# Doppler CLI
-curl -Ls https://cli.doppler.com/install.sh | sudo sh
-
-# Certbot (for TLS)
-sudo dnf install -y certbot
+sudo dnf install -y git curl nginx certbot python3-certbot-nginx
+sudo dnf module enable -y postgresql:16
+sudo dnf install -y postgresql-server postgresql
+sudo postgresql-setup --initdb
+sudo systemctl enable --now postgresql nginx
 ```
 
-Log in to Doppler: `doppler login` (or use a service token).
+Node 22 is installed via nvm for the build user and pinned to
+`/opt/examdump-pro/node` for the service runtime.
 
 ## 2. Configure secrets in Doppler
 
@@ -63,7 +63,8 @@ git clone https://github.com/ajayk134/examdump-pro.git /opt/examdump
 cd /opt/examdump/deploy
 
 # 3a. First boot over HTTP (default nginx.conf does NOT require certificates)
-doppler run --project examdump-pro --config prd -- podman compose up -d --build
+# build, deploy and restart — see ../../DEPLOYMENT.md for the full sequence
+sudo systemctl restart examdump-api examdump-web
 
 # 3b. Verify
 curl -fsS http://127.0.0.1/api/health
@@ -72,7 +73,7 @@ curl -fsS http://127.0.0.1/api/health/ready
 
 The API creates default plans, settings and the admin account on first boot. If
 the catalogue is empty it also performs an initial GitHub sync in the
-background (watch `podman compose logs -f api`).
+background (watch `journalctl -u examdump-api -f`).
 
 Open `http://<vm-ip>/` to confirm the site loads.
 
@@ -89,18 +90,18 @@ sudo certbot certonly --webroot -w /var/www/certbot \
 # Switch nginx to the TLS config (update server_name first)
 cp nginx/nginx.ssl.conf.example nginx/nginx.conf
 sed -i 's/your-domain.com/examdump.example.com/g' nginx/nginx.conf
-podman compose restart nginx
+sudo systemctl reload nginx
 ```
 
 Add a renewal timer:
 
 ```bash
-echo '0 3 * * * root certbot renew --quiet && cd /opt/examdump/deploy && podman compose exec nginx nginx -s reload' \
+echo '0 3 * * * root certbot renew --quiet --deploy-hook "systemctl reload nginx"' \
   | sudo tee /etc/cron.d/examdump-certbot
 ```
 
 Update Doppler: `PUBLIC_WEB_URL`, `PUBLIC_API_URL`, `WEB_ORIGIN` to `https://…`
-and restart the API (`podman compose up -d api`) so cookies use `Secure`.
+and restart the API (`sudo systemctl restart examdump-api`) so cookies use `Secure`.
 
 ## 5. Firewall
 
@@ -118,21 +119,22 @@ Do **not** publish ports 4000/3000 publicly — only nginx binds 80/443.
 cd /opt/examdump/deploy
 
 # Logs
-podman compose logs -f api
-podman compose logs -f web
-podman compose logs -f nginx
+journalctl -u examdump-api -f
+journalctl -u examdump-web -f
+journalctl -u nginx -f
 
 # Update to the latest main
 cd /opt/examdump && git pull
-cd deploy && doppler run --project examdump-pro --config prd -- podman compose up -d --build
+cd deploy && # build, deploy and restart — see ../../DEPLOYMENT.md for the full sequence
+sudo systemctl restart examdump-api examdump-web
 
 # Restart one service
-podman compose restart api
+sudo systemctl restart examdump-api
 ```
 
 ### Backups
 
-`deploy/backup.sh` uses `pg_dump` via a disposable `postgres:16-alpine` container and keeps
+`/usr/local/bin/examdump-backup` runs native `pg_dump` against the local cluster and keeps
 `BACKUP_RETENTION_DAYS` days:
 
 ```bash
@@ -148,7 +150,7 @@ Restore with `./restore.sh <archive>` (see script header).
 
 - Container healthchecks are defined for the API.
 - Point an external uptime monitor at `https://<domain>/api/health/ready`.
-- Ship container logs to your log platform of choice (JSON logs via pino).
+- Ship logs to your log platform of choice (systemd journal, JSON via pino).
 - The admin console exposes user, revenue, subscription and catalogue counters.
 
 ### Migrations
@@ -166,8 +168,8 @@ doppler run --project examdump-pro --config prd -- npm run migrate -w @examdump/
 `.github/workflows/release.yml` builds and pushes
 `ghcr.io/<owner>/examdump-pro-api` and `ghcr.io/<owner>/examdump-pro-web` on
 version tags (`v*`) or manual dispatch. To use them instead of building on the VM,
-replace the `build:` sections in `docker-compose.yml` with `image:` references
-and run `podman compose pull`.
+publish the build output and deploy it by copying the artifacts as described in
+[PRODUCTION.md](deployment/PRODUCTION.md).
 
 ### Scaling
 
@@ -178,8 +180,8 @@ shared Redis cache.
 ## Troubleshooting quick checks
 
 ```bash
-podman compose ps
-podman compose logs --tail=100 api
+systemctl status examdump-api examdump-web nginx postgresql
+journalctl -u examdump-api -n 100
 curl -fsS http://127.0.0.1/api/health/ready
 ```
 
@@ -192,7 +194,7 @@ curl -fsS http://127.0.0.1/api/health/ready
 
 - The compose file refuses to read secrets from the repo; they are injected by
   Doppler at run time.
-- Never run `podman compose down -v` on production unless you intend to delete the
+- Never drop the `examdump` database on production unless you intend to delete the
   certbot volume.
 - Back up before schema-affecting releases.
 - Do not deploy over existing unrelated services on this VM — the stack uses its

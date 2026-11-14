@@ -52,7 +52,7 @@ apps/
 packages/
   shared/              Types, Zod schemas, dataset content parser, plan catalogue
   data-client/         GitHub dataset client (TTL cache, both branch formats)
-deploy/                Dockerfiles, docker-compose, nginx, backup/restore scripts
+deploy/                legacy container files (unused); production runs under systemd
 docs/                  Architecture, API, database, deployment, security, testing
 docs/infrastructure/   Email deliverability audit, mail & pay, UPI collection
 .github/
@@ -76,9 +76,8 @@ docs/infrastructure/   Email deliverability audit, mail & pay, UPI collection
 # 1. Install
 npm install
 
-# 2. Start a throwaway PostgreSQL 16 on port 5433
-podman run -d --name examdump-pg \
-  -e POSTGRES_PASSWORD=postgres -p 5433:5432 postgres:16-alpine
+# 2. Create a scratch database on the local PostgreSQL 16 cluster
+createdb examdump_dev
 
 # 3. Configure environment (never commit this file)
 cp .env.example .env
@@ -228,21 +227,20 @@ nginx + Let's Encrypt) are in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 ```bash
 cd deploy
 doppler run --project examdump-pro --config prd -- \
-  podman compose -p examdump-pro up -d --build
+  sudo systemctl restart examdump-api examdump-web
 ```
 
 Operational facts worth knowing before touching production:
 
-- The host has **two Podman stores**. Production runs **rootful**
-  (`sudo podman`). A rootless store may hold an unrelated dead duplicate —
-  always check `sudo podman ps` before concluding the stack is down.
-- `POSTGRES_PASSWORD` must be present or compose aborts. Pass it through
-  `doppler run`; `sudo` drops exported shell variables.
-- `docker-compose.yml` declares network aliases `postgres` and `api`. They are
-  required for `DATABASE_URL` and nginx's upstream to resolve.
-- **nginx caches the API container IP.** After recreating the API, run
-  `sudo podman exec examdump-pro_nginx_1 nginx -s reload`, otherwise the site
-  returns 502 until reloaded.
+- ExamDump runs natively: `nginx`, `examdump-api`, `examdump-web`, `postgresql`.
+  A rootless Podman store exists on the host for the unrelated Omniroute app;
+  `podman ps` says nothing about ExamDump.
+- Configuration lives in `/etc/examdump-pro/production.env`, rendered from
+  Doppler. `sudo` drops exported shell variables — update the file, not the shell.
+- nginx proxies to loopback (`127.0.0.1:4000`, `127.0.0.1:3000`), so there is no
+  cached container IP to refresh. A 502 means the unit is not listening.
+- `deploy/docker-compose.yml` and the Dockerfiles are legacy artifacts kept for
+  reference only; they are not used in production.
 
 ## Documentation
 

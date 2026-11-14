@@ -14,12 +14,12 @@ for i in $(seq 1 50); do
 done | sort -n | awk '{a[NR]=$1} END{print "p50",a[int(NR*0.5)],"p95",a[int(NR*0.95)]}'
 
 # database timings
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c \
+sudo -u postgres psql -d examdump -c \
   "select calls, round(mean_exec_time::numeric,2) mean_ms, left(query,60)
    from pg_stat_statements order by mean_exec_time desc limit 10;"
 
 # container resource use
-sudo podman stats --no-stream
+systemd-cgtop -1
 ```
 
 Frontend: Chrome DevTools Lighthouse and the Performance panel. Do not add a

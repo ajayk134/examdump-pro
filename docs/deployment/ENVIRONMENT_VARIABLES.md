@@ -27,13 +27,12 @@ GITHUB_TOKEN
 ```bash
 cd deploy
 doppler run --project examdump-pro --config prd -- \
-  podman compose -p examdump-pro up -d --build
+  sudo systemctl restart examdump-api examdump-web
 ```
 
-**`sudo` strips exported variables.** `sudo env POSTGRES_PASSWORD=... podman
-compose` does not reliably inject them; compose aborts with
-`POSTGRES_PASSWORD is required`. Run compose as your own user, with Doppler
-providing the environment.
+**`sudo` strips exported variables.** Production does not read the calling shell
+at all: the systemd units load `/etc/examdump-pro/production.env`. Update that
+file and restart the units.
 
 ## Hostname coupling
 
@@ -70,7 +69,7 @@ Never `cat` an env file or echo a secret into a terminal.
    sensible.
 2. Add the name (no value) to `.env.example`.
 3. Set the real value in Doppler.
-4. Pass it through `deploy/docker-compose.yml` for the service that needs it.
+4. Add it to `/etc/examdump-pro/production.env` for the service that needs it.
 5. Document it in [docs/ENVIRONMENT.md](../ENVIRONMENT.md).
 6. Restart the API and verify.
 

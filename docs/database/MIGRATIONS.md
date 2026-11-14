@@ -83,11 +83,11 @@ Rules:
 
 ```bash
 # applied count and last entry
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c \
+sudo -u postgres psql -d examdump -c \
   "select count(*) from drizzle.__drizzle_migrations;"
 
 # confirm a specific object exists
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c \
+sudo -u postgres psql -d examdump -c \
   "\d upi_orders"
 ```
 

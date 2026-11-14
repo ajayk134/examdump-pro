@@ -76,11 +76,11 @@ Integration tests hit your configured PostgreSQL. On a remote managed cluster
 fast runs:
 
 ```bash
-docker run -d --name examdump-pg -e POSTGRES_PASSWORD=postgres \
-  -p 5433:5432 postgres:16-alpine
+createdb examdump_test
+export DATABASE_URL_TEST="postgres://examdump@127.0.0.1:5432/examdump_test"
 ```
 
-CI uses a local PostgreSQL service.
+Use a scratch database, never the production one.
 
 ## `npm install` warnings about deferred install scripts (esbuild)
 
@@ -106,31 +106,31 @@ the API container gives it a new address, so nginx keeps proxying to a dead
 container.
 
 ```bash
-sudo podman exec examdump-pro_nginx_1 nginx -s reload
+sudo systemctl reload nginx
 ```
 
 Confirm the API itself is fine first:
 
 ```bash
 curl -s localhost:4000/api/health          # inside the host, if published
-sudo podman exec examdump-pro_api_1 wget -qO- localhost:4000/api/health
+curl -s http://127.0.0.1:4000/api/health
 ```
 
-## `podman ps` shows nothing but the site is up
+## Services look stopped but the site is up
 
-The host runs two Podman stores. Production is **rootful**:
+ExamDump runs natively. Check the units:
 
 ```bash
-sudo podman ps          # production
-podman ps               # unrelated / leftover
+systemctl is-active nginx postgresql examdump-api examdump-web
 ```
 
-A rootless store being empty tells you nothing about production.
+Rootless Podman on this host belongs to the unrelated Omniroute app, so
+`podman ps` output says nothing about ExamDump.
 
 ## `getaddrinfo ENOTFOUND postgres` on API start
 
 The database container is missing the `postgres` network alias that
-`DATABASE_URL` targets. Compose declares it in `deploy/docker-compose.yml`:
+`DATABASE_URL` targets. It now points at loopback:
 
 ```yaml
 networks:
@@ -141,18 +141,18 @@ networks:
 Check resolution from another container:
 
 ```bash
-sudo podman exec examdump-pro_nginx_1 getent hosts postgres
+getent hosts 127.0.0.1
 ```
 
 ## `POSTGRES_PASSWORD is required`
 
 Compose aborts when the variable is absent. `sudo` strips exported shell
-variables, so `sudo env POSTGRES_PASSWORD=... podman compose` is unreliable.
+variables, so `sudo env FOO=...` is unreliable; edit `/etc/examdump-pro/production.env`.
 Use Doppler:
 
 ```bash
 cd deploy
-doppler run --project examdump-pro --config prd -- podman compose up -d
+sudo systemctl restart examdump-api examdump-web
 ```
 
 ## `null value in column "base_amount_paise" ... violates not-null constraint`
@@ -162,13 +162,13 @@ code. Rebuild the API image so both match:
 
 ```bash
 cd deploy && doppler run -p examdump-pro -c prd -- \
-  podman compose -p examdump-pro up -d --build api
+  sudo systemctl restart examdump-api
 ```
 
 Verify the bundle actually contains the change:
 
 ```bash
-sudo podman exec examdump-pro_api_1 sh -c 'grep -l baseAmountPaise /app/dist/*.js | wc -l'
+grep -l baseAmountPaise /opt/examdump-pro/api/dist/*.js | wc -l
 ```
 
 ## PostgreSQL will not start: initdb permission error
@@ -177,8 +177,8 @@ The named volume contains foreign files (for example a copy of a home
 directory), so `initdb` cannot chown it. Inspect before acting:
 
 ```bash
-sudo podman volume inspect pgdata
-sudo podman run --rm -v pgdata:/v alpine ls -la /v | head
+ls -la /var/lib/pgsql/data
+sudo -u postgres psql -d examdump -c '\l'
 ```
 
 Back up, prove the restore, then recreate the volume. Never delete first.

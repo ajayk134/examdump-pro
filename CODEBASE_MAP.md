@@ -24,7 +24,7 @@ openapi.ts             ← OpenAPI document served at /api/docs
 
 db/
   client.ts            postgres() pool configuration
-  apply-migrations.ts  migration runner (also run by the container at boot)
+  apply-migrations.ts  migration runner (run explicitly at deploy time)
   seed.ts              plans, roles, permissions, settings, demo data
   schema/              Drizzle tables
     identity.ts        users, sessions, auth_tokens, login_attempts, roles,
@@ -161,13 +161,17 @@ Rendering strategy and performance: [docs/performance/FRONTEND.md](docs/performa
 
 | File | Role |
 | --- | --- |
-| `docker-compose.yml` | 4 services, network aliases, logging limits |
+| `docker-compose.yml` | legacy container topology — no longer used in production |
 | `Dockerfile.api` | multi-stage Node 22 build → `dist/` |
 | `Dockerfile.web` | multi-stage, Next standalone output |
-| `nginx/nginx.conf` | TLS, gzip, upstreams, SSE handling |
-| `backup.sh` | pg_dump custom format, 14-day retention |
+| `nginx/nginx.conf` | reference config; the live vhost is `/etc/nginx/conf.d/examdump.conf` |
+| `backup.sh` | pg_dump custom format, 14-day retention (superseded by `/usr/local/bin/examdump-backup`) |
 | `restore.sh` | pg_restore `--clean --if-exists` |
 | `.env.production.example` | variable names only |
+
+Production no longer uses containers. The live topology is four systemd units —
+`nginx`, `examdump-api`, `examdump-web`, `postgresql` — documented in
+[DEPLOYMENT.md](DEPLOYMENT.md) and [docs/deployment/PRODUCTION.md](docs/deployment/PRODUCTION.md).
 
 ## Where to look for a given task
 

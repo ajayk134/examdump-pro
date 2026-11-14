@@ -11,7 +11,7 @@ What exists, and — importantly — what does not.
 | API + DB health | `GET /api/health` |
 | Payment state | `GET /api/upi/status` |
 | Container status | `sudo podman ps` |
-| API logs (Pino JSON) | `sudo podman logs examdump-pro_api_1` |
+| API logs (Pino JSON) | `sudo journalctl -u examdump-api` |
 | Reconciliation history | `reconciliation_runs` |
 | Error records | `error_events` |
 | Audit trail | `audit_logs` |

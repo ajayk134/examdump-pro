@@ -8,7 +8,7 @@ Fast containment. Full detail:
 ```bash
 sudo podman ps                                   # containers up?
 curl -s https://<domain>/api/health              # API answering?
-sudo podman logs --tail 50 examdump-pro_api_1    # what does it say?
+sudo journalctl -u examdump-api -n 50    # what does it say?
 ```
 
 **Do not restart before capturing logs** — a restart destroys the evidence.
@@ -17,7 +17,7 @@ sudo podman logs --tail 50 examdump-pro_api_1    # what does it say?
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| 502, API healthy | nginx cached the old API IP | `sudo podman exec examdump-pro_nginx_1 nginx -s reload` |
+| 502, API healthy | nginx cached the old API IP | `sudo systemctl reload nginx` |
 | API container restarting | crash loop | read logs; see [Troubleshooting](docs/operations/TROUBLESHOOTING.md) |
 | Nothing in `podman ps` | wrong store | check `sudo podman ps` |
 | Everything down | host/reboot | [Disaster recovery](docs/deployment/DISASTER_RECOVERY.md) |
@@ -27,7 +27,7 @@ sudo podman logs --tail 50 examdump-pro_api_1    # what does it say?
 1. Disable immediately — set `PAYMENTS_ENABLED=false` in Doppler, then:
    ```bash
    cd deploy && doppler run -p examdump-pro -c prd -- \
-     podman compose -p examdump-pro up -d api
+     sudo systemctl restart examdump-api
    ```
 2. **Preserve evidence** — never delete or update `payments`, `upi_*`, `refunds`,
    `webhook_events`.
@@ -50,7 +50,7 @@ Rotate **before** investigating history.
 ## Database problems
 
 ```bash
-sudo podman exec examdump-pro_postgres_1 pg_isready -U examdump -d examdump
+pg_isready -h 127.0.0.1 -p 5432
 ```
 
 | Symptom | Action |
@@ -67,7 +67,7 @@ sudo podman stop examdump-pro_api_1
 ./backup.sh                       # safety copy first
 ./restore.sh /path/to/backup.pgdump
 sudo podman start examdump-pro_api_1
-sudo podman exec examdump-pro_nginx_1 nginx -s reload
+sudo systemctl reload nginx
 ```
 
 `restore.sh` uses `--clean --if-exists`: it drops existing objects.

@@ -26,7 +26,8 @@ and is labelled as reconstructed.
 | [002](ADR-002.md) | PostgreSQL-only queue, no Redis | Accepted |
 | [003](ADR-003.md) | UPI collection via unique amounts and notification matching | Accepted |
 | [004](ADR-004.md) | Opaque rotating refresh tokens alongside JWT access tokens | Accepted |
-| [005](ADR-005.md) | Single host, rootful Podman, no orchestration | Accepted |
+| [005](ADR-005.md) | Single host, rootful Podman, no orchestration | Superseded by 007 |
+| [007](ADR-007.md) | Run natively under systemd, no container runtime | Accepted |
 
 ## Adding an ADR
 

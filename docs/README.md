@@ -81,7 +81,8 @@ docs/
     ADR-002.md  PostgreSQL queue, no Redis
     ADR-003.md  UPI unique amounts + notification matching
     ADR-004.md  JWT access + rotating opaque refresh
-    ADR-005.md  single host, rootful Podman
+    ADR-005.md  single host, rootful Podman (superseded by ADR-007)
+    ADR-007.md  native systemd services, no container runtime
   infrastructure/              original design notes (UPI, mail/pay, deliverability)
 ```
 

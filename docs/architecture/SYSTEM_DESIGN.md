@@ -27,15 +27,14 @@ that database — it is read from a private GitHub repository at request time.
           └──────────────────┘      └────────────────┘   └─────────────────┘
 ```
 
-All four containers run on one host under **rootful Podman** via
-`deploy/docker-compose.yml`:
+All four run as **native systemd services** on one host:
 
-| Service | Image | Exposed | Purpose |
+| Unit | Runtime | Exposed | Purpose |
 | --- | --- | --- | --- |
-| `nginx` | `nginx:1.27-alpine` | 80, 443 | TLS termination, routing, compression |
-| `web` | `deploy/Dockerfile.web` | internal 3000 | Next.js standalone server |
-| `api` | `deploy/Dockerfile.api` | internal 4000 | Fastify, migrations, background workers |
-| `postgres` | `postgres:16-alpine` | internal 5432 | Application data |
+| `nginx.service` | nginx 1.20 (host pkg) | 0.0.0.0:80, 443 | TLS termination, routing, compression |
+| `examdump-web.service` | Node 22, Next standalone | 127.0.0.1:3000 | Next.js server |
+| `examdump-api.service` | Node 22, Fastify | 127.0.0.1:4000 | API, background workers |
+| `postgresql.service` | PostgreSQL 16.15 | 127.0.0.1:5432 | Application data |
 
 ## Request lifecycle
 
@@ -133,8 +132,8 @@ The API never blocks a request on mail, AI or payment provider availability.
 | DB client | `apps/api/src/db/client.ts` |
 | Migrations | `apps/api/src/db/migrations/` |
 | Dataset client | `packages/data-client/src/` |
-| Container topology | `deploy/docker-compose.yml` |
-| Reverse proxy | `deploy/nginx/nginx.conf` |
+| Service topology | `DEPLOYMENT.md`, `docs/deployment/PRODUCTION.md` |
+| Reverse proxy | `/etc/nginx/conf.d/examdump.conf` |
 
 ## Related
 

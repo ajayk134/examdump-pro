@@ -33,7 +33,7 @@ users.read       users.write
 Verify against the live database:
 
 ```bash
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c "
+sudo -u postgres psql -d examdump -c "
 select r.name, string_agg(rp.permission_id, ', ' order by rp.permission_id)
 from roles r join role_permissions rp on rp.role_id = r.id
 group by r.name order by 1;"

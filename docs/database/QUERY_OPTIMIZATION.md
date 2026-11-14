@@ -6,7 +6,7 @@ listed; no benchmark numbers are claimed because none have been measured.
 ## Measure before changing anything
 
 ```bash
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c "
+sudo -u postgres psql -d examdump -c "
 EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
 select id, created_at from attempts
 where user_id = '...' and exam_key = '...'
@@ -121,7 +121,7 @@ returns flat rows. Keeps plans simple and avoids surprises when shapes change.
 subscription sweep) it is worth running:
 
 ```bash
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c "VACUUM (ANALYZE)";
+sudo -u postgres psql -d examdump -c "VACUUM (ANALYZE)";
 ```
 
 Check bloat and long-running transactions:

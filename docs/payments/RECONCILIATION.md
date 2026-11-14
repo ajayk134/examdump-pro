@@ -18,7 +18,7 @@ outcome.
 
 ```bash
 # inspect recent runs
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c \
+sudo -u postgres psql -d examdump -c \
   "select trigger, repaired, mismatches, created_at
    from reconciliation_runs order by created_at desc limit 10;"
 ```

@@ -58,7 +58,7 @@ If unset it defaults to `postgres://postgres:postgres@127.0.0.1:5433/examdump_te
 (`helpers.ts:16`). Start one locally:
 
 ```bash
-podman run -d --name examdump-pg \
+createdb examdump_test \
   -e POSTGRES_PASSWORD=postgres -p 5433:5432 postgres:16-alpine
 ```
 

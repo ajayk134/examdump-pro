@@ -11,7 +11,7 @@ Schema definition: `apps/api/src/db/schema/`. Migrations:
 Verify any of this against a live database with:
 
 ```bash
-sudo podman exec examdump-pro_postgres_1 psql -U examdump -d examdump -c '\dt'
+sudo -u postgres psql -d examdump -c '\dt'
 ```
 
 ### Identity and access (schema/identity.ts)

@@ -70,7 +70,7 @@ automatically, removing the manual step.
 
 One runaway container can starve the others on a small VM.
 
-**Fix:** add memory/CPU limits to `deploy/docker-compose.yml` once real usage is
+**Fix:** add memory/CPU limits to the systemd units once real usage is
 known.
 
 ### TD-9 — No automated accessibility testing

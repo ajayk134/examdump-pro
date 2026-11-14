@@ -9,9 +9,9 @@ an unmonitored system that looks monitored is worse than one that admits it.
 | --- | --- | --- |
 | API liveness + DB connectivity | `GET /api/health` | `curl`, returns `{status, database, uptimeSeconds}` |
 | Payment/UPI state | `GET /api/upi/status` | `curl`, returns `available`, `autoApprove` |
-| Container status | Podman | `sudo podman ps` |
-| API structured logs | Pino JSON | `sudo podman logs examdump-pro_api_1` |
-| nginx access/error | container logs | `sudo podman logs examdump-pro_nginx_1` |
+| Service status | systemd | `systemctl status examdump-api` |
+| API structured logs | Pino JSON | `sudo journalctl -u examdump-api` |
+| nginx access/error | container logs | `sudo journalctl -u nginx` |
 | Postgres health | `pg_isready` healthcheck | compose healthcheck |
 | Reconciliation runs | `reconciliation_runs` table | SQL |
 | Error records | `error_events` table | SQL |
@@ -72,11 +72,11 @@ every outage scenario in [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md).
 Until monitoring exists, this is the practical routine:
 
 ```bash
-sudo podman ps --format "{{.Names}} {{.Status}}"
+systemctl status examdump-api examdump-web nginx postgresql --no-pager
 curl -s -o /dev/null -w '%{http_code}\n' https://<domain>/api/health
 curl -s https://<domain>/api/upi/status
 df -h | grep -E "/$|/var"
-sudo podman logs --tail 30 examdump-pro_api_1 | grep -i error
+sudo journalctl -u examdump-api -n 30 | grep -i error
 ```
 
 ## Related

@@ -28,7 +28,7 @@ apps/api/            Fastify 5 API — routes, services, Drizzle schema, tests
 apps/web/            Next.js 15 App Router frontend (React 19, Tailwind)
 packages/shared/     Zod schemas, types, content parser, plan catalogue
 packages/data-client/  Server-only GitHub dataset client (TTL + LRU cache)
-deploy/              Dockerfiles, docker-compose.yml, nginx, backup/restore
+deploy/              legacy container files (unused in production); live topology is systemd
 docs/                full documentation — start at docs/README.md
 .github/             CI workflows, these instructions
 ```
@@ -87,10 +87,10 @@ docs/                full documentation — start at docs/README.md
 npm install
 npm run build -w @examdump/shared && npm run build -w @examdump/data-client
 
-podman run -d --name examdump-pg \
-  -e POSTGRES_PASSWORD=postgres -p 5433:5432 postgres:16-alpine
+# scratch database on the local cluster (never the production one)
+createdb examdump_dev
 
-export DATABASE_URL="postgres://postgres:postgres@127.0.0.1:5433/examdump"
+export DATABASE_URL="postgres://examdump@127.0.0.1:5432/examdump_dev"
 npm run migrate -w @examdump/api
 npm run seed
 npm run dev                       # api :4000 + web :3000
@@ -142,23 +142,22 @@ Invariants:
 
 ## 8. Deployment facts
 
-Production is a single host running **rootful** Podman (`sudo podman`).
+Production is a single host running **native systemd services** — no Docker, no
+Podman for ExamDump.
 
 ```bash
-cd deploy
-doppler run --project examdump-pro --config prd -- \
-  podman compose -p examdump-pro up -d --build
-sudo podman exec examdump-pro_nginx_1 nginx -s reload
+sudo systemctl restart examdump-api examdump-web
+sudo systemctl reload nginx
 ```
 
-- There are **two Podman stores**. `podman ps` being empty says nothing about
-  production — check `sudo podman ps`.
-- **nginx caches the API IP.** Always reload after recreating the API, or the site
-  502s while the API is healthy.
-- `POSTGRES_PASSWORD` must be injectable; `sudo` strips exported variables, so use
-  `doppler run`.
-- `docker-compose.yml` declares network aliases `postgres` and `api`. Removing them
-  breaks DNS.
+- ExamDump is not containerised. `podman ps` says nothing about it; the only
+  rootless Podman on the host belongs to the unrelated Omniroute app.
+- nginx proxies to `127.0.0.1:4000` and `127.0.0.1:3000`, so there is no cached
+  container IP to refresh.
+- `sudo` strips exported variables; production reads
+  `/etc/examdump-pro/production.env`, not the calling shell.
+- Production runs natively: `nginx`, `examdump-api`, `examdump-web`, `postgresql`.
+  The files under `deploy/` are legacy container artifacts and are not used.
 
 ## 9. Documentation must be maintained — mandatory
 
@@ -196,7 +195,7 @@ Change-to-document mapping:
 | Auth, guards, permissions | `AUTH.md`, `docs/security/AUTHORIZATION.md` |
 | Payments / UPI | `PAYMENTS.md`, `docs/payments/*.md` |
 | Deployment, compose, nginx | `DEPLOYMENT.md`, `docs/deployment/*.md` |
-| Environment variable | `docs/ENVIRONMENT.md`, `.env.example`, `deploy/docker-compose.yml` |
+| Environment variable | `docs/ENVIRONMENT.md`, `.env.example`, `/etc/examdump-pro/production.env` |
 | Architecture or lasting decision | `ARCHITECTURE.md` + new ADR in `docs/decisions/` |
 | File layout or new subsystem | `CODEBASE_MAP.md`, `docs/architecture/SERVICE_DEPENDENCIES.md` |
 | Frontend behaviour | `FRONTEND.md`, `UI_UX.md` |
