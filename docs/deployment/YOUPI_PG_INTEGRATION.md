@@ -192,6 +192,17 @@ sudo systemctl restart youpi-payment-api youpi-checkout youpi-admin youpi-gmail
   operator process outside YouPI and an independent bank confirmation.
 - The receiving account's control by the intended merchant must be confirmed
   with the bank/UPI provider. A database assignment is not proof of ownership.
+- The intended account was previously attached to the demo merchant. That
+  merchant has no payment history and no active VPA now; if the demo storefront
+  is used again, provision a separate demo-only VPA. Never reuse `examdump@axl`
+  for another merchant.
+- The connected Gmail mailbox contains historical, unrelated bank alerts and
+  the observer has stored them as unattributed observations. Observations never
+  settle, but a dedicated mailbox (or verified account-level filtering) is
+  required before real-money use. Do not point the observer at a shared inbox.
+- No real bank statement has been imported (`bank_statement_lines = 0`), so
+  independent reconciliation is implemented and synthetically verified but not
+  yet operationally proven with a real statement.
 - `YOUPI_ENABLED=true` while `PAYMENTS_ENABLED=false` is the current production
   configuration: checkout is correctly blocked with `PAYMENTS_DISABLED` and no
   gateway order is created. Signed webhooks remain active so any order created
