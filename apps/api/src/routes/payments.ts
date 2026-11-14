@@ -393,17 +393,29 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
       }
 
       // A signed event for one order must not name a different gateway payment.
+      // One legitimate exception: YouPI recreates an expired session under the
+      // same order id, so a failed local row can move to the replacement session.
       const gatewayPaymentId =
         typeof payload.paymentId === 'string' && payload.paymentId ? payload.paymentId : null;
       if (gatewayPaymentId && stored.providerPaymentId && gatewayPaymentId !== stored.providerPaymentId) {
-        request.log.error(
-          { orderId, expected: stored.providerPaymentId, received: gatewayPaymentId },
-          'youpi.webhook.gateway_payment_mismatch',
+        if (stored.status !== 'failed') {
+          request.log.error(
+            { orderId, expected: stored.providerPaymentId, received: gatewayPaymentId },
+            'youpi.webhook.gateway_payment_mismatch',
+          );
+          await markYoupiEvent(eventRowId, 'ignored', 'gateway_payment_mismatch');
+          return reply
+            .code(409)
+            .send({ error: { code: 'GATEWAY_PAYMENT_MISMATCH', message: 'Gateway payment does not match the order.' } });
+        }
+        request.log.warn(
+          { orderId, previous: stored.providerPaymentId, replacement: gatewayPaymentId },
+          'youpi.webhook.gateway_payment_replaced',
         );
-        await markYoupiEvent(eventRowId, 'ignored', 'gateway_payment_mismatch');
-        return reply
-          .code(409)
-          .send({ error: { code: 'GATEWAY_PAYMENT_MISMATCH', message: 'Gateway payment does not match the order.' } });
+        await db()
+          .update(payments)
+          .set({ providerRef: gatewayPaymentId, providerPaymentId: gatewayPaymentId, updatedAt: new Date() })
+          .where(eq(payments.id, stored.id));
       }
 
       const paidPaise = Number(payload.amountPaise);

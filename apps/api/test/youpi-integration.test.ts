@@ -407,6 +407,56 @@ describe('youpi webhook lifecycle', () => {
     expect(afterReconcile!.subscriptionId).toBeTruthy();
   });
 
+  it('accepts a replacement gateway payment after the original session expired', async () => {
+    const order = await createPendingOrder();
+    const expiredBody = JSON.stringify({
+      event: 'EXPIRED',
+      deliveryId: 'expired-before-replacement',
+      timestamp: Date.now(),
+      orderId: order.orderRef,
+      paymentId: order.gatewayPaymentId,
+      amountPaise: order.amountMinor,
+      currency: 'INR',
+      settlementState: 'NOT_APPLICABLE',
+    });
+    const expired = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/payments/webhook/youpi',
+      headers: signedHeaders(expiredBody, { event: 'EXPIRED', deliveryId: 'expired-before-replacement' }),
+      payload: expiredBody,
+    });
+    expect(expired.statusCode).toBe(200);
+
+    const replacementId = 'yp_replacement_after_expiry';
+    const reconciledBody = JSON.stringify({
+      event: 'RECONCILED',
+      deliveryId: 'reconciled-after-replacement',
+      timestamp: Date.now(),
+      orderId: order.orderRef,
+      paymentId: replacementId,
+      amountPaise: order.amountMinor,
+      currency: 'INR',
+      utr: '123456789015',
+      settlementState: 'RECONCILED',
+    });
+    const reconciled = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/payments/webhook/youpi',
+      headers: signedHeaders(reconciledBody, { event: 'RECONCILED', deliveryId: 'reconciled-after-replacement' }),
+      payload: reconciledBody,
+    });
+    expect(reconciled.statusCode).toBe(200);
+
+    const [row] = await getDb()
+      .select()
+      .from(payments)
+      .where(eq(payments.orderRef, order.orderRef))
+      .limit(1);
+    expect(row!.status).toBe('succeeded');
+    expect(row!.providerPaymentId).toBe(replacementId);
+    expect(row!.subscriptionId).toBeTruthy();
+  });
+
   it('rejects a reconciled event that names a different gateway payment', async () => {
     const order = await createPendingOrder();
     const deliveryId = 'gateway-payment-mismatch';
