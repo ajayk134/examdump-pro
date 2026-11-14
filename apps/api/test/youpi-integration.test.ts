@@ -82,7 +82,7 @@ function signedHeaders(body: string, opts: { timestamp?: number; deliveryId?: st
   };
 }
 
-async function createPendingOrder(examKey?: string): Promise<{ orderRef: string; amountMinor: number; gatewayPaymentId: string; paymentRowId: string }> {
+async function createPendingOrder(examKey?: string): Promise<{ orderRef: string; amountMinor: number; gatewayPaymentId: string; paymentRowId: string; checkoutUrl: string }> {
   const res = await ctx.app.inject({
     method: 'POST',
     url: '/api/payments/pay/youpi/checkout',
@@ -90,8 +90,8 @@ async function createPendingOrder(examKey?: string): Promise<{ orderRef: string;
     payload: { planId: 'all-30', ...(examKey ? { examKey } : {}) },
   });
   expect(res.statusCode).toBe(201);
-  const body = res.json() as { orderRef: string; amountMinor: number; gatewayPaymentId: string; paymentId: string };
-  return { orderRef: body.orderRef, amountMinor: body.amountMinor, gatewayPaymentId: body.gatewayPaymentId, paymentRowId: body.paymentId };
+  const body = res.json() as { orderRef: string; amountMinor: number; gatewayPaymentId: string; paymentId: string; checkoutUrl: string };
+  return { orderRef: body.orderRef, amountMinor: body.amountMinor, gatewayPaymentId: body.gatewayPaymentId, paymentRowId: body.paymentId, checkoutUrl: body.checkoutUrl };
 }
 
 beforeAll(async () => {
@@ -136,13 +136,13 @@ describe('youpi checkout', () => {
 
   it('creates a pending order and returns a hosted checkout URL', async () => {
     const order = await createPendingOrder();
-    expect(order.checkoutUrl ?? order.orderRef).toBeTruthy();
+    expect(order.checkoutUrl).toContain('/checkout/');
     const db = getDb();
     const [row] = await db.select().from(payments).where(eq(payments.orderRef, order.orderRef)).limit(1);
-    expect(row.status).toBe('pending');
-    expect(row.amountMinor).toBe(order.amountMinor);
-    expect(row.provider).toBe('upi');
-    expect((row.metadata as { provider?: string }).provider).toBe('youpi');
+    expect(row!.status).toBe('pending');
+    expect(row!.amountMinor).toBe(order.amountMinor);
+    expect(row!.provider).toBe('upi');
+    expect((row!.metadata as { provider?: string }).provider).toBe('youpi');
   });
 
   it('requires authentication', async () => {
@@ -198,7 +198,7 @@ describe('youpi webhook security', () => {
     expect(res.statusCode).toBe(409);
     const db = getDb();
     const [row] = await db.select().from(payments).where(eq(payments.orderRef, order.orderRef)).limit(1);
-    expect(row.status).toBe('pending');
+    expect(row!.status).toBe('pending');
   });
 
   it('rejects a wrong currency without settling', async () => {
@@ -223,7 +223,7 @@ describe('youpi webhook security', () => {
     expect((res.json() as { ignored?: boolean }).ignored).toBe(true);
     const db = getDb();
     const [row] = await db.select().from(payments).where(eq(payments.orderRef, order.orderRef)).limit(1);
-    expect(row.status).toBe('pending');
+    expect(row!.status).toBe('pending');
     const subs = await db.select().from(subscriptions).where(eq(subscriptions.userId, user.userId));
     expect(subs.some((s) => s.status === 'active')).toBe(false);
   });
@@ -235,7 +235,7 @@ describe('youpi webhook security', () => {
     expect(res.statusCode).toBe(200);
     const db = getDb();
     const [row] = await db.select().from(payments).where(eq(payments.orderRef, order.orderRef)).limit(1);
-    expect(row.status).toBe('pending');
+    expect(row!.status).toBe('pending');
   });
 
   it('does not re-process a duplicate delivery id', async () => {
@@ -249,6 +249,22 @@ describe('youpi webhook security', () => {
     expect((second.json() as { duplicate?: boolean }).duplicate).toBe(true);
   });
 
+  it('rejects a bad signature even for a body it has already seen', async () => {
+    const order = await createPendingOrder();
+    const deliveryId = 'sig-over-dup';
+    const body = JSON.stringify({ event: 'OBSERVED_SUCCESS', deliveryId, timestamp: Date.now(), orderId: order.orderRef, amountPaise: order.amountMinor, currency: 'INR', settlementState: 'NOT_RECONCILED' });
+    const ok = await ctx.app.inject({ method: 'POST', url: '/api/payments/webhook/youpi', headers: signedHeaders(body, { event: 'OBSERVED_SUCCESS', deliveryId }), payload: body });
+    expect(ok.statusCode).toBe(200);
+    // Same bytes, forged signature: must be 401, never a "duplicate" 200.
+    const forged = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/payments/webhook/youpi',
+      headers: signedHeaders(body, { event: 'OBSERVED_SUCCESS', deliveryId, badSignature: true }),
+      payload: body,
+    });
+    expect(forged.statusCode).toBe(401);
+  });
+
   it('fulfils the order on a valid RECONCILED event', async () => {
     const order = await createPendingOrder();
     const deliveryId = 'recon-1';
@@ -257,8 +273,8 @@ describe('youpi webhook security', () => {
     expect(res.statusCode).toBe(200);
     const db = getDb();
     const [row] = await db.select().from(payments).where(eq(payments.orderRef, order.orderRef)).limit(1);
-    expect(row.status).toBe('succeeded');
-    expect(row.paidAt).toBeTruthy();
+    expect(row!.status).toBe('succeeded');
+    expect(row!.paidAt).toBeTruthy();
     const subs = await db.select().from(subscriptions).where(eq(subscriptions.userId, user.userId));
     expect(subs.some((s) => s.status === 'active')).toBe(true);
   });

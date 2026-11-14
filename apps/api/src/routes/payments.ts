@@ -264,20 +264,46 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
       const eventType = String(verified.event ?? payload.event ?? 'unknown');
       const deliveryId = String(verified.deliveryId ?? payload.deliveryId ?? '');
       const payloadHash = crypto.createHash('sha256').update(raw).digest('hex');
-      const eventId = deliveryId || payloadHash;
 
-      // Persist every delivery before doing anything: audit trail + idempotency.
+      // Verify the signature BEFORE any idempotency shortcut. Otherwise a
+      // replayed body with a broken signature could be acknowledged as a
+      // "duplicate" without ever being authenticated.
+      if (!verified.verified) {
+        // Audit the rejection without letting it collide with (and thus mask) a
+        // later authenticated delivery.
+        await db()
+          .insert(webhookEvents)
+          .values({
+            provider: 'youpi',
+            eventId: `rejected_${payloadHash}`,
+            eventType,
+            signatureValid: false,
+            payloadHash,
+            payload: payload as Record<string, unknown>,
+            status: 'rejected',
+            note: verified.reason ?? '',
+          })
+          .onConflictDoNothing();
+        request.log.warn({ ip: request.ip, reason: verified.reason }, 'youpi.webhook.invalid_signature');
+        return reply
+          .code(401)
+          .send({ error: { code: 'INVALID_SIGNATURE', message: 'Signature verification failed.' } });
+      }
+
+      // Authenticated delivery: deduplicate on (provider, eventId), where the
+      // YouPI delivery id makes retries of one event collapse to a single row.
+      const eventId = deliveryId || payloadHash;
       const inserted = await db()
         .insert(webhookEvents)
         .values({
           provider: 'youpi',
           eventId,
           eventType,
-          signatureValid: verified.verified,
+          signatureValid: true,
           payloadHash,
           payload: payload as Record<string, unknown>,
-          status: verified.verified ? 'received' : 'rejected',
-          note: verified.reason ?? '',
+          status: 'received',
+          note: '',
         })
         .onConflictDoNothing()
         .returning({ id: webhookEvents.id });
@@ -285,13 +311,6 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
       if (inserted.length === 0) {
         // Same (provider, eventId) seen before — acknowledge without reprocessing.
         return reply.send({ received: true, duplicate: true });
-      }
-
-      if (!verified.verified) {
-        request.log.warn({ ip: request.ip, reason: verified.reason }, 'youpi.webhook.invalid_signature');
-        return reply
-          .code(401)
-          .send({ error: { code: 'INVALID_SIGNATURE', message: 'Signature verification failed.' } });
       }
 
       // Never fulfil on anything but a reconciled bank statement.
