@@ -205,14 +205,17 @@ export interface Invoice {
 }
 
 export interface CheckoutSession {
-  paymentId: string;
-  paymentRef: string;
-  clientSecret: string | null;
-  amountMinor: number;
-  currency: string;
-  status: string;
-  checkoutUrl: string | null;
-  publishableKey: string | null;
+  paymentId?: string;
+  paymentRef?: string;
+  orderRef?: string;
+  gatewayPaymentId?: string;
+  clientSecret?: string | null;
+  amountMinor?: number;
+  currency?: string;
+  status?: string;
+  checkoutUrl?: string | null;
+  publishableKey?: string | null;
+  adapter?: string;
 }
 
 export interface Announcement {

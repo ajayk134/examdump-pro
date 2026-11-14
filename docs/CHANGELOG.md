@@ -44,6 +44,26 @@ All notable changes to ExamDump Pro.
   webhook verification and settlement of pre-existing orders are unchanged.
   Covered in `test/youpi-integration.test.ts` for every flag combination.
 
+- **ExamDump used the wrong YouPI receiving account.** The intended account
+  `8149d7a5-2a14-4c1d-88da-dabf3573fd2a` (`examdump@axl`, payee `Exam Dump`) was
+  attached to the demo merchant while ExamDump used the placeholder
+  `examdumptest@upi`. The intended account was reassigned after a verified
+  backup; the placeholder is inactive and the Gmail observer now binds to the
+  same intended account used by checkout and statement reconciliation.
+
+- **Terminal YouPI events left local payments pending forever.** Signed
+  `FAILED`, `EXPIRED` and `CANCELLED` events now close a pending payment as
+  failed, while `OBSERVED_SUCCESS` and `MANUAL_REVIEW` remain non-settling.
+  Authenticated webhook rows now end in `processed`/`ignored` for admin
+  monitoring, and a delivery interrupted before completion is reprocessed on
+  retry instead of being permanently acknowledged as a duplicate. RECONCILED
+  events also reject a mismatched gateway payment id.
+
+- **Pricing never offered the YouPI rail.** `/subscriptions/plans` now reports
+  `youpi.available` (both switches plus credentials), and the pricing page
+  routes to `/payments/pay/youpi/checkout` when it is actually available. With
+  `PAYMENTS_ENABLED=false` the UI remains "Checkout unavailable".
+
 - **Production web bundle called `http://127.0.0.1:4100` from visitors'
   browsers.** `NEXT_PUBLIC_API_URL` is inlined at build time, and the developer
   value in `apps/web/.env.local` reached the production bundle, so every API

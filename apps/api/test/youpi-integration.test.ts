@@ -19,7 +19,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { getDb } from '../src/db/client.js';
-import { payments, subscriptions } from '../src/db/schema/index.js';
+import { payments, subscriptions, webhookEvents } from '../src/db/schema/index.js';
 import { createTestContext, registerVerifiedUser, type TestContext, type RegisteredUser } from './helpers.js';
 import { buildApp } from '../src/app.js';
 import type { Env } from '../src/config/env.js';
@@ -275,7 +275,7 @@ describe('youpi webhook security', () => {
   it('does not re-process a duplicate delivery id', async () => {
     const order = await createPendingOrder();
     const deliveryId = 'dup-1';
-    const body = JSON.stringify({ event: 'RECONCILED', deliveryId, timestamp: Date.now(), orderId: order.orderRef, amountPaise: order.amountMinor, currency: 'INR', paymentId: 'yp_dup', settlementState: 'RECONCILED' });
+    const body = JSON.stringify({ event: 'RECONCILED', deliveryId, timestamp: Date.now(), orderId: order.orderRef, amountPaise: order.amountMinor, currency: 'INR', paymentId: order.gatewayPaymentId, settlementState: 'RECONCILED' });
     const first = await ctx.app.inject({ method: 'POST', url: '/api/payments/webhook/youpi', headers: signedHeaders(body, { event: 'RECONCILED', deliveryId }), payload: body });
     expect(first.statusCode).toBe(200);
     const second = await ctx.app.inject({ method: 'POST', url: '/api/payments/webhook/youpi', headers: signedHeaders(body, { event: 'RECONCILED', deliveryId }), payload: body });
@@ -311,6 +311,170 @@ describe('youpi webhook security', () => {
     expect(row!.paidAt).toBeTruthy();
     const subs = await db.select().from(subscriptions).where(eq(subscriptions.userId, user.userId));
     expect(subs.some((s) => s.status === 'active')).toBe(true);
+  });
+});
+
+describe('youpi webhook lifecycle', () => {
+  it.each(['FAILED', 'EXPIRED', 'CANCELLED'] as const)(
+    '%s closes a pending local payment without creating a subscription',
+    async (event) => {
+      const order = await createPendingOrder();
+      const deliveryId = `lifecycle-${event.toLowerCase()}`;
+      const body = JSON.stringify({
+        event,
+        deliveryId,
+        timestamp: Date.now(),
+        orderId: order.orderRef,
+        amountPaise: order.amountMinor,
+        currency: 'INR',
+        settlementState: 'NOT_APPLICABLE',
+      });
+
+      const res = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/payments/webhook/youpi',
+        headers: signedHeaders(body, { event, deliveryId }),
+        payload: body,
+      });
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { localStatus?: string }).localStatus).toBe('failed');
+
+      const db = getDb();
+      const [row] = await db.select().from(payments).where(eq(payments.orderRef, order.orderRef)).limit(1);
+      expect(row!.status).toBe('failed');
+      expect(row!.failureReason).toBe(`youpi_${event.toLowerCase()}`);
+      expect(row!.subscriptionId).toBeNull();
+
+      const [eventRow] = await db.select().from(webhookEvents).where(eq(webhookEvents.eventId, deliveryId)).limit(1);
+      expect(eventRow!.status).toBe('ignored');
+    },
+  );
+
+  it('does not activate on OBSERVED_SUCCESS and activates only after RECONCILED', async () => {
+    const order = await createPendingOrder();
+    const observedBody = JSON.stringify({
+      event: 'OBSERVED_SUCCESS',
+      deliveryId: 'observed-before-reconcile',
+      timestamp: Date.now(),
+      orderId: order.orderRef,
+      paymentId: order.gatewayPaymentId,
+      amountPaise: order.amountMinor,
+      currency: 'INR',
+      settlementState: 'NOT_RECONCILED',
+    });
+    const observed = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/payments/webhook/youpi',
+      headers: signedHeaders(observedBody, { event: 'OBSERVED_SUCCESS', deliveryId: 'observed-before-reconcile' }),
+      payload: observedBody,
+    });
+    expect(observed.statusCode).toBe(200);
+
+    const db = getDb();
+    const [afterObservation] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.orderRef, order.orderRef))
+      .limit(1);
+    expect(afterObservation!.status).toBe('pending');
+    expect(afterObservation!.subscriptionId).toBeNull();
+
+    const reconciledBody = JSON.stringify({
+      event: 'RECONCILED',
+      deliveryId: 'reconciled-after-observation',
+      timestamp: Date.now(),
+      orderId: order.orderRef,
+      paymentId: order.gatewayPaymentId,
+      amountPaise: order.amountMinor,
+      currency: 'INR',
+      utr: '123456789014',
+      settlementState: 'RECONCILED',
+    });
+    const reconciled = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/payments/webhook/youpi',
+      headers: signedHeaders(reconciledBody, { event: 'RECONCILED', deliveryId: 'reconciled-after-observation' }),
+      payload: reconciledBody,
+    });
+    expect(reconciled.statusCode).toBe(200);
+
+    const [afterReconcile] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.orderRef, order.orderRef))
+      .limit(1);
+    expect(afterReconcile!.status).toBe('succeeded');
+    expect(afterReconcile!.subscriptionId).toBeTruthy();
+  });
+
+  it('rejects a reconciled event that names a different gateway payment', async () => {
+    const order = await createPendingOrder();
+    const deliveryId = 'gateway-payment-mismatch';
+    const body = JSON.stringify({
+      event: 'RECONCILED',
+      deliveryId,
+      timestamp: Date.now(),
+      orderId: order.orderRef,
+      paymentId: 'yp_not_this_order',
+      amountPaise: order.amountMinor,
+      currency: 'INR',
+      settlementState: 'RECONCILED',
+    });
+
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/payments/webhook/youpi',
+      headers: signedHeaders(body, { event: 'RECONCILED', deliveryId }),
+      payload: body,
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: { code: 'GATEWAY_PAYMENT_MISMATCH' } });
+
+    const db = getDb();
+    const [row] = await db.select().from(payments).where(eq(payments.orderRef, order.orderRef)).limit(1);
+    expect(row!.status).toBe('pending');
+    const [eventRow] = await db.select().from(webhookEvents).where(eq(webhookEvents.eventId, deliveryId)).limit(1);
+    expect(eventRow!.status).toBe('ignored');
+  });
+
+  it('reprocesses a retry whose first attempt stopped before completion', async () => {
+    const order = await createPendingOrder();
+    const deliveryId = 'retry-after-partial-failure';
+    await getDb().insert(webhookEvents).values({
+      provider: 'youpi',
+      eventId: deliveryId,
+      eventType: 'RECONCILED',
+      signatureValid: true,
+      payloadHash: 'seeded-partial-failure',
+      payload: {},
+      status: 'received',
+      note: 'simulated crash before processing',
+    });
+
+    const body = JSON.stringify({
+      event: 'RECONCILED',
+      deliveryId,
+      timestamp: Date.now(),
+      orderId: order.orderRef,
+      paymentId: order.gatewayPaymentId,
+      amountPaise: order.amountMinor,
+      currency: 'INR',
+      utr: '123456789013',
+      settlementState: 'RECONCILED',
+    });
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/payments/webhook/youpi',
+      headers: signedHeaders(body, { event: 'RECONCILED', deliveryId }),
+      payload: body,
+    });
+    expect(res.statusCode).toBe(200);
+
+    const db = getDb();
+    const [row] = await db.select().from(payments).where(eq(payments.orderRef, order.orderRef)).limit(1);
+    expect(row!.status).toBe('succeeded');
+    const [eventRow] = await db.select().from(webhookEvents).where(eq(webhookEvents.eventId, deliveryId)).limit(1);
+    expect(eventRow!.status).toBe('processed');
   });
 });
 
@@ -367,6 +531,30 @@ describe('youpi checkout gating', () => {
     const order = await createPendingOrder();
     expect(order.checkoutUrl).toContain('/checkout/');
     expect(gatewayRequests).toBe(requestsBefore + 1);
+  });
+
+  it('advertises YouPI checkout only when both flags are on', async () => {
+    await withEnv({ PAYMENTS_ENABLED: false, YOUPI_ENABLED: true }, async (app) => {
+      const res = await app.inject({ method: 'GET', url: '/api/subscriptions/plans' });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        paymentsEnabled: boolean;
+        youpi: { enabled: boolean; configured: boolean; available: boolean };
+      };
+      expect(body.paymentsEnabled).toBe(false);
+      expect(body.youpi).toMatchObject({ enabled: true, configured: true, available: false });
+    });
+
+    await withEnv({ PAYMENTS_ENABLED: true, YOUPI_ENABLED: true }, async (app) => {
+      const res = await app.inject({ method: 'GET', url: '/api/subscriptions/plans' });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        paymentsEnabled: boolean;
+        youpi: { enabled: boolean; configured: boolean; available: boolean };
+      };
+      expect(body.paymentsEnabled).toBe(true);
+      expect(body.youpi).toMatchObject({ enabled: true, configured: true, available: true });
+    });
   });
 });
 

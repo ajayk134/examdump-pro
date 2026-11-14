@@ -21,6 +21,7 @@ import { getDb } from '../db/client.js';
 import { payments, users, webhookEvents } from '../db/schema/index.js';
 import {
   activateMockPlan,
+  applyYoupiNonSettlementEvent,
   createPaymentOrder,
   getInvoice,
   listInvoices,
@@ -68,6 +69,14 @@ export function requireRawBody(request: { rawBody?: unknown }): string {
   return raw;
 }
 
+/** Record the outcome of an authenticated YouPI delivery for operators. */
+async function markYoupiEvent(id: string, status: string, note: string): Promise<void> {
+  await db()
+    .update(webhookEvents)
+    .set({ status, note, processedAt: new Date() })
+    .where(eq(webhookEvents.id, id));
+}
+
 export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<void> {
   app.get('/methods', async (request, reply) => {
     const auth = await requireAuth(request, env).catch(() => null);
@@ -96,8 +105,13 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
           adapter: availability.adapterId,
           methods: availability.methods,
           reason: availability.reason,
-          // YouPI-PG standalone gateway: opt-in flag + whether credentials exist.
-          youpi: { enabled: Boolean(env.YOUPI_ENABLED), configured: youpiConfigured(env) },
+          // YouPI-PG standalone gateway: opt-in flag, credentials and whether a
+          // checkout can actually be created right now (both flags required).
+          youpi: {
+            enabled: Boolean(env.YOUPI_ENABLED),
+            configured: youpiConfigured(env),
+            available: youpiCheckoutAvailability(env) === 'ok',
+          },
         };
       })(),
     });
@@ -300,6 +314,9 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
 
       // Authenticated delivery: deduplicate on (provider, eventId), where the
       // YouPI delivery id makes retries of one event collapse to a single row.
+      // Only a delivery already recorded as processed/ignored is a duplicate;
+      // one left at `received` means an earlier attempt failed part-way, so the
+      // retry must be allowed to finish instead of being acknowledged forever.
       const eventId = deliveryId || payloadHash;
       const inserted = await db()
         .insert(webhookEvents)
@@ -316,35 +333,77 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
         .onConflictDoNothing()
         .returning({ id: webhookEvents.id });
 
-      if (inserted.length === 0) {
-        // Same (provider, eventId) seen before — acknowledge without reprocessing.
-        return reply.send({ received: true, duplicate: true });
+      let eventRowId = inserted[0]?.id;
+      if (!eventRowId) {
+        const [existing] = await db()
+          .select({ id: webhookEvents.id, status: webhookEvents.status })
+          .from(webhookEvents)
+          .where(and(eq(webhookEvents.provider, 'youpi'), eq(webhookEvents.eventId, eventId)))
+          .limit(1);
+        if (!existing) {
+          return reply
+            .code(500)
+            .send({ error: { code: 'PROCESSING_FAILED', message: 'Webhook processing failed.' } });
+        }
+        if (existing.status !== 'received') {
+          return reply.send({ received: true, duplicate: true });
+        }
+        eventRowId = existing.id;
       }
 
-      // Never fulfil on anything but a reconciled bank statement.
-      if (eventType !== 'RECONCILED') {
+      const normalizedEvent = eventType.toUpperCase();
+
+      // Never fulfil on anything but a reconciled bank statement. Failure
+      // events still close a pending local order so it does not linger forever.
+      if (normalizedEvent !== 'RECONCILED') {
+        const orderId = String(payload.orderId ?? '');
+        let localStatus = 'ignored';
+        if (orderId && ['FAILED', 'EXPIRED', 'CANCELLED'].includes(normalizedEvent)) {
+          const [stored] = await db().select().from(payments).where(eq(payments.orderRef, orderId)).limit(1);
+          if (stored) localStatus = await applyYoupiNonSettlementEvent(stored.id, normalizedEvent);
+        }
+        await markYoupiEvent(eventRowId, 'ignored', `youpi:${normalizedEvent.toLowerCase()}:${localStatus}`);
         return reply.send({
           received: true,
           ignored: true,
           event: eventType,
+          localStatus,
           note: 'Not a settlement event; recorded only.',
         });
       }
+
       const settlementState = String(payload.settlementState ?? '');
       if (settlementState !== 'RECONCILED') {
         request.log.warn({ eventType, settlementState }, 'youpi.webhook.non_reconciled');
+        await markYoupiEvent(eventRowId, 'ignored', 'settlement_state_not_reconciled');
         return reply.send({ received: true, ignored: true, note: 'settlementState is not RECONCILED.' });
       }
 
       const orderId = String(payload.orderId ?? '');
       if (!orderId) {
+        await markYoupiEvent(eventRowId, 'ignored', 'missing_order');
         return reply.code(400).send({ error: { code: 'MISSING_ORDER', message: 'Webhook has no orderId.' } });
       }
 
       const [stored] = await db().select().from(payments).where(eq(payments.orderRef, orderId)).limit(1);
       if (!stored) {
         request.log.warn({ orderId }, 'youpi.webhook.unknown_order');
+        await markYoupiEvent(eventRowId, 'ignored', 'unknown_order');
         return reply.code(404).send({ error: { code: 'UNKNOWN_ORDER', message: 'No matching order.' } });
+      }
+
+      // A signed event for one order must not name a different gateway payment.
+      const gatewayPaymentId =
+        typeof payload.paymentId === 'string' && payload.paymentId ? payload.paymentId : null;
+      if (gatewayPaymentId && stored.providerPaymentId && gatewayPaymentId !== stored.providerPaymentId) {
+        request.log.error(
+          { orderId, expected: stored.providerPaymentId, received: gatewayPaymentId },
+          'youpi.webhook.gateway_payment_mismatch',
+        );
+        await markYoupiEvent(eventRowId, 'ignored', 'gateway_payment_mismatch');
+        return reply
+          .code(409)
+          .send({ error: { code: 'GATEWAY_PAYMENT_MISMATCH', message: 'Gateway payment does not match the order.' } });
       }
 
       const paidPaise = Number(payload.amountPaise);
@@ -354,6 +413,7 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
           { orderId, expected: stored.amountMinor, received: payload.amountPaise },
           'youpi.webhook.amount_mismatch',
         );
+        await markYoupiEvent(eventRowId, 'ignored', 'amount_mismatch');
         return reply
           .code(409)
           .send({ error: { code: 'AMOUNT_MISMATCH', message: 'Amount does not match the order.' } });
@@ -363,6 +423,7 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
           { orderId, expected: stored.currency, received: currency },
           'youpi.webhook.currency_mismatch',
         );
+        await markYoupiEvent(eventRowId, 'ignored', 'currency_mismatch');
         return reply
           .code(409)
           .send({ error: { code: 'CURRENCY_MISMATCH', message: 'Currency does not match the order.' } });
@@ -370,8 +431,7 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
 
       const outcome = await settlePayment(stored.id, {
         gatewayStatus: 'succeeded',
-        providerPaymentId:
-          typeof payload.paymentId === 'string' ? payload.paymentId : stored.providerPaymentId ?? undefined,
+        providerPaymentId: gatewayPaymentId ?? stored.providerPaymentId ?? undefined,
         source: 'upi',
       }).catch((err) => {
         request.log.error({ err, orderId }, 'youpi.webhook.settle_failed');
@@ -379,10 +439,12 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
       });
 
       if (!outcome) {
+        // Leave the event at `received` so YouPI's retry can finish processing.
         return reply
           .code(500)
           .send({ error: { code: 'PROCESSING_FAILED', message: 'Webhook processing failed.' } });
       }
+      await markYoupiEvent(eventRowId, 'processed', `youpi:${outcome.status}`);
       return reply.send({ received: true, outcome });
     },
   );

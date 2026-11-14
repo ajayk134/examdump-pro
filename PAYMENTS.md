@@ -89,7 +89,15 @@ always wins):
 - `POST /api/payments/webhook/youpi` — HMAC-SHA256 over the **raw bytes**
   (`X-Gateway-Signature-V2`, timestamped), replay window
   (`YOUPI_WEBHOOK_TOLERANCE_SECONDS`), idempotency via
-  `webhook_events (provider, event_id)`, amount/currency/order validation.
+  `webhook_events (provider, event_id)`, amount/currency/order/gateway-payment
+  validation. A delivery left at `received` after a crash is reprocessed on
+  retry; only `processed`/`ignored` deliveries are acknowledged as duplicates.
+- Signed `FAILED`, `EXPIRED` and `CANCELLED` events close a still-pending local
+  payment as `failed` (reason `youpi_<event>`) without creating a subscription.
+
+**Account:** ExamDump uses YouPI receiving account
+`8149d7a5-2a14-4c1d-88da-dabf3573fd2a` — UPI `examdump@axl`, payee
+`Exam Dump`. The old `examdumptest@upi` placeholder is inactive.
 
 **Fulfilment rule (non-negotiable):** only a `RECONCILED` event with
 `settlementState: RECONCILED` reaches `settlePayment`. `OBSERVED_SUCCESS` (a bank

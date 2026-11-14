@@ -29,6 +29,11 @@ are inherently interactive).
   credential.
 - **Dark and light parity.** Use Tailwind tokens, not hardcoded colours.
 - **Never say "student".** Use "you", "candidate" or "professional".
+- **Checkout follows server availability.** Pricing uses
+  `youpi.available` from `/subscriptions/plans` and calls
+  `/payments/pay/youpi/checkout` only when both payment flags and YouPI
+  credentials are live; otherwise it keeps the existing gateway/mock path.
+  Never infer payment availability from a local flag.
 
 ## Build
 

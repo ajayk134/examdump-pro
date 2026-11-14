@@ -23,6 +23,7 @@ import {
 import { resolveEntitlements } from '../services/entitlement.service.js';
 import { getSettings } from '../services/settings.service.js';
 import { checkoutReady, hyperswitchConfigured, webhookConfigured } from '../services/hyperswitch.client.js';
+import { youpiCheckoutAvailability, youpiConfigured } from '../services/payments/youpi.client.js';
 
 /** Resolve exam keys to catalogue rows so clients can render titles. */
 async function resolveExams(examKeys: string[]) {
@@ -42,12 +43,13 @@ async function resolveExams(examKeys: string[]) {
 export async function subscriptionRoutes(app: FastifyInstance, env: Env): Promise<void> {
   app.get('/plans', async (_request, reply) => {
     const plans = await listPlans();
+    const youpiAvailable = youpiCheckoutAvailability(env) === 'ok';
     return reply.send({
       plans,
       currency: env.DEFAULT_CURRENCY,
       // Live payments are only advertised when the gateway + webhook secrets
       // are actually present; otherwise the UI shows a clear unavailable state.
-      paymentsEnabled: checkoutReady(env),
+      paymentsEnabled: checkoutReady(env) || youpiAvailable,
       gateway: {
         provider: checkoutReady(env) ? 'hyperswitch' : 'none',
         configured: hyperswitchConfigured(env),
@@ -55,6 +57,11 @@ export async function subscriptionRoutes(app: FastifyInstance, env: Env): Promis
         publishableKey: checkoutReady(env) ? (env.HYPERSWITCH_API_KEY ?? '') : '',
         merchantId: env.HYPERSWITCH_MERCHANT_ID ?? '',
         baseUrl: env.HYPERSWITCH_BASE_URL ?? '',
+      },
+      youpi: {
+        enabled: Boolean(env.YOUPI_ENABLED),
+        configured: youpiConfigured(env),
+        available: youpiAvailable,
       },
       freeQuestionsPerExam: (await getSettings(env)).freeQuestionsPerExam,
       // True only when simulated activation is genuinely reachable; never in
@@ -83,7 +90,7 @@ export async function subscriptionRoutes(app: FastifyInstance, env: Env): Promis
       grants: grants.filter((g) => !g.revokedAt),
       entitlements,
       activeExams,
-      paymentsEnabled: checkoutReady(env),
+      paymentsEnabled: checkoutReady(env) || youpiCheckoutAvailability(env) === 'ok',
     });
   });
 

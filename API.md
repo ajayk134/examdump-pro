@@ -111,7 +111,7 @@ quota via `AI_DAILY_LIMIT_PREMIUM`. The provider key never leaves the server.
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/api/payments/methods` | availability (reflects `PAYMENTS_ENABLED`) |
+| GET | `/api/payments/methods` | availability; `pay.youpi.available` requires both flags and credentials |
 | POST | `/api/payments/checkout` | 503 when payments disabled |
 | GET | `/api/payments/invoices`, `/invoices/:id` | history |
 | GET | `/api/payments/pay/:id/status` | provider status |
@@ -122,8 +122,13 @@ quota via `AI_DAILY_LIMIT_PREMIUM`. The provider key never leaves the server.
 | POST | `/api/payments/webhook/youpi` | HMAC-SHA256 (raw body); fulfils only on `RECONCILED` |
 
 Webhook routes accept no authentication header — they authenticate by signature
-over the raw body. The YouPI webhook additionally requires a fresh timestamp and
-is idempotent on `X-Gateway-Delivery-Id`; only `RECONCILED` reaches settlement.
+over the raw body. The YouPI webhook additionally requires a fresh timestamp,
+validates order/amount/currency/gateway payment, and is idempotent on
+`X-Gateway-Delivery-Id`; only `RECONCILED` reaches settlement. `FAILED`,
+`EXPIRED` and `CANCELLED` close a pending payment without fulfilment, while
+`OBSERVED_SUCCESS` and `MANUAL_REVIEW` are recorded only. `GET
+/api/subscriptions/plans` exposes `youpi.available` so the pricing page only
+offers UPI when a checkout can actually be created.
 
 ### UPI — `upi.ts`, `upi-ingest.ts`
 

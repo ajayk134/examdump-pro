@@ -679,6 +679,43 @@ export async function settlePayment(
   return result;
 }
 
+/**
+ * Apply a signed YouPI lifecycle event that is not a settlement.
+ *
+ * FAILED, EXPIRED and CANCELLED close a still-pending local payment without
+ * granting anything. OBSERVED_SUCCESS and MANUAL_REVIEW are deliberately not
+ * handled here: they are recorded for operators but never change entitlement.
+ */
+export async function applyYoupiNonSettlementEvent(
+  paymentId: string,
+  eventType: string,
+): Promise<'failed' | 'ignored'> {
+  const normalized = eventType.toUpperCase();
+  if (!['FAILED', 'EXPIRED', 'CANCELLED'].includes(normalized)) return 'ignored';
+
+  const db = getDb();
+  const [updated] = await db
+    .update(payments)
+    .set({
+      status: 'failed',
+      failureReason: `youpi_${normalized.toLowerCase()}`,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(payments.id, paymentId), eq(payments.status, 'pending')))
+    .returning({ id: payments.id });
+
+  if (!updated) return 'ignored';
+
+  await recordAudit({
+    actorId: null,
+    action: 'payment.webhook_received',
+    targetType: 'payment',
+    targetId: paymentId,
+    metadata: { provider: 'youpi', status: normalized, source: 'webhook' },
+  });
+  return 'failed';
+}
+
 interface ReceiptContext {
   userId: string;
   planName: string;

@@ -112,6 +112,12 @@ Nginx vhost `youpi-pg.conf` is independent of `examdump.conf`.
      via idempotent `settlePayment(...,{source:'upi'})`.
 
 `OBSERVED_SUCCESS` and `MANUAL_REVIEW` are recorded and ignored — never fulfil.
+Signed `FAILED`, `EXPIRED` and `CANCELLED` events close a still-pending local
+payment with `status=failed` and a `youpi_<event>` failure reason; they never
+create a subscription. Every authenticated delivery is marked `processed` or
+`ignored` on `webhook_events` for admin monitoring. A delivery left at
+`received` after a crash is reprocessed on retry rather than acknowledged as a
+duplicate.
 
 ## 8. Payment behaviour audit (YouPI)
 
@@ -127,7 +133,16 @@ Nginx vhost `youpi-pg.conf` is independent of `examdump.conf`.
 ## 9. Merchant setup
 
 - Merchant: `ExamDump Pro` (`11111111-1111-1111-1111-111111111111`, slug
-  `examdump`), receiving account `examdumptest@upi` (placeholder — no real VPA).
+  `examdump`).
+- Active receiving account: `8149d7a5-2a14-4c1d-88da-dabf3573fd2a`,
+  UPI `examdump@axl`, payee `Exam Dump`.
+- The previous placeholder `11111111-1111-1111-1111-111111111112`
+  (`examdumptest@upi`) is inactive. Its historical synthetic sessions and Gmail
+  observations remain attached to it for audit but cannot be selected for a new
+  checkout.
+- Gmail observer `RECEIVING_ACCOUNT_ID` is bound to
+  `8149d7a5-2a14-4c1d-88da-dabf3573fd2a` so observations and statement
+  reconciliation use the same account.
 - Webhook target: `https://examtopicspro.duckdns.org/api/payments/webhook/youpi`.
 - Credentials live only in the two env files above; never in Git, logs or chat.
 
@@ -173,6 +188,10 @@ sudo systemctl restart youpi-payment-api youpi-checkout youpi-admin youpi-gmail
   statement. Not suitable for unattended real-money fulfilment.
 - `ALLOW_TEST_AUTOACTIVATE=true` and `YOUPI_ALLOW_DEV_TOOLS=true` are set **for
   testing only** and must be turned off before any real use.
+- There is no automated refund/chargeback rail. Refunds and disputes require an
+  operator process outside YouPI and an independent bank confirmation.
+- The receiving account's control by the intended merchant must be confirmed
+  with the bank/UPI provider. A database assignment is not proof of ownership.
 - `YOUPI_ENABLED=true` while `PAYMENTS_ENABLED=false` is the current production
   configuration: checkout is correctly blocked with `PAYMENTS_DISABLED` and no
   gateway order is created. Signed webhooks remain active so any order created

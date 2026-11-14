@@ -26,6 +26,7 @@ interface PlansResponse {
   mockPayments: boolean;
   freeQuestionsPerExam: number;
   currency: string;
+  youpi?: { enabled: boolean; configured: boolean; available: boolean };
 }
 
 interface MeResponse {
@@ -52,6 +53,7 @@ export default function PricingPage() {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
   const [paymentsEnabled, setPaymentsEnabled] = useState(false);
+  const [youpiAvailable, setYoupiAvailable] = useState(false);
   const [mockPayments, setMockPayments] = useState(false);
   const [freeQuestions, setFreeQuestions] = useState(5);
 
@@ -69,12 +71,13 @@ export default function PricingPage() {
   const plan = useMemo(() => plans?.find((p) => p.id === selectedPlan) ?? null, [plans, selectedPlan]);
   const quota = plan?.scope === 'all' ? 0 : plan?.scope === 'multi' ? plan.examQuota || 3 : 1;
   const needsExams = plan ? plan.scope !== 'all' : false;
-  const checkoutAvailable = paymentsEnabled || mockPayments;
+  const checkoutAvailable = paymentsEnabled || youpiAvailable || mockPayments;
 
   const load = useCallback(async () => {
     const data = await get<PlansResponse>('/subscriptions/plans');
     setPlans(data.plans);
     setPaymentsEnabled(data.paymentsEnabled);
+    setYoupiAvailable(Boolean(data.youpi?.available));
     setMockPayments(data.mockPayments);
     setFreeQuestions(data.freeQuestionsPerExam ?? 5);
     if (user) setMe(await get<MeResponse>('/subscriptions/me'));
@@ -168,6 +171,22 @@ export default function PricingPage() {
     }
     setBusy(true);
     try {
+      if (youpiAvailable) {
+        // UPI checkout on YouPI-PG. The API refuses (503) unless both the
+        // deployment-wide payment switch and the YouPI switch are on.
+        const session = await post<CheckoutSession>('/payments/pay/youpi/checkout', {
+          planId: selectedPlan,
+          examKeys: selectedExams.map((e) => e.key),
+          ...(coupon.trim() ? { couponCode: coupon.trim() } : {}),
+        });
+        if (session.checkoutUrl) {
+          window.location.href = session.checkoutUrl;
+          return;
+        }
+        toast('Checkout could not be opened. Please try again.', 'error');
+        return;
+      }
+
       if (paymentsEnabled) {
         const session = await post<CheckoutSession>('/payments/checkout', {
           planId: selectedPlan,
@@ -414,10 +433,14 @@ export default function PricingPage() {
               onClick={() => void startCheckout()}
             >
               <IconSparkles className="h-4 w-4" />
-              {paymentsEnabled ? 'Continue to payment' : mockPayments ? 'Activate (test mode)' : 'Checkout unavailable'}
+              {paymentsEnabled || youpiAvailable ? 'Continue to payment' : mockPayments ? 'Activate (test mode)' : 'Checkout unavailable'}
             </button>
             {!checkoutAvailable ? (
               <span className="text-xs text-content-muted">Payments are not enabled on this deployment.</span>
+            ) : youpiAvailable ? (
+              <span className="text-xs text-content-muted">
+                UPI via YouPI-PG. Access is granted only after independent bank-statement reconciliation.
+              </span>
             ) : !paymentsEnabled ? (
               <span className="text-xs text-content-muted">No charge is made in test mode.</span>
             ) : (

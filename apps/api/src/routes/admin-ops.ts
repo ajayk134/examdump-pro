@@ -602,7 +602,11 @@ export async function adminOpsRoutes(app: FastifyInstance, env: Env): Promise<vo
     await requirePermission(request, env, 'system.health');
     const { mailConfigured } = await import('../services/mail/mail.service.js');
     const { resolvePaymentAdapter } = await import('../services/payments/registry.js');
+    const { youpiCheckoutAvailability, youpiConfigured } = await import(
+      '../services/payments/youpi.client.js'
+    );
     const pay = resolvePaymentAdapter(env);
+    const youpiAvailability = youpiCheckoutAvailability(env);
 
     const recent = await getDb()
       .select({
@@ -634,6 +638,11 @@ export async function adminOpsRoutes(app: FastifyInstance, env: Env): Promise<vo
         methods: pay.methods,
         minAmountMinor: env.PAYMENT_MIN_AMOUNT_MINOR,
         maxAmountMinor: env.PAYMENT_MAX_AMOUNT_MINOR,
+        youpi: {
+          enabled: Boolean(env.YOUPI_ENABLED),
+          configured: youpiConfigured(env),
+          availability: youpiAvailability,
+        },
       },
       recentMail: recent,
     });
