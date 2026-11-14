@@ -118,7 +118,7 @@ quota via `AI_DAILY_LIMIT_PREMIUM`. The provider key never leaves the server.
 | GET | `/api/payments/pay/:id/refundable` | remaining refundable amount |
 | POST | `/api/payments/webhook/hyperswitch` | HMAC verified |
 | POST | `/api/payments/webhook/razorpay` | HMAC verified |
-| POST | `/api/payments/pay/youpi/checkout` | YouPI-PG checkout; gated by `YOUPI_ENABLED` |
+| POST | `/api/payments/pay/youpi/checkout` | YouPI-PG checkout; requires both `PAYMENTS_ENABLED=true` and `YOUPI_ENABLED=true` |
 | POST | `/api/payments/webhook/youpi` | HMAC-SHA256 (raw body); fulfils only on `RECONCILED` |
 
 Webhook routes accept no authentication header — they authenticate by signature

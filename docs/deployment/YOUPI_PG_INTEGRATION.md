@@ -95,9 +95,12 @@ Nginx vhost `youpi-pg.conf` is independent of `examdump.conf`.
 
 ## 7. Merchant integration (ExamDump side)
 
-- `POST /api/payments/pay/youpi/checkout` (auth) → server-quoted amount →
-  YouPI `MANUAL_UPI` session → `payments` row (`provider='upi'`,
-  `metadata.provider='youpi'`) → returns `checkoutUrl`.
+- `POST /api/payments/pay/youpi/checkout` (auth) → **both**
+  `PAYMENTS_ENABLED=true` and `YOUPI_ENABLED=true` are required (the
+  deployment-wide switch wins; otherwise 503 before quoting, auth or any
+  gateway call) → server-quoted amount → YouPI `MANUAL_UPI` session →
+  `payments` row (`provider='upi'`, `metadata.provider='youpi'`) → returns
+  `checkoutUrl`.
 - `POST /api/payments/webhook/youpi` (no auth header; signature-authenticated):
   1. HMAC-SHA256 over the **raw body** with `YOUPI_WEBHOOK_SECRET`
      (`X-Gateway-Signature-V2`, timestamped; V1 fallback).
@@ -170,8 +173,11 @@ sudo systemctl restart youpi-payment-api youpi-checkout youpi-admin youpi-gmail
   statement. Not suitable for unattended real-money fulfilment.
 - `ALLOW_TEST_AUTOACTIVATE=true` and `YOUPI_ALLOW_DEV_TOOLS=true` are set **for
   testing only** and must be turned off before any real use.
-- The ExamDump checkout path is enabled via `YOUPI_ENABLED=true` while
-  `PAYMENTS_ENABLED=false`. No bank credentials exist on either side.
+- `YOUPI_ENABLED=true` while `PAYMENTS_ENABLED=false` is the current production
+  configuration: checkout is correctly blocked with `PAYMENTS_DISABLED` and no
+  gateway order is created. Signed webhooks remain active so any order created
+  before the switch was turned off can still settle after reconciliation. No
+  bank credentials exist on either side.
 - YouPI's own `SECURITY_AUDIT.md` marks it "EXPERIMENTAL; NOT APPROVED FOR
   REAL-MONEY PRODUCTION".
 

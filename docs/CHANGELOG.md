@@ -35,6 +35,15 @@ All notable changes to ExamDump Pro.
 
 ### Fixed
 
+- **YouPI checkout was reachable while payments were disabled.**
+  `POST /api/payments/pay/youpi/checkout` was gated only by `YOUPI_ENABLED`, so
+  `YOUPI_ENABLED=true` + `PAYMENTS_ENABLED=false` still let a verified user
+  create a real gateway order. Creation now requires both switches, with
+  `PAYMENTS_ENABLED` checked first, and returns `503 PAYMENTS_DISABLED` before
+  authentication, quoting, any gateway request or any `payments` row. Signed
+  webhook verification and settlement of pre-existing orders are unchanged.
+  Covered in `test/youpi-integration.test.ts` for every flag combination.
+
 - **Production web bundle called `http://127.0.0.1:4100` from visitors'
   browsers.** `NEXT_PUBLIC_API_URL` is inlined at build time, and the developer
   value in `apps/web/.env.local` reached the production bundle, so every API

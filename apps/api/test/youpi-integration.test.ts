@@ -15,12 +15,19 @@
 import { createHmac } from 'node:crypto';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { getDb } from '../src/db/client.js';
 import { payments, subscriptions } from '../src/db/schema/index.js';
 import { createTestContext, registerVerifiedUser, type TestContext, type RegisteredUser } from './helpers.js';
-import { verifyYoupiWebhook, toRupees } from '../src/services/payments/youpi.client.js';
+import { buildApp } from '../src/app.js';
+import type { Env } from '../src/config/env.js';
+import {
+  verifyYoupiWebhook,
+  youpiCheckoutAvailability,
+  toRupees,
+} from '../src/services/payments/youpi.client.js';
 
 const WEBHOOK_SECRET = 'test-youpi-webhook-secret';
 process.env.YOUPI_ENABLED = 'true';
@@ -32,11 +39,13 @@ process.env.YOUPI_WEBHOOK_TOLERANCE_SECONDS = '300';
 let ctx: TestContext;
 let user: RegisteredUser;
 let gateway: { url: string; close: () => Promise<void> };
+let gatewayRequests = 0;
 
 function startStubGateway(): Promise<{ url: string; close: () => Promise<void> }> {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       if (req.method === 'POST' && req.url === '/api/v1/payments') {
+        gatewayRequests += 1;
         let body = '';
         req.on('data', (c) => (body += c));
         req.on('end', () => {
@@ -94,10 +103,35 @@ async function createPendingOrder(examKey?: string): Promise<{ orderRef: string;
   return { orderRef: body.orderRef, amountMinor: body.amountMinor, gatewayPaymentId: body.gatewayPaymentId, paymentRowId: body.paymentId, checkoutUrl: body.checkoutUrl };
 }
 
+/** Build a real app with one flag combination, sharing the test database. */
+async function withEnv<T>(
+  overrides: Partial<Env>,
+  fn: (app: FastifyInstance) => Promise<T>,
+): Promise<T> {
+  const app = await buildApp({ env: { ...ctx.env, ...overrides }, logger: false });
+  try {
+    return await fn(app);
+  } finally {
+    await app.close();
+  }
+}
+
+async function userPaymentCount(userId: string): Promise<number> {
+  const rows = await getDb()
+    .select({ id: payments.id })
+    .from(payments)
+    .where(eq(payments.userId, userId));
+  return rows.length;
+}
+
 beforeAll(async () => {
   gateway = await startStubGateway();
   process.env.YOUPI_API_URL = gateway.url;
-  ctx = await createTestContext();
+  // The successful checkout/webhook tests need live payments enabled. The
+  // deployment-wide kill switch is exercised explicitly further down.
+  ctx = await createTestContext({
+    envOverrides: { PAYMENTS_ENABLED: 'true', YOUPI_ENABLED: 'true' },
+  });
   user = await registerVerifiedUser(ctx.app);
 });
 
@@ -277,5 +311,99 @@ describe('youpi webhook security', () => {
     expect(row!.paidAt).toBeTruthy();
     const subs = await db.select().from(subscriptions).where(eq(subscriptions.userId, user.userId));
     expect(subs.some((s) => s.status === 'active')).toBe(true);
+  });
+});
+
+describe('youpi checkout gating', () => {
+  const flags = [
+    { label: 'payments disabled, youpi disabled', payments: false, youpi: false, code: 'PAYMENTS_DISABLED' },
+    { label: 'payments disabled, youpi enabled', payments: false, youpi: true, code: 'PAYMENTS_DISABLED' },
+    { label: 'payments enabled, youpi disabled', payments: true, youpi: false, code: 'YOUPI_DISABLED' },
+  ] as const;
+
+  it.each(flags)('blocks $label without creating an order or gateway request', async ({ payments, youpi, code }) => {
+    const rowsBefore = await userPaymentCount(user.userId);
+    const requestsBefore = gatewayRequests;
+
+    await withEnv({ PAYMENTS_ENABLED: payments, YOUPI_ENABLED: youpi }, async (app) => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/payments/pay/youpi/checkout',
+        headers: { cookie: user.cookie },
+        payload: { planId: 'all-30' },
+      });
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toMatchObject({ error: { code } });
+    });
+
+    expect(await userPaymentCount(user.userId)).toBe(rowsBefore);
+    expect(gatewayRequests).toBe(requestsBefore);
+  });
+
+  it('blocks a fully flagged deployment when the gateway is not configured', async () => {
+    const rowsBefore = await userPaymentCount(user.userId);
+    const requestsBefore = gatewayRequests;
+
+    await withEnv(
+      { PAYMENTS_ENABLED: true, YOUPI_ENABLED: true, YOUPI_WEBHOOK_SECRET: undefined },
+      async (app) => {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/api/payments/pay/youpi/checkout',
+          headers: { cookie: user.cookie },
+          payload: { planId: 'all-30' },
+        });
+        expect(res.statusCode).toBe(503);
+        expect(res.json()).toMatchObject({ error: { code: 'GATEWAY_NOT_CONFIGURED' } });
+      },
+    );
+
+    expect(await userPaymentCount(user.userId)).toBe(rowsBefore);
+    expect(gatewayRequests).toBe(requestsBefore);
+  });
+
+  it('allows checkout only when both flags are on and the gateway is configured', async () => {
+    const requestsBefore = gatewayRequests;
+    const order = await createPendingOrder();
+    expect(order.checkoutUrl).toContain('/checkout/');
+    expect(gatewayRequests).toBe(requestsBefore + 1);
+  });
+});
+
+describe('youpi checkout availability', () => {
+  const configured = {
+    YOUPI_API_URL: 'https://pay-api.test/v1',
+    YOUPI_MERCHANT_ID: '11111111-1111-1111-1111-111111111111',
+    YOUPI_MERCHANT_KEY: 'mk_live_test_key',
+    YOUPI_WEBHOOK_SECRET: 'test-secret',
+  };
+
+  it.each([
+    { payments: false, youpi: false, expected: 'payments_disabled' },
+    { payments: false, youpi: true, expected: 'payments_disabled' },
+    { payments: true, youpi: false, expected: 'youpi_disabled' },
+    { payments: true, youpi: true, expected: 'ok' },
+  ] as const)(
+    'PAYMENTS_ENABLED=$payments YOUPI_ENABLED=$youpi -> $expected',
+    ({ payments, youpi, expected }) => {
+      expect(
+        youpiCheckoutAvailability({
+          ...configured,
+          PAYMENTS_ENABLED: payments,
+          YOUPI_ENABLED: youpi,
+        }),
+      ).toBe(expected);
+    },
+  );
+
+  it('reports not_configured when either switch is on but credentials are missing', () => {
+    expect(
+      youpiCheckoutAvailability({
+        ...configured,
+        PAYMENTS_ENABLED: true,
+        YOUPI_ENABLED: true,
+        YOUPI_WEBHOOK_SECRET: undefined,
+      }),
+    ).toBe('not_configured');
   });
 });

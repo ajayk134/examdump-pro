@@ -16,7 +16,7 @@ import { checkoutSchema, changePlanSchema } from '@examdump/shared';
 import type { Env } from '../config/env.js';
 import { requireAuth } from '../lib/guards.js';
 import { parseOrThrow } from '../lib/validation.js';
-import { badRequest, forbidden, notFound, serviceUnavailable } from '../lib/errors.js';
+import { AppError, badRequest, forbidden, notFound, serviceUnavailable } from '../lib/errors.js';
 import { getDb } from '../db/client.js';
 import { payments, users, webhookEvents } from '../db/schema/index.js';
 import {
@@ -42,7 +42,13 @@ import { resolvePaymentAdapter, checkoutAvailable } from '../services/payments/r
 import { createCheckout, fetchGatewayStatus, refundableFor } from '../services/payments/checkout.service.js';
 import { razorpayAdapter } from '../services/payments/razorpay.adapter.js';
 import { assertAmountAllowed } from '../services/payments/adapter.js';
-import { createYoupiOrder, verifyYoupiWebhook, youpiConfigured } from '../services/payments/youpi.client.js';
+import {
+  createYoupiOrder,
+  verifyYoupiWebhook,
+  youpiCheckoutAvailability,
+  youpiCheckoutBlock,
+  youpiConfigured,
+} from '../services/payments/youpi.client.js';
 import { getSettings } from '../services/settings.service.js';
 
 /**
@@ -151,17 +157,19 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
    * deployment runs Gmail-only. No money is taken and no entitlement is granted
    * here; fulfilment happens only on a verified `RECONCILED` webhook.
    *
-   * The feature is gated by YOUPI_ENABLED (independent of PAYMENTS_ENABLED).
+   * The feature is gated by BOTH PAYMENTS_ENABLED and YOUPI_ENABLED. The
+   * deployment-wide switch wins: `YOUPI_ENABLED=true` alone must never create a
+   * gateway order. The gate runs before authentication, quoting and any gateway
+   * call, so a blocked request leaves no session, order or payment row behind.
    */
   app.post(
     '/pay/youpi/checkout',
     { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      if (!env.YOUPI_ENABLED) {
-        throw serviceUnavailable('YouPI-PG checkout is disabled on this deployment.');
-      }
-      if (!youpiConfigured(env)) {
-        throw serviceUnavailable('YouPI-PG is not configured.');
+      const availability = youpiCheckoutAvailability(env);
+      if (availability !== 'ok') {
+        const block = youpiCheckoutBlock(availability);
+        throw new AppError(503, block.code, block.message);
       }
       const { user } = await requireAuth(request, env);
       if (!user.emailVerified) throw forbidden('Verify your email address before paying.');

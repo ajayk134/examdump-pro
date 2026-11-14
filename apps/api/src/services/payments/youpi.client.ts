@@ -77,6 +77,67 @@ export function youpiConfigured(env: Env): boolean {
   );
 }
 
+/** Why a YouPI checkout can or cannot be created right now. */
+export type YoupiCheckoutAvailability =
+  | 'ok'
+  | 'payments_disabled'
+  | 'youpi_disabled'
+  | 'not_configured';
+
+export interface YoupiCheckoutFlags {
+  PAYMENTS_ENABLED: boolean;
+  YOUPI_ENABLED: boolean;
+  YOUPI_API_URL?: string;
+  YOUPI_MERCHANT_ID?: string;
+  YOUPI_MERCHANT_KEY?: string;
+  YOUPI_WEBHOOK_SECRET?: string;
+}
+
+export interface YoupiCheckoutBlock {
+  code: 'PAYMENTS_DISABLED' | 'YOUPI_DISABLED' | 'GATEWAY_NOT_CONFIGURED';
+  message: string;
+}
+
+/**
+ * Whether a new YouPI order may be created.
+ *
+ * Both switches are required. `PAYMENTS_ENABLED` is the deployment-wide kill
+ * switch, so it is checked first and always wins: `YOUPI_ENABLED=true` on its own
+ * must never open a checkout (that combination shipped once and let a verified
+ * user create a real gateway order while payments were meant to be off).
+ *
+ * This gate covers *creation* only. An order created before the switch was
+ * turned off still settles through the signed webhook, which is deliberate —
+ * refusing there would strand a customer who has already paid.
+ */
+export function youpiCheckoutAvailability(env: YoupiCheckoutFlags): YoupiCheckoutAvailability {
+  if (!env.PAYMENTS_ENABLED) return 'payments_disabled';
+  if (!env.YOUPI_ENABLED) return 'youpi_disabled';
+  if (
+    !env.YOUPI_API_URL ||
+    !env.YOUPI_MERCHANT_ID ||
+    !env.YOUPI_MERCHANT_KEY ||
+    !env.YOUPI_WEBHOOK_SECRET
+  ) {
+    return 'not_configured';
+  }
+  return 'ok';
+}
+
+/** Operator-facing reason shown when a checkout is refused. */
+export function youpiCheckoutBlock(
+  availability: Exclude<YoupiCheckoutAvailability, 'ok'>,
+): YoupiCheckoutBlock {
+  switch (availability) {
+    case 'payments_disabled':
+      return { code: 'PAYMENTS_DISABLED', message: 'Payments are disabled on this deployment.' };
+    case 'youpi_disabled':
+      return { code: 'YOUPI_DISABLED', message: 'YouPI-PG checkout is disabled on this deployment.' };
+    case 'not_configured':
+      return { code: 'GATEWAY_NOT_CONFIGURED', message: 'YouPI-PG is not configured.' };
+  }
+}
+
 /** Integer paise -> rupees string ("49900" -> "499.00"). Never a float. */
 export function toRupees(amountMinor: number): string {
   const sign = amountMinor < 0 ? '-' : '';
@@ -101,8 +162,12 @@ function constantTimeEqualHex(a: string, b: string): boolean {
  * bank statement unlocks fulfilment.
  */
 export async function createYoupiOrder(env: Env, input: YoupiOrderInput): Promise<YoupiOrder> {
-  if (!youpiConfigured(env)) {
-    throw new PaymentAdapterError('YouPI-PG is not configured.', 503, 'YOUPI_UNCONFIGURED');
+  // Defence in depth: the route refuses first, but a future caller must not be
+  // able to create a gateway order while either switch is off.
+  const availability = youpiCheckoutAvailability(env);
+  if (availability !== 'ok') {
+    const block = youpiCheckoutBlock(availability);
+    throw new PaymentAdapterError(block.message, 503, block.code);
   }
   const url = new URL('/api/v1/payments', env.YOUPI_API_URL);
   const controller = new AbortController();

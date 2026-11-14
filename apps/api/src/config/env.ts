@@ -191,12 +191,15 @@ const envSchema = z.object({
   /**
    * Opt-in switch for the YouPI-PG merchant integration.
    *
-   * Deliberately separate from PAYMENTS_ENABLED: this deployment runs YouPI-PG
-   * with no bank credentials and no paired observers, and it can only ever
-   * settle a UPI payment on a `RECONCILED` event, which YouPI emits after an
-   * operator imports a bank-statement line that matches the payment on
-   * receiving account, amount and reference. `OBSERVED_SUCCESS` and
-   * `MANUAL_REVIEW` never settle.
+   * Checkout requires BOTH this and `PAYMENTS_ENABLED`. The latter is the
+   * deployment-wide kill switch, so `YOUPI_ENABLED=true` on its own never
+   * creates an order; it only allows the existing signed webhook to settle an
+   * order that was created earlier. This deployment runs YouPI-PG with no bank
+   * credentials and no paired observers, and it can only ever settle a UPI
+   * payment on a `RECONCILED` event, which YouPI emits after an operator
+   * imports a bank-statement line that matches the payment on receiving
+   * account, amount and reference. `OBSERVED_SUCCESS` and `MANUAL_REVIEW`
+   * never settle.
    */
   YOUPI_ENABLED: booleanString,
   /** Base URL of the YouPI-PG merchant API, e.g. https://pay-api.examdumppay.duckdns.org */

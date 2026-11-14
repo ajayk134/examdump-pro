@@ -146,12 +146,14 @@ Deliverability guidance: `docs/infrastructure/email-deliverability-audit.md`.
 
 ## YouPI-PG (standalone gateway)
 
-Opt-in, independent of `PAYMENTS_ENABLED`. Fulfilment requires a `RECONCILED`
-bank-statement event.
+Opt-in. `POST /api/payments/pay/youpi/checkout` requires **both**
+`PAYMENTS_ENABLED=true` and `YOUPI_ENABLED=true`; `PAYMENTS_ENABLED=false` always
+blocks creation. Signed webhooks still settle orders created before a switch was
+turned off. Fulfilment requires a `RECONCILED` bank-statement event.
 
 | Variable | Req | Default | Notes |
 | --- | --- | --- | --- |
-| `YOUPI_ENABLED` | O | `false` | Enables `POST /api/payments/pay/youpi/checkout` |
+| `YOUPI_ENABLED` | O | `false` | Allows checkout when `PAYMENTS_ENABLED=true` |
 | `YOUPI_API_URL` | C | — | Merchant API base, e.g. `https://pay-api.examdumppay.duckdns.org` |
 | `YOUPI_MERCHANT_ID` | C/S | — | Issued by the gateway |
 | `YOUPI_MERCHANT_KEY` | C/S | — | `X-Merchant-Key`; server-side only |

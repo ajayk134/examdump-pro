@@ -85,7 +85,11 @@ export interface TestContext {
 }
 
 export async function createTestContext(
-  options: { loggerStream?: (line: string) => void } = {},
+  options: {
+    loggerStream?: (line: string) => void;
+    /** Per-suite environment overrides (applied after the safe test defaults). */
+    envOverrides?: Partial<Record<string, string>>;
+  } = {},
 ): Promise<TestContext> {
   const url = process.env.DATABASE_URL_TEST ?? DEFAULT_DATABASE_URL_TEST;
 
@@ -115,6 +119,7 @@ export async function createTestContext(
     SMTP_HOST: '',
     SMTP_USER: '',
     SMTP_PASS: '',
+    ...(options.envOverrides ?? {}),
   });
 
   await connectDB({ url, applicationName: 'examdump-api-test' });

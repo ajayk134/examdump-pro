@@ -232,6 +232,19 @@ describe('checkout endpoint behaviour', () => {
     expect(res.statusCode).toBe(503);
   });
 
+  it('refuses the legacy HyperSwitch checkout without writing a payment', async () => {
+    const user = await registerVerifiedUser(ctx.app);
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/payments/checkout',
+      headers: { cookie: user.cookie },
+      payload: { planId: 'all-30' },
+    });
+    expect(res.statusCode).toBe(503);
+    const rows = await getDb().select().from(payments).where(eq(payments.userId, user.userId));
+    expect(rows.length).toBe(0);
+  });
+
   it('reports pay availability through /payments/methods', async () => {
     const res = await ctx.app.inject({ method: 'GET', url: '/api/payments/methods' });
     expect(res.statusCode).toBe(200);

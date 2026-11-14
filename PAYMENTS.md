@@ -78,8 +78,9 @@ is not an acquirer and has **no bank API and no scheduled pull**: its status is
 driven by notification observers (Gmail / Android SMS) and by an operator
 importing a bank-statement CSV.
 
-Integration (all off by default, gated by `YOUPI_ENABLED`, independent of
-`PAYMENTS_ENABLED`):
+Integration (off by default; creating a checkout requires **both**
+`PAYMENTS_ENABLED=true` and `YOUPI_ENABLED=true`, and `PAYMENTS_ENABLED=false`
+always wins):
 
 - `POST /api/payments/pay/youpi/checkout` — server-quoted amount, creates a YouPI
   `MANUAL_UPI` session, stores `provider='upi'` + the gateway id in
