@@ -1,3 +1,5 @@
+import { resolveApiBase } from './api-base';
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -10,7 +12,7 @@ export class ApiError extends Error {
   }
 }
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
+const BASE = resolveApiBase(process.env.NEXT_PUBLIC_API_URL, process.env.NODE_ENV);
 
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';

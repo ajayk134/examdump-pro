@@ -17,6 +17,16 @@ export function ExamPicker({ mode }: { mode: 'practice' | 'mock' }) {
   const [results, setResults] = useState<Exam[] | null>(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  // `localStorage` does not exist during SSR, so reading recents while
+  // rendering produced different HTML on the server ([]) and on the client (a
+  // returning visitor's list). React then threw a hydration mismatch and
+  // re-rendered the whole picker. Read it after mount instead, like
+  // `app/exams/page.tsx` does.
+  const [recents, setRecents] = useState<string[]>([]);
+
+  useEffect(() => {
+    setRecents(getRecents());
+  }, []);
 
   const load = useCallback(
     (q: string) => {
@@ -34,8 +44,6 @@ export function ExamPicker({ mode }: { mode: 'practice' | 'mock' }) {
     const timer = setTimeout(() => load(query), query ? 300 : 0);
     return () => clearTimeout(timer);
   }, [query, load]);
-
-  const recents = getRecents();
 
   const toCard = (exam: Exam): ExamCardData => ({
     providerId: exam.providerId,

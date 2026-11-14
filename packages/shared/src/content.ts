@@ -112,6 +112,40 @@ export const stripOptionPrefix = (text: string, key: string): string => {
 };
 
 /**
+ * Remove a leading answer label such as "Suggested Answer:", "Correct Answer:"
+ * or "Answer -" from the answer text. The UI (and the AI prompt) already says
+ * "Suggested answer", so keeping the label printed it twice.
+ */
+export const stripAnswerLabel = (text: string): string =>
+  (text ?? '')
+    // Variation selectors left behind once the emoji is removed ("B ️").
+    .replace(/[\uFE0F\u200B]/g, '')
+    .replace(/^\s*(?:(?:suggested|correct)\s+)?answer\s*[:#-]\s*/i, '')
+    .trim();
+
+/**
+ * Apply {@link stripOptionPrefix} to the first text item of a choice.
+ *
+ * The renderer draws the option key in its own badge, so leaving the label in
+ * the content showed every option twice ("A  A. default route"). Stripping it
+ * here keeps `content` and `text` consistent for every consumer. It is
+ * idempotent, so payloads normalised by an older API are fixed as well.
+ */
+export const stripOptionLabelFromContent = (
+  content: NormalizedContentItem[],
+  key: string,
+): NormalizedContentItem[] => {
+  const index = content.findIndex((item) => item.type === 'text' && (item.value ?? '').trim() !== '');
+  if (index === -1) return content;
+  const value = content[index]?.value ?? '';
+  const stripped = stripOptionPrefix(value, key);
+  if (stripped === value || !stripped) return content;
+  const next = content.slice();
+  next[index] = { ...content[index], value: stripped } as NormalizedContentItem;
+  return next;
+};
+
+/**
  * Extract the canonical answer letters from an Answer block.
  * Handles "Suggested Answer: AB", "Correct Answer: A, C", "Answer: A C", etc.
  */
@@ -143,7 +177,7 @@ export const normalizeQuestion = (id: string, raw: RawQuestion): NormalizedQuest
   const choices: NormalizedChoice[] = Object.entries(raw.Choices ?? {})
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, choice]) => {
-      const content = normalizeContent(choice?.content);
+      const content = stripOptionLabelFromContent(normalizeContent(choice?.content), key);
       const rawText = contentToText(content);
       return {
         key,
@@ -189,7 +223,7 @@ export const normalizeQuestion = (id: string, raw: RawQuestion): NormalizedQuest
     choices,
     answer,
     answerRaw,
-    answerText: answerRaw.replace(/\p{Extended_Pictographic}/gu, '').trim(),
+    answerText: stripAnswerLabel(answerRaw.replace(/\p{Extended_Pictographic}/gu, '').trim()),
     explanation,
     votes,
   };

@@ -18,7 +18,7 @@
     "build": "npm run build -w @examdump/shared && npm run build -w @examdump/data-client && npm run build -w @examdump/api && npm run build -w @examdump/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test -w @examdump/shared && npm run test -w @examdump/data-client && npm run test -w @examdump/api",
+    "test": "npm run test -w @examdump/shared && npm run test -w @examdump/data-client && npm run test -w @examdump/api && npm run test -w @examdump/web",
     "test:deploy": "bash deploy/test-env-sync.sh && bash deploy/test-dry-run.sh",
     "test:api": "npm run test -w @examdump/api",
     "seed": "npm run seed -w @examdump/api",

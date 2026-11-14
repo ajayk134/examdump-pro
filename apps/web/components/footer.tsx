@@ -1,6 +1,19 @@
+'use client';
+
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useAuth } from './providers';
 
 export function Footer() {
+  const { user, logout } = useAuth();
+  const router = useRouter();
+
+  async function signOut() {
+    await logout();
+    router.push('/');
+    router.refresh();
+  }
+
   return (
     <footer className="mt-16 border-t border-surface-border/70">
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
@@ -30,7 +43,20 @@ export function Footer() {
             <li><Link href="/profile" className="hover:text-content-primary">Settings</Link></li>
             <li><Link href="/referrals" className="hover:text-content-primary">Refer a friend</Link></li>
             <li><Link href="/support" className="hover:text-content-primary">Support</Link></li>
-            <li><Link href="/login" className="hover:text-content-primary">Sign in</Link></li>
+            {/*
+              Render the signed-out link only once we know there is no session.
+              Before `/auth/me` resolves `user` is null, which is also what the
+              server renders, so this cannot cause a hydration mismatch.
+            */}
+            <li>
+              {user ? (
+                <button type="button" onClick={signOut} className="hover:text-content-primary">
+                  Sign out
+                </button>
+              ) : (
+                <Link href="/login" className="hover:text-content-primary">Sign in</Link>
+              )}
+            </li>
           </ul>
         </div>
         <div>

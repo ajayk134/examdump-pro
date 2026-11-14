@@ -3,6 +3,8 @@ import {
   contentToText,
   normalizeQuestion,
   parseAnswerLetters,
+  stripAnswerLabel,
+  stripOptionLabelFromContent,
   stripOptionPrefix,
   toClientQuestion,
 } from './content.js';
@@ -30,6 +32,46 @@ describe('stripOptionPrefix', () => {
   });
   it('leaves text without a prefix intact', () => {
     expect(stripOptionPrefix('Nothing here', 'A')).toBe('Nothing here');
+  });
+});
+
+describe('stripOptionLabelFromContent', () => {
+  it('removes the label from the first text item only', () => {
+    const items = [
+      { type: 'text' as const, value: 'A. default route' },
+      { type: 'break' as const },
+      { type: 'text' as const, value: 'keep A. here' },
+    ];
+    expect(stripOptionLabelFromContent(items, 'A')).toEqual([
+      { type: 'text', value: 'default route' },
+      { type: 'break' },
+      { type: 'text', value: 'keep A. here' },
+    ]);
+  });
+
+  it('is idempotent and leaves content without a label untouched', () => {
+    const once = stripOptionLabelFromContent([{ type: 'text' as const, value: 'A. First' }], 'A');
+    expect(stripOptionLabelFromContent(once, 'A')).toEqual(once);
+    const plain = [{ type: 'text' as const, value: 'First' }];
+    expect(stripOptionLabelFromContent(plain, 'A')).toBe(plain);
+  });
+
+  it('ignores a label that belongs to another key', () => {
+    const items = [{ type: 'text' as const, value: 'B. Second' }];
+    expect(stripOptionLabelFromContent(items, 'A')).toBe(items);
+  });
+});
+
+describe('stripAnswerLabel', () => {
+  it('removes the answer label so the UI does not repeat it', () => {
+    expect(stripAnswerLabel('Suggested Answer: B')).toBe('B');
+    expect(stripAnswerLabel('Correct Answer: A, C')).toBe('A, C');
+    expect(stripAnswerLabel('Answer - D')).toBe('D');
+    expect(stripAnswerLabel('answer: A')).toBe('A');
+  });
+  it('leaves an unlabelled answer intact and is idempotent', () => {
+    expect(stripAnswerLabel('B')).toBe('B');
+    expect(stripAnswerLabel(stripAnswerLabel('Suggested Answer: B'))).toBe('B');
   });
 });
 
@@ -72,6 +114,14 @@ describe('normalizeQuestion', () => {
     expect(q.stemImages).toEqual(['https://img.example.com/q.png']);
     expect(q.votes).toHaveLength(2);
     expect(q.votes[0]).toMatchObject({ answer: 'AC', count: 10, percentage: 67, mostVoted: true });
+  });
+
+  it('strips the option label from the rendered content too', () => {
+    // The renderer draws the choice key in its own badge, so the label must not
+    // survive inside the content or every option reads "A  A. First".
+    const q = normalizeQuestion('Question #: 7', raw);
+    expect(q.choices[0]?.content).toEqual([{ type: 'text', value: 'First' }]);
+    expect(contentToText(q.choices[0]?.content ?? [])).toBe('First');
   });
 
   it('detects drag-drop questions with no choices', () => {

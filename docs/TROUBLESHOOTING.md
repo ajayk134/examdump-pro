@@ -69,6 +69,22 @@ Oracle VMs may already run other services; do not stop them without approval.
 That warning is expected. For local use `next start` still works; for production
 run the standalone server (`node apps/web/server.js`) as the Docker image does.
 
+## Pages render but every number is blank / "Failed to fetch"
+
+Open the browser console on the production site. If requests go to
+`http://127.0.0.1:4100` (or any `localhost` origin) with `ERR_CONNECTION_REFUSED`
+or a CORS error, the bundle was built with a developer value for
+`NEXT_PUBLIC_API_URL` in `apps/web/.env.local`.
+
+`NEXT_PUBLIC_API_URL` is inlined into the client bundle at build time. Since
+`apps/web/lib/api-base.ts` ignores loopback values when `NODE_ENV` is
+`production`, the corrected base is same-origin (`""`) and nginx routes `/api`
+to the API. Rebuild and redeploy the web app if a bundle predates that guard:
+
+```bash
+npm run build -w @examdump/web
+```
+
 ## API tests very slow
 
 Integration tests hit your configured PostgreSQL. On a remote managed cluster

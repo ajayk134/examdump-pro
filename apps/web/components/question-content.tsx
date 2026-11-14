@@ -1,4 +1,5 @@
 import type { ContentItem } from '@/lib/types';
+import { stripOptionLabelFromContent } from '@examdump/shared';
 
 export function QuestionContent({ items, className }: { items: ContentItem[]; className?: string }) {
   if (!items || items.length === 0) return null;

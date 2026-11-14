@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, del, get, patch, post } from '@/lib/api';
+import { api, apiBase, del, get, patch, post } from '@/lib/api';
 import type { Paginated, Payment } from '@/lib/types';
 import { Alert, EmptyState, Spinner, StatCard, TableScroll } from '@/components/ui';
 import { formatDate, formatDateTime, formatMoneyMinor } from '@/lib/format';
@@ -70,9 +70,9 @@ function Pager({
 
 function downloadCsv(resource: string) {
   // Exports are authenticated by cookie; use a hidden link so the browser
-  // streams the file with the session cookie attached.
-  const base = process.env.NEXT_PUBLIC_API_URL ?? '';
-  window.open(`${base}/api/admin-ops/export/${resource}`, '_blank', 'noopener');
+  // streams the file with the session cookie attached. `apiBase()` resolves to
+  // same-origin in production, so this never points at a visitor's localhost.
+  window.open(`${apiBase()}/admin-ops/export/${resource}`, '_blank', 'noopener');
 }
 
 /* ------------------------------------------------------------------ */

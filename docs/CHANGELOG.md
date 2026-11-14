@@ -35,6 +35,30 @@ All notable changes to ExamDump Pro.
 
 ### Fixed
 
+- **Production web bundle called `http://127.0.0.1:4100` from visitors'
+  browsers.** `NEXT_PUBLIC_API_URL` is inlined at build time, and the developer
+  value in `apps/web/.env.local` reached the production bundle, so every API
+  call failed with `ERR_CONNECTION_REFUSED`/CORS and pages rendered without
+  data (login included). `apps/web/lib/api-base.ts` now ignores loopback values
+  when `NODE_ENV === 'production'` and falls back to same-origin, which nginx
+  routes to the API under `/api`. Covered by `apps/web/test/api-base.test.ts`.
+
+- **Hydration mismatch on Practice and Mock Tests.** `ExamPicker` read
+  `localStorage` during render, so the server HTML (no "recent exams" tip)
+  differed from a returning visitor's first client render and React re-rendered
+  the picker. Recents are now read after mount. Covered by
+  `apps/web/test/exam-picker-ssr.test.ts`.
+
+- **Answer options showed their letter twice** ("A  A. default route") and the
+  answer panel read "Suggested answer: Suggested Answer: B". The option label
+  and answer label are now stripped from the rendered content by
+  `stripOptionLabelFromContent` and `stripAnswerLabel`. Covered in
+  `packages/shared/src/content.test.ts`.
+
+- **Footer offered "Sign in" to signed-in users and no way to sign out.** The
+  footer now shows "Sign out" (clearing the session and returning home) when a
+  session exists.
+
 - **`redeploy-api.sh --rollback --dry-run` performed a real rollback.** `DRY_RUN`
   was checked only inside the build and image-verification steps, so `--rollback`
   stopped, renamed, restarted and removed production containers while reporting

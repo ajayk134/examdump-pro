@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { stripAnswerLabel, stripOptionLabelFromContent } from '@examdump/shared';
 import type { Question } from '@/lib/types';
 import { QuestionContent } from './question-content';
 import { useAuth, useToast } from './providers';
@@ -380,7 +381,7 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
                     {revealed && correct.includes(choice.key) ? <IconCheck width={14} height={14} /> : revealed && isSelected ? <IconX width={14} height={14} /> : choice.key}
                   </span>
                   <span className="flex-1 text-content-primary">
-                    <QuestionContent items={choice.content} />
+                    <QuestionContent items={stripOptionLabelFromContent(choice.content, choice.key)} />
                     {choice.images.map((src) => (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img key={src} src={src} alt="Answer option" loading="lazy" referrerPolicy="no-referrer" className="mt-2 max-h-48 rounded-lg border border-surface-border bg-white p-1 object-contain" />
@@ -449,7 +450,7 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
         <div className="mt-5 space-y-4 border-t border-surface-border pt-4">
           <div className="rounded-xl border border-positive/30 bg-positive/[0.06] p-3.5 sm:p-4">
             <p className="text-[0.8125rem] font-semibold text-positive">
-              Suggested answer: {question.answerText || correct || 'See explanation'}
+              Suggested answer: {stripAnswerLabel(question.answerText ?? '') || correct || 'See explanation'}
             </p>
             {question.explanation ? <div className="prose-answer mt-2 text-sm text-content-secondary"><QuestionContent items={[{ type: 'text', value: question.explanation }]} /></div> : null}
           </div>

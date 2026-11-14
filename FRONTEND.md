@@ -44,6 +44,11 @@ skipped during builds because CI runs it separately.
 Server components call `PUBLIC_API_URL` directly. Client components fetch with
 credentials and must handle 401 by refreshing the token.
 
+The browser-facing base comes from `NEXT_PUBLIC_API_URL`, which Next inlines at
+build time (`apps/web/lib/api.ts`). `apps/web/lib/api-base.ts` ignores loopback
+values in production and falls back to same-origin (`""`), so a developer's
+`.env.local` can never point production visitors at their own `localhost`.
+
 ## Related
 
 - [UI/UX](UI_UX.md)
