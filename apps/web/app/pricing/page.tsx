@@ -132,7 +132,9 @@ export default function PricingPage() {
     let cancelled = false;
     setExamSearching(true);
     const timer = setTimeout(() => {
-      void get<Paginated<Exam>>(`/exams?search=${encodeURIComponent(examQuery.trim())}&pageSize=8`)
+      void get<Paginated<Exam>>(
+        `/exams/search?q=${encodeURIComponent(examQuery.trim())}&pageSize=8`,
+      )
         .then((data) => {
           if (!cancelled) setExamResults(data.items);
         })
