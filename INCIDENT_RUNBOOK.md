@@ -6,7 +6,7 @@ Fast containment. Full detail:
 ## First five minutes
 
 ```bash
-sudo podman ps                                   # containers up?
+systemctl is-active nginx postgresql examdump-api examdump-web  # up?
 curl -s https://<domain>/api/health              # API answering?
 sudo journalctl -u examdump-api -n 50    # what does it say?
 ```
@@ -17,17 +17,17 @@ sudo journalctl -u examdump-api -n 50    # what does it say?
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| 502, API healthy | nginx cached the old API IP | `sudo systemctl reload nginx` |
-| API container restarting | crash loop | read logs; see [Troubleshooting](docs/operations/TROUBLESHOOTING.md) |
-| Nothing in `podman ps` | wrong store | check `sudo podman ps` |
+| 502 | API/web not listening on loopback | `systemctl status examdump-api examdump-web` |
+| API unit restarting | crash loop | read logs; see [Troubleshooting](docs/operations/TROUBLESHOOTING.md) |
+| Unit not found | never enabled | `systemctl enable --now examdump-api` |
 | Everything down | host/reboot | [Disaster recovery](docs/deployment/DISASTER_RECOVERY.md) |
 
 ## Payments wrong (S1 — outranks downtime)
 
-1. Disable immediately — set `PAYMENTS_ENABLED=false` in Doppler, then:
+1. Disable immediately — set `PAYMENTS_ENABLED=false` in Doppler, re-render the
+   env file, then:
    ```bash
-   cd deploy && doppler run -p examdump-pro -c prd -- \
-     sudo systemctl restart examdump-api
+   sudo systemctl restart examdump-api
    ```
 2. **Preserve evidence** — never delete or update `payments`, `upi_*`, `refunds`,
    `webhook_events`.

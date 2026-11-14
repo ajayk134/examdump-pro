@@ -10,7 +10,7 @@ What exists, and — importantly — what does not.
 | --- | --- |
 | API + DB health | `GET /api/health` |
 | Payment state | `GET /api/upi/status` |
-| Container status | `sudo podman ps` |
+| Service status | `systemctl status examdump-api examdump-web nginx postgresql` |
 | API logs (Pino JSON) | `sudo journalctl -u examdump-api` |
 | Reconciliation history | `reconciliation_runs` |
 | Error records | `error_events` |
@@ -34,9 +34,9 @@ have caught every outage scenario documented in the incident runbook.
 ## Quick health check
 
 ```bash
-sudo podman ps --format "{{.Names}} {{.Status}}"
+systemctl is-active nginx postgresql examdump-api examdump-web
 curl -s -o /dev/null -w '%{http_code}\n' https://<domain>/api/health
-curl -s https://<domain>/api/upi/status
+curl -s https://<domain>/api/health
 df -h | grep -E "/$"
 ```
 
