@@ -59,6 +59,12 @@ All notable changes to ExamDump Pro.
   footer now shows "Sign out" (clearing the session and returning home) when a
   session exists.
 
+- **Pricing offered a checkout button that could never succeed.** With live
+  payments disabled the plan sheet showed "Activate (test mode)", but
+  `mock-activate` refuses to run on a production deployment, so every click
+  returned 403. The button now reads "Checkout unavailable" and is disabled
+  unless live payments or mock activation are actually available.
+
 - **`redeploy-api.sh --rollback --dry-run` performed a real rollback.** `DRY_RUN`
   was checked only inside the build and image-verification steps, so `--rollback`
   stopped, renamed, restarted and removed production containers while reporting

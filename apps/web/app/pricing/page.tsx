@@ -52,7 +52,7 @@ export default function PricingPage() {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
   const [paymentsEnabled, setPaymentsEnabled] = useState(false);
-  const [, setMockPayments] = useState(true);
+  const [mockPayments, setMockPayments] = useState(false);
   const [freeQuestions, setFreeQuestions] = useState(5);
 
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
@@ -69,6 +69,7 @@ export default function PricingPage() {
   const plan = useMemo(() => plans?.find((p) => p.id === selectedPlan) ?? null, [plans, selectedPlan]);
   const quota = plan?.scope === 'all' ? 0 : plan?.scope === 'multi' ? plan.examQuota || 3 : 1;
   const needsExams = plan ? plan.scope !== 'all' : false;
+  const checkoutAvailable = paymentsEnabled || mockPayments;
 
   const load = useCallback(async () => {
     const data = await get<PlansResponse>('/subscriptions/plans');
@@ -155,6 +156,7 @@ export default function PricingPage() {
   }
 
   async function startCheckout() {
+    if (!checkoutAvailable) return;
     if (!user) {
       window.location.href = `/login?next=${encodeURIComponent('/pricing')}`;
       return;
@@ -400,16 +402,23 @@ export default function PricingPage() {
           </div>
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
+            {/*
+              Only offer a button that can actually complete. With live payments
+              off, `mock-activate` refuses to run on a production deployment, so
+              showing "Activate (test mode)" there produced a guaranteed error.
+            */}
             <button
               type="button"
               className="btn-primary"
-              disabled={busy || !quote || (needsExams && selectedExams.length === 0)}
+              disabled={!checkoutAvailable || busy || !quote || (needsExams && selectedExams.length === 0)}
               onClick={() => void startCheckout()}
             >
               <IconSparkles className="h-4 w-4" />
-              {paymentsEnabled ? 'Continue to payment' : 'Activate (test mode)'}
+              {paymentsEnabled ? 'Continue to payment' : mockPayments ? 'Activate (test mode)' : 'Checkout unavailable'}
             </button>
-            {!paymentsEnabled ? (
+            {!checkoutAvailable ? (
+              <span className="text-xs text-content-muted">Payments are not enabled on this deployment.</span>
+            ) : !paymentsEnabled ? (
               <span className="text-xs text-content-muted">No charge is made in test mode.</span>
             ) : (
               <span className="text-xs text-content-muted">
