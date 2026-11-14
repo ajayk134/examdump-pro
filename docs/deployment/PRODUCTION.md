@@ -28,7 +28,7 @@ loopback; only nginx holds :80 and :443.
 |---|---|
 | API | Node 22.23.5, `/opt/examdump-pro/api/dist/index.js`, user `examdump` |
 | Web | Next.js 15 standalone, `/opt/examdump-pro/web`, user `examdump` |
-| Database | PostgreSQL 16.15, cluster `/var/lib/pgsql/data`, role `examdump` |
+| Database | PostgreSQL 16.15, cluster `/var/lib/pgsql/data`, roles `examdump` (runtime) and `examdump_migrator` (DDL) |
 | Proxy | nginx, vhost `/etc/nginx/conf.d/examdump.conf` |
 | TLS | Let's Encrypt, `/etc/letsencrypt/live/examtopicspro.duckdns.org` |
 | Secrets | Doppler `examdump-pro` / `prd` → `/etc/examdump-pro/production.env` |
@@ -77,3 +77,30 @@ sudo systemctl start examdump-api examdump-web
 Rootless Podman is still installed for **Omniroute**, which runs as
 `omniroute` and `omniroute-redis` in the `opc` user's rootless store. ExamDump
 does not use it. Do not remove Podman without migrating Omniroute first.
+
+## Database roles and privileges
+
+Two login roles exist. Neither is a superuser and neither can create databases,
+create roles, replicate, or bypass row-level security.
+
+| Role | Used by | Grants |
+| --- | --- | --- |
+| `examdump` | `examdump-api` | `CONNECT` on `examdump`; `USAGE` on `public` and `drizzle`; `SELECT/INSERT/UPDATE/DELETE` on all application tables; `USAGE, SELECT` on all application sequences |
+| `examdump_migrator` | `npm run migrate` only | `CONNECT` and `CREATE` on `examdump`; `USAGE, CREATE` on `public` and `drizzle`; `SELECT/INSERT/UPDATE` on `drizzle.__drizzle_migrations` |
+
+Object ownership stays with `postgres`. The application role owns no table,
+sequence or schema, so it cannot alter or drop schema objects. `ALTER DEFAULT
+PRIVILEGES FOR ROLE postgres` grants the runtime privileges on objects the
+migration role creates later, so a new table does not need a manual grant.
+
+Migrations are **not** applied at boot: `examdump-api.service` runs
+`dist/index.js` only. Run them explicitly with the migrator credential:
+
+```bash
+doppler run --project examdump-pro --config prd -- \
+  sh -c 'DATABASE_URL="$MIGRATION_DATABASE_URL" npm run migrate -w @examdump/api'
+```
+
+Rotating the runtime password is a two-step change: update `DATABASE_URL` and
+`POSTGRES_PASSWORD` in Doppler, re-render `/etc/examdump-pro/production.env`, then
+`sudo systemctl restart examdump-api`.

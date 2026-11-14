@@ -36,16 +36,17 @@ file and restart the units.
 
 ## Hostname coupling
 
-`DATABASE_URL` must use the hostname **`postgres`** — not `localhost`, not the
-container name. The compose file declares that alias explicitly:
+`DATABASE_URL` must use the host **`127.0.0.1`** — the native cluster listens on
+loopback only, and `localhost` can resolve to `::1` first.
 
-```yaml
-networks:
-  examdump:
-    aliases: [postgres]
-```
+Two database credentials exist and must not be confused:
 
-Change the hostname here and you must change the alias too.
+| Key | Role | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | `examdump` | API runtime. No `SUPERUSER`, no `CREATE`. |
+| `MIGRATION_DATABASE_URL` | `examdump_migrator` | `npm run migrate` only. |
+
+The API never reads `MIGRATION_DATABASE_URL`.
 
 ## Why Doppler and not `.env`
 
