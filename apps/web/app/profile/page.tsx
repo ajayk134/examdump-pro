@@ -7,6 +7,7 @@ import { useAuth, useTheme, useToast } from '@/components/providers';
 import { apiBase, del, get, patch, post } from '@/lib/api';
 import type { Entitlements, Invoice, Payment, Plan, Subscription, User } from '@/lib/types';
 import { Alert, Avatar, PremiumBadge, Spinner, Tabs } from '@/components/ui';
+import { IconMoon, IconSettings, IconSun } from '@/components/icons';
 import { formatDate, formatDateTime, formatMoneyMinor } from '@/lib/format';
 
 type Tab = 'profile' | 'billing' | 'preferences' | 'security' | 'data';
@@ -21,31 +22,47 @@ interface SessionRow {
   expiresAt: string;
 }
 
+/** Titled region inside a settings panel. Keeps every section self-describing. */
+function SectionHeading({ id, title, description }: { id?: string; title: string; description?: string }) {
+  return (
+    <div className="mb-3">
+      <h2 id={id} className="heading-2">
+        {title}
+      </h2>
+      {description ? <p className="caption mt-1">{description}</p> : null}
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const { user, loading, refresh, logout } = useAuth();
-  const { toast } = useToast();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('profile');
 
-  if (loading) return <Spinner label="Loading profile…" />;
+  if (loading) return <Spinner label="Loading profile..." />;
   if (!user) return <Alert tone="warning">Please <Link href="/login" className="link">sign in</Link> to manage your profile.</Alert>;
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-5">
-      <header className="flex items-center gap-4">
-        <Avatar name={user.name} src={user.avatarUrl} size={56} />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{user.name}</h1>
-          <p className="text-sm text-content-muted">{user.email} {user.emailVerified ? '· verified' : '· unverified'}</p>
-          <div className="mt-1 flex gap-2">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+      <header className="panel-lg flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+        <Avatar name={user.name} src={user.avatarUrl} size={64} />
+        <div className="min-w-0 flex-1">
+          <h1 className="heading-1 truncate">{user.name}</h1>
+          <p className="caption mt-1 truncate">{user.email}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {user.premiumActive ? <PremiumBadge /> : <span className="badge">Free plan</span>}
+            <span className={user.emailVerified ? 'badge badge-success' : 'badge badge-warning'}>
+              {user.emailVerified ? 'Email verified' : 'Email unverified'}
+            </span>
             {user.role === 'admin' ? <span className="badge">Admin</span> : null}
           </div>
         </div>
+        <p className="caption sm:shrink-0 sm:text-right">Member since {formatDate(user.createdAt)}</p>
       </header>
 
       <Tabs
+        className="sticky top-14 z-30 sm:top-16"
         tabs={[
           { id: 'profile', label: 'Profile' },
           { id: 'billing', label: 'Billing' },
@@ -87,27 +104,48 @@ function ProfileForm({ user, onSaved }: { user: User; onSaved: () => Promise<voi
   };
 
   return (
-    <div className="card flex flex-col gap-4 p-5">
-      {error ? <Alert tone="error">{error}</Alert> : null}
+    <form
+      className="panel flex flex-col gap-5 p-4 sm:p-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void save();
+      }}
+    >
       <div>
-        <label htmlFor="name" className="label">Full name</label>
-        <input id="name" className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <SectionHeading title="Identity" description="How your name appears on the leaderboard and in your account." />
+        {error ? <Alert tone="error">{error}</Alert> : null}
+        <div className="flex flex-col gap-4">
+          <div>
+            <label htmlFor="name" className="label">Full name</label>
+            <input id="name" className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoComplete="name" />
+          </div>
+          <div>
+            <label htmlFor="avatar" className="label">Avatar URL</label>
+            <input id="avatar" className="input" value={form.avatarUrl} onChange={(e) => setForm({ ...form, avatarUrl: e.target.value })} placeholder="https://..." inputMode="url" />
+          </div>
+          <div>
+            <label htmlFor="bio" className="label">Bio</label>
+            <textarea id="bio" className="input min-h-24" value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} maxLength={500} />
+            <p className="caption mt-1.5 numeric">{form.bio.length}/500</p>
+          </div>
+        </div>
       </div>
+
+      <div className="hairline" role="presentation" />
+
       <div>
-        <label htmlFor="avatar" className="label">Avatar URL</label>
-        <input id="avatar" className="input" value={form.avatarUrl} onChange={(e) => setForm({ ...form, avatarUrl: e.target.value })} placeholder="https://…" />
-      </div>
-      <div>
-        <label htmlFor="bio" className="label">Bio</label>
-        <textarea id="bio" className="input min-h-20" value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} maxLength={500} />
-      </div>
-      <div>
+        <SectionHeading title="Locale" description="Used for study streaks and dated activity." />
         <label htmlFor="timezone" className="label">Timezone</label>
         <input id="timezone" className="input" value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} placeholder="Europe/London" />
       </div>
-      <button onClick={save} className="btn-primary self-start" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
-      <p className="text-xs text-content-muted">Member since {formatDate(user.createdAt)}</p>
-    </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" className="btn-primary" disabled={saving}>
+          {saving ? 'Saving...' : 'Save changes'}
+        </button>
+        <p className="caption">Changes apply to your account immediately.</p>
+      </div>
+    </form>
   );
 }
 
@@ -140,27 +178,62 @@ function PreferencesForm({
     }
   };
 
+  const themes: Array<{ id: 'light' | 'dark' | 'system'; label: string; icon: typeof IconSun }> = [
+    { id: 'light', label: 'Light', icon: IconSun },
+    { id: 'dark', label: 'Dark', icon: IconMoon },
+    { id: 'system', label: 'System', icon: IconSettings },
+  ];
+
   return (
-    <div className="card flex flex-col gap-5 p-5">
-      <div>
-        <p className="label">Theme</p>
-        <div className="flex gap-2">
-          {(['light', 'dark', 'system'] as const).map((option) => (
-            <button
-              key={option}
-              onClick={() => { setTheme(option); void save({ ...prefs, theme: option }); }}
-              className={theme === option ? 'btn-primary capitalize' : 'btn-secondary capitalize'}
-            >
-              {option}
-            </button>
-          ))}
+    <div className="flex flex-col gap-5">
+      <section aria-labelledby="appearance-heading" className="panel p-4 sm:p-5">
+        <SectionHeading
+          id="appearance-heading"
+          title="Appearance"
+          description="Follows your device by default, and applies immediately."
+        />
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Theme">
+          {themes.map((option) => {
+            const Icon = option.icon;
+            const active = theme === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  setTheme(option.id);
+                  void save({ ...prefs, theme: option.id });
+                }}
+                className={active ? 'btn-primary' : 'btn-secondary'}
+              >
+                <Icon width={16} height={16} aria-hidden="true" />
+                {option.label}
+              </button>
+            );
+          })}
         </div>
-      </div>
-      <Toggle label="Email notifications" description="Important account and subscription emails." checked={prefs.emailNotifications} onChange={(v) => save({ ...prefs, emailNotifications: v })} />
-      <Toggle label="Product updates" description="Occasional news about new features." checked={prefs.productUpdates} onChange={(v) => save({ ...prefs, productUpdates: v })} />
-      <Toggle label="Weekly progress report" description="A summary of your study progress each week." checked={prefs.weeklyReport} onChange={(v) => save({ ...prefs, weeklyReport: v })} />
+      </section>
+
+      <section aria-labelledby="notifications-heading" className="panel p-4 sm:p-5">
+        <SectionHeading
+          id="notifications-heading"
+          title="Notifications"
+          description="Everything here is optional, and changes are saved as you tap."
+        />
+        <div className="flex flex-col gap-4">
+          <Toggle label="Email notifications" description="Important account and subscription emails." checked={prefs.emailNotifications} onChange={(v) => void save({ ...prefs, emailNotifications: v })} />
+          <Toggle label="Product updates" description="Occasional news about new features." checked={prefs.productUpdates} onChange={(v) => void save({ ...prefs, productUpdates: v })} />
+          <Toggle label="Weekly progress report" description="A summary of your study progress each week." checked={prefs.weeklyReport} onChange={(v) => void save({ ...prefs, weeklyReport: v })} />
+        </div>
+        {saving ? (
+          <p className="caption mt-3" role="status" aria-live="polite">
+            Saving...
+          </p>
+        ) : null}
+      </section>
+
       <EmailPreferenceToggles />
-      {saving ? <p className="text-xs text-content-muted">Saving…</p> : null}
     </div>
   );
 }
@@ -196,7 +269,7 @@ function EmailPreferenceToggles() {
       await patch('/email/preferences', changes);
       toast('Email preferences saved', 'success');
     } catch (err) {
-      toast(`Could not save: ${(err as Error).message}`, 'error');
+      toast('Could not save: ' + (err as Error).message, 'error');
     } finally {
       setSaving(false);
     }
@@ -205,54 +278,64 @@ function EmailPreferenceToggles() {
   if (!prefs) return null;
 
   return (
-    <div className="space-y-4 rounded-2xl border border-surface-border p-4">
-      <div>
-        <p className="text-sm font-semibold">Email preferences</p>
-        <p className="text-xs text-content-muted">
-          Choose which optional email you receive. Security and account email is always sent.
-        </p>
+    <section aria-labelledby="email-prefs-heading" className="panel-sunken p-4 sm:p-5">
+      <SectionHeading
+        id="email-prefs-heading"
+        title="Email preferences"
+        description="Choose which optional email you receive. Security and account email is always sent."
+      />
+      <div className="flex flex-col gap-4">
+        <Toggle
+          label="Announcements and offers"
+          description="Product announcements, promotions and occasional offers."
+          checked={prefs.marketingOptIn}
+          onChange={(v) => void update({ marketingOptIn: v })}
+        />
+        <Toggle
+          label="Product updates"
+          description="News about new features and exams."
+          checked={prefs.productUpdates}
+          onChange={(v) => void update({ productUpdates: v })}
+        />
+        <Toggle
+          label="Subscription reminders"
+          description="Renewal reminders before your plan expires."
+          checked={prefs.subscriptionReminders}
+          onChange={(v) => void update({ subscriptionReminders: v })}
+        />
+        <Toggle
+          label="Weekly progress summary"
+          description="A summary of your study progress each week."
+          checked={prefs.weeklyReport}
+          onChange={(v) => void update({ weeklyReport: v })}
+        />
       </div>
-      <Toggle
-        label="Announcements and offers"
-        description="Product announcements, promotions and occasional offers."
-        checked={prefs.marketingOptIn}
-        onChange={(v) => void update({ marketingOptIn: v })}
-      />
-      <Toggle
-        label="Product updates"
-        description="News about new features and exams."
-        checked={prefs.productUpdates}
-        onChange={(v) => void update({ productUpdates: v })}
-      />
-      <Toggle
-        label="Subscription reminders"
-        description="Renewal reminders before your plan expires."
-        checked={prefs.subscriptionReminders}
-        onChange={(v) => void update({ subscriptionReminders: v })}
-      />
-      <Toggle
-        label="Weekly progress summary"
-        description="A summary of your study progress each week."
-        checked={prefs.weeklyReport}
-        onChange={(v) => void update({ weeklyReport: v })}
-      />
-      <p className="text-xs text-content-subtle">
-        Verification links, password resets, security alerts and payment receipts are always sent
-        because they are part of your account.
+      <p className="caption mt-4">
+        Verification links, password resets, security alerts and payment receipts are always sent because they are part
+        of your account.
       </p>
-      {saving ? <p className="text-xs text-content-muted">Saving…</p> : null}
-    </div>
+      {saving ? (
+        <p className="caption mt-3" role="status" aria-live="polite">
+          Saving...
+        </p>
+      ) : null}
+    </section>
   );
 }
 
 function Toggle({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (value: boolean) => void }) {
   return (
-    <label className="flex cursor-pointer items-start justify-between gap-4">
-      <span>
-        <span className="block text-sm font-medium">{label}</span>
-        <span className="block text-xs text-content-muted">{description}</span>
+    <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl px-1 py-0.5 transition-colors focus-within:ring-2 focus-within:ring-accent/60">
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-content-primary">{label}</span>
+        <span className="caption mt-0.5 block">{description}</span>
       </span>
-      <input type="checkbox" className="mt-1 h-5 w-5 rounded border-surface-border" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <input
+        type="checkbox"
+        className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded border-surface-border-strong [accent-color:rgb(var(--accent))]"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
     </label>
   );
 }
@@ -285,21 +368,38 @@ function SecurityPanel({ onLogout }: { onLogout: () => Promise<void> }) {
   };
 
   const revoke = async (id: string) => {
-    await del(`/auth/sessions/${id}`);
-    setSessions((prev) => (prev ? prev.filter((s) => s.id !== id) : prev));
-    toast('Session revoked', 'info');
+    try {
+      await del(`/auth/sessions/${id}`);
+      setSessions((prev) => (prev ? prev.filter((s) => s.id !== id) : prev));
+      toast('Session revoked', 'info');
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
   };
 
   const logoutAll = async () => {
-    await post('/auth/logout-all');
-    await onLogout();
-    router.push('/login');
+    try {
+      await post('/auth/logout-all');
+      await onLogout();
+      router.push('/login');
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
   };
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="card flex flex-col gap-4 p-5">
-        <h2 className="text-lg font-semibold">Change password</h2>
+      <form
+        className="panel flex flex-col gap-4 p-4 sm:p-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void changePassword();
+        }}
+      >
+        <SectionHeading
+          title="Password"
+          description="You will be signed out of this device and asked to sign in again."
+        />
         {error ? <Alert tone="error">{error}</Alert> : null}
         <div>
           <label htmlFor="current" className="label">Current password</label>
@@ -309,28 +409,49 @@ function SecurityPanel({ onLogout }: { onLogout: () => Promise<void> }) {
           <label htmlFor="new" className="label">New password</label>
           <input id="new" type="password" className="input" value={form.newPassword} onChange={(e) => setForm({ ...form, newPassword: e.target.value })} autoComplete="new-password" />
         </div>
-        <button onClick={changePassword} className="btn-primary self-start" disabled={busy || !form.currentPassword || !form.newPassword}>{busy ? 'Updating…' : 'Update password'}</button>
-      </div>
+        <button type="submit" className="btn-primary self-start" disabled={busy || !form.currentPassword || !form.newPassword}>
+          {busy ? 'Updating...' : 'Update password'}
+        </button>
+      </form>
 
-      <div className="card p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Active sessions</h2>
-          <button onClick={logoutAll} className="btn-ghost text-sm text-rose-500">Sign out everywhere</button>
+      <section aria-labelledby="sessions-heading" className="panel p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <SectionHeading
+            id="sessions-heading"
+            title="Active sessions"
+            description="Devices currently signed in to your account."
+          />
+          <button type="button" onClick={() => void logoutAll()} className="btn-ghost btn-sm text-negative">
+            Sign out everywhere
+          </button>
         </div>
-        {!sessions ? <Spinner /> : (
+
+        {!sessions ? (
+          <Spinner />
+        ) : sessions.length === 0 ? (
+          <p className="text-sm text-content-muted">No other sessions are signed in.</p>
+        ) : (
           <ul className="divide-y divide-surface-border">
             {sessions.map((session) => (
-              <li key={session.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                <div>
-                  <p className="font-medium">{session.current ? 'This device' : session.userAgent?.slice(0, 60) || 'Unknown device'}</p>
-                  <p className="text-xs text-content-muted">{session.ip} · last used {formatDateTime(session.lastUsedAt)}</p>
+              <li key={session.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">
+                    {session.current ? 'This device' : session.userAgent?.slice(0, 60) || 'Unknown device'}
+                  </p>
+                  <p className="caption mt-0.5">{[session.ip, `last used ${formatDateTime(session.lastUsedAt)}`].filter(Boolean).join(' · ')}</p>
                 </div>
-                {!session.current ? <button onClick={() => revoke(session.id)} className="btn-ghost text-xs text-rose-500">Revoke</button> : <span className="badge">Current</span>}
+                {session.current ? (
+                  <span className="badge badge-accent shrink-0">Current</span>
+                ) : (
+                  <button type="button" onClick={() => void revoke(session.id)} className="btn-ghost btn-sm shrink-0 text-negative">
+                    Revoke
+                  </button>
+                )}
               </li>
             ))}
           </ul>
         )}
-      </div>
+      </section>
     </div>
   );
 }
@@ -338,6 +459,7 @@ function SecurityPanel({ onLogout }: { onLogout: () => Promise<void> }) {
 function DataPanel({ onLogout, router }: { onLogout: () => Promise<void>; router: ReturnType<typeof useRouter> }) {
   const { toast } = useToast();
   const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const exportData = async () => {
     try {
@@ -360,6 +482,7 @@ function DataPanel({ onLogout, router }: { onLogout: () => Promise<void>; router
       toast('Type DELETE to confirm', 'error');
       return;
     }
+    setBusy(true);
     try {
       await del('/users/me');
       await onLogout();
@@ -367,27 +490,65 @@ function DataPanel({ onLogout, router }: { onLogout: () => Promise<void>; router
       router.push('/');
     } catch (err) {
       toast((err as Error).message, 'error');
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="card p-5">
-        <h2 className="text-lg font-semibold">Export your data</h2>
-        <p className="mt-1 text-sm text-content-muted">Download your profile, attempts, bookmarks, notes and subscriptions as JSON.</p>
-        <button onClick={exportData} className="btn-secondary mt-3">Download export</button>
-      </div>
-      <div className="card border-rose-400/40 p-5">
-        <h2 className="text-lg font-semibold text-rose-500">Delete account</h2>
-        <p className="mt-1 text-sm text-content-muted">This soft-deletes your account and signs you out. This action cannot be undone from the UI.</p>
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-          <input className="input" placeholder='Type DELETE to confirm' value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-          <button onClick={deleteAccount} className="btn-danger">Delete account</button>
+      <section aria-labelledby="export-heading" className="panel p-4 sm:p-5">
+        <SectionHeading
+          id="export-heading"
+          title="Export your data"
+          description="Download your profile, attempts, bookmarks, notes and subscriptions as JSON."
+        />
+        <button type="button" onClick={() => void exportData()} className="btn-secondary">
+          Download export
+        </button>
+      </section>
+
+      <section aria-labelledby="danger-heading" className="panel border-negative/40 p-4 sm:p-5">
+        <div className="mb-3 flex items-start gap-3">
+          <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-negative/10 text-negative">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6l-8-3Z" />
+              <path d="M12 8.5v4M12 15.7v.1" />
+            </svg>
+          </span>
+          <div className="min-w-0">
+            <h2 id="danger-heading" className="heading-2 text-negative">
+              Danger zone
+            </h2>
+            <p className="caption mt-1">
+              This soft-deletes your account and signs you out. It cannot be undone from the interface.
+            </p>
+          </div>
         </div>
-      </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="flex-1">
+            <label htmlFor="delete-confirm" className="label">
+              Type DELETE to confirm
+            </label>
+            <input
+              id="delete-confirm"
+              className="input"
+              placeholder="DELETE"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              autoComplete="off"
+            />
+          </div>
+          <button type="button" onClick={() => void deleteAccount()} className="btn-danger" disabled={busy || confirm !== 'DELETE'}>
+            {busy ? 'Deleting...' : 'Delete account'}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
+
 interface BillingMe {
   subscription: Subscription | null;
   subscriptions: Subscription[];
@@ -443,16 +604,16 @@ function BillingPanel() {
     }
   };
 
-  if (!data) return <Spinner label="Loading billing…" />;
+  if (!data) return <Spinner label="Loading billing..." />;
 
   const planName = (id: string) => plans.find((p) => p.id === id)?.name ?? id;
 
   return (
-    <div className="space-y-5">
-      <section className="card p-5">
-        <h2 className="text-base font-semibold">Current access</h2>
+    <div className="flex flex-col gap-5">
+      <section aria-labelledby="access-heading" className="panel p-4 sm:p-5">
+        <SectionHeading id="access-heading" title="Current access" />
         {data.entitlements.plan === 'premium' ? (
-          <p className="mt-1 text-sm text-content-secondary">
+          <p className="text-sm text-content-secondary">
             {data.entitlements.scope === 'all'
               ? 'All exams unlocked'
               : data.entitlements.scope === 'multi'
@@ -461,101 +622,108 @@ function BillingPanel() {
             {data.entitlements.expiresAt ? ` · until ${formatDate(data.entitlements.expiresAt)}` : ''}
           </p>
         ) : (
-          <p className="mt-1 text-sm text-content-secondary">
+          <p className="text-sm text-content-secondary">
             You are on the free tier. <Link href="/pricing" className="link">See passes</Link>
           </p>
         )}
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold">Subscriptions</h2>
+      <section aria-labelledby="subscriptions-heading" className="flex flex-col gap-3">
+        <h2 id="subscriptions-heading" className="heading-2">
+          Subscriptions
+        </h2>
         {data.subscriptions.length === 0 ? (
           <p className="text-sm text-content-muted">No subscriptions yet.</p>
         ) : (
-          data.subscriptions.map((s) => (
-            <div key={s.id} className="card flex flex-wrap items-center justify-between gap-3 p-4">
-              <div>
-                <p className="font-medium">{planName(s.planId)}</p>
-                <p className="text-xs text-content-muted">
-                  {s.status} · {s.cancelAtPeriodEnd ? 'ends' : 'renews'} {formatDate(s.currentPeriodEnd)}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                {s.status === 'active' && !s.cancelAtPeriodEnd ? (
-                  <button
-                    type="button"
-                    className="btn-secondary text-xs"
-                    disabled={busy === s.id}
-                    onClick={() => void cancel(s.id)}
-                  >
-                    {busy === s.id ? 'Working…' : 'Cancel at period end'}
-                  </button>
-                ) : null}
-                {s.status === 'active' && s.cancelAtPeriodEnd ? (
-                  <button
-                    type="button"
-                    className="btn-primary text-xs"
-                    disabled={busy === s.id}
-                    onClick={() => void resume(s.id)}
-                  >
-                    Resume
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ))
+          <ul className="flex flex-col gap-2.5">
+            {data.subscriptions.map((s) => (
+              <li key={s.id} className="panel flex flex-wrap items-center justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{planName(s.planId)}</p>
+                  <p className="caption mt-0.5">
+                    <span className="capitalize">{s.status}</span> · {s.cancelAtPeriodEnd ? 'ends' : 'renews'}{' '}
+                    {formatDate(s.currentPeriodEnd)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  {s.status === 'active' && !s.cancelAtPeriodEnd ? (
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm"
+                      disabled={busy === s.id}
+                      onClick={() => void cancel(s.id)}
+                    >
+                      {busy === s.id ? 'Working...' : 'Cancel at period end'}
+                    </button>
+                  ) : null}
+                  {s.status === 'active' && s.cancelAtPeriodEnd ? (
+                    <button
+                      type="button"
+                      className="btn-primary btn-sm"
+                      disabled={busy === s.id}
+                      onClick={() => void resume(s.id)}
+                    >
+                      Resume
+                    </button>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
-      <section className="space-y-3" id="invoices">
-        <h2 className="text-base font-semibold">Invoices</h2>
+      <section aria-labelledby="invoices-heading" id="invoices" className="flex flex-col gap-3 scroll-mt-24">
+        <h2 id="invoices-heading" className="heading-2">
+          Invoices
+        </h2>
         {data.invoices.length === 0 ? (
           <p className="text-sm text-content-muted">No invoices yet.</p>
         ) : (
-          <div className="card divide-y divide-surface-border overflow-hidden">
+          <ul className="panel divide-y divide-surface-border overflow-hidden p-0">
             {data.invoices.map((inv) => (
-              <Link
-                key={inv.id}
-                href={`/invoices/${inv.id}`}
-                className="flex items-center justify-between gap-3 px-4 py-3 text-sm hover:bg-surface-overlay"
-              >
-                <span>
-                  <span className="font-mono text-xs text-content-muted">{inv.number}</span>
-                  <span className="ml-3">{inv.planName}</span>
-                </span>
-                <span className="flex items-center gap-3">
-                  <span className="text-content-secondary">{formatDate(inv.issuedAt)}</span>
-                  <span className="font-medium">{formatMoneyMinor(inv.totalMinor, inv.currency)}</span>
-                </span>
-              </Link>
+              <li key={inv.id}>
+                <Link href={`/invoices/${inv.id}`} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm hover:bg-surface-overlay">
+                  <span className="min-w-0">
+                    <span className="font-mono text-xs text-content-muted">{inv.number}</span>
+                    <span className="ml-2 font-medium">{inv.planName}</span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-3">
+                    <span className="text-content-secondary">{formatDate(inv.issuedAt)}</span>
+                    <span className="numeric font-medium">{formatMoneyMinor(inv.totalMinor, inv.currency)}</span>
+                  </span>
+                </Link>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold">Payments</h2>
+      <section aria-labelledby="payments-heading" className="flex flex-col gap-3">
+        <h2 id="payments-heading" className="heading-2">
+          Payments
+        </h2>
         {data.payments.length === 0 ? (
           <p className="text-sm text-content-muted">No payments recorded.</p>
         ) : (
-          <div className="card divide-y divide-surface-border overflow-hidden">
+          <ul className="panel divide-y divide-surface-border overflow-hidden p-0">
             {data.payments.map((p) => (
-              <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
-                <span>
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                <span className="min-w-0">
                   <span className="font-mono text-xs text-content-muted">{p.providerRef}</span>
-                  <span className="ml-3">{p.description || 'Subscription'}</span>
+                  <span className="ml-2">{p.description || 'Subscription'}</span>
                 </span>
-                <span className="flex items-center gap-3">
-                  <span className="badge">{p.status}</span>
-                  <span className="font-medium">{formatMoneyMinor(p.amountMinor - p.refundedMinor, p.currency)}</span>
+                <span className="flex shrink-0 items-center gap-3">
+                  <span className="badge capitalize">{p.status}</span>
+                  <span className="numeric font-medium">{formatMoneyMinor(p.amountMinor - p.refundedMinor, p.currency)}</span>
                 </span>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </section>
 
-      <p className="text-xs text-content-muted">
+      <p className="caption">
         Need a refund or an invoice correction?{' '}
         <Link href="/support" className="link">
           Open a support ticket

@@ -10,7 +10,10 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { AuthShell } from '@/components/auth-shell';
+import { Spinner } from '@/components/ui';
 import { apiBase } from '@/lib/api';
+import { IconCheckCircle, IconAlertCircle } from '@/components/icons';
 
 function UnsubscribeInner() {
   const params = useSearchParams();
@@ -54,69 +57,88 @@ function UnsubscribeInner() {
     }
   }
 
+  const subtitle =
+    state === 'done'
+      ? 'Your preference has been saved.'
+      : state === 'error'
+        ? 'We could not change your preferences.'
+        : 'Choose what you would like to stop receiving.';
+
   return (
-    <main className="mx-auto flex min-h-[70vh] w-full max-w-xl flex-col justify-center px-4 py-10">
-      <div className="card p-6">
-        <h1 className="text-xl font-bold tracking-tight">Email preferences</h1>
+    <AuthShell title="Email preferences" subtitle={subtitle}>
+      {state === 'done' ? (
+        <div className="flex flex-col gap-4">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-positive/10 text-positive">
+            <IconCheckCircle width={22} height={22} />
+          </span>
+          <p className="body-text text-center">{message}</p>
+          <p className="caption text-center">
+            You will still receive essential account email such as verification links, password resets and payment
+            receipts.
+          </p>
+          <Link href="/profile" className="btn-primary w-full">
+            Manage all preferences
+          </Link>
+        </div>
+      ) : state === 'error' ? (
+        <div className="flex flex-col gap-4">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-negative/10 text-negative">
+            <IconAlertCircle width={22} height={22} />
+          </span>
+          <p className="text-center text-sm text-negative">{message}</p>
+          <p className="caption text-center">
+            If the link keeps failing, sign in and change your email preferences from your profile.
+          </p>
+          <Link href="/profile" className="btn-secondary w-full">
+            Open profile
+          </Link>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <p className="body-text">
+            Essential account email is always sent. Choose below if you would also like to stop announcements and
+            product updates.
+          </p>
+          {e ? <p className="caption break-all">Address: {e}</p> : null}
 
-        {state === 'done' ? (
-          <>
-            <p className="mt-3 text-sm text-content-muted">{message}</p>
-            <p className="mt-3 text-xs text-content-subtle">
-              You will still receive essential account email such as verification links, password
-              resets and payment receipts.
-            </p>
-            <Link href="/profile" className="btn btn-primary mt-5 inline-flex">
-              Manage all preferences
-            </Link>
-          </>
-        ) : state === 'error' ? (
-          <>
-            <p className="mt-3 text-sm text-danger-600">{message}</p>
-            <p className="mt-3 text-xs text-content-subtle">
-              If the link keeps failing, sign in and change your email preferences from your profile.
-            </p>
-            <Link href="/profile" className="btn mt-5 inline-flex">
-              Open profile
-            </Link>
-          </>
-        ) : (
-          <>
-            <p className="mt-3 text-sm text-content-muted">
-              Choose what you would like to stop receiving. Essential account email is always sent.
-            </p>
-            {e ? <p className="mt-2 text-xs text-content-subtle">Address: {e}</p> : null}
+          <div className="flex flex-col gap-2.5">
+            <button
+              type="button"
+              className="btn-primary w-full whitespace-normal text-center leading-tight"
+              disabled={!valid || state === 'working'}
+              onClick={() => void unsubscribe('marketing')}
+            >
+              Stop announcements and product updates
+            </button>
+            <button
+              type="button"
+              className="btn-secondary w-full whitespace-normal text-center leading-tight"
+              disabled={!valid || state === 'working'}
+              onClick={() => void unsubscribe('all')}
+            >
+              Stop all non-essential email
+            </button>
+          </div>
 
-            <div className="mt-5 space-y-2">
-              <button
-                className="btn btn-primary w-full"
-                disabled={!valid || state === 'working'}
-                onClick={() => void unsubscribe('marketing')}
-              >
-                Stop announcements and product updates
-              </button>
-              <button
-                className="btn w-full"
-                disabled={!valid || state === 'working'}
-                onClick={() => void unsubscribe('all')}
-              >
-                Stop all non-essential email
-              </button>
-            </div>
-            <p className="mt-4 text-xs text-content-subtle">
-              Verification links, password resets, security alerts and payment receipts are always
-              delivered because they are part of your account.
-            </p>
-          </>
-        )}
-      </div>
-    </main>
+          {state === 'working' ? <Spinner label="Saving your preference..." /> : null}
+
+          <p className="caption">
+            Verification links, password resets, security alerts and payment receipts are always delivered because
+            they are part of your account.
+          </p>
+        </div>
+      )}
+    </AuthShell>
   );
 }
 
 export default function UnsubscribePage() {
   return (
-    <Suspense fallback={<main className="mx-auto max-w-xl px-4 py-10">Loading…</main>}>
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-xl px-4 py-10 text-center text-content-muted">Loading...</div>
+      }
+    >
       <UnsubscribeInner />
     </Suspense>
   );

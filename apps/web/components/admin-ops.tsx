@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, apiBase, del, get, patch, post } from '@/lib/api';
 import type { Paginated, Payment } from '@/lib/types';
-import { Alert, EmptyState, Spinner, StatCard, TableScroll } from '@/components/ui';
-import { formatDate, formatDateTime, formatMoneyMinor } from '@/lib/format';
+import { Alert, Dialog, EmptyIcon, EmptyState, Spinner, StatStrip, TableScroll } from '@/components/ui';
+import { cn, formatDate, formatDateTime, formatMoneyMinor } from '@/lib/format';
 
 /* ------------------------------------------------------------------ */
 /* Shared helpers                                                      */
@@ -36,6 +36,23 @@ function usePaged<T>(path: string, initialQuery: Record<string, string> = {}, pa
   return { data, loading, error, query, setQuery, reload };
 }
 
+/**
+ * Filter bar for an admin table. A single tidy strip that stacks on phones and
+ * lines up along the bottom edge from `sm` up, so dense tooling stays legible.
+ */
+export function Toolbar({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      className={cn(
+        'panel flex flex-col gap-3 p-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-2 sm:p-4',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 function Pager({
   page,
   totalPages,
@@ -48,16 +65,21 @@ function Pager({
   if (totalPages <= 1) return null;
   return (
     <div className="flex items-center justify-between gap-3 border-t border-surface-border px-4 py-3 text-sm">
-      <span className="text-content-muted">
+      <span className="numeric text-content-muted">
         Page {page} of {totalPages}
       </span>
       <div className="flex gap-2">
-        <button type="button" className="btn-secondary text-xs" disabled={page <= 1} onClick={() => onChange(page - 1)}>
+        <button
+          type="button"
+          className="btn-secondary btn-sm"
+          disabled={page <= 1}
+          onClick={() => onChange(page - 1)}
+        >
           Previous
         </button>
         <button
           type="button"
-          className="btn-secondary text-xs"
+          className="btn-secondary btn-sm"
           disabled={page >= totalPages}
           onClick={() => onChange(page + 1)}
         >
@@ -123,15 +145,19 @@ export function PaymentsPanel() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StatCard label="Payments" value={totals.count} />
-        <StatCard label="Collected (this page)" value={formatMoneyMinor(totals.gross, 'INR')} tone="success" />
-        <StatCard label="Refunded (this page)" value={formatMoneyMinor(totals.refunded, 'INR')} tone="warning" />
+    <div className="flex flex-col gap-4">
+      <div className="panel overflow-hidden p-0">
+        <StatStrip
+          items={[
+            { label: 'Payments', value: totals.count },
+            { label: 'Collected (this page)', value: formatMoneyMinor(totals.gross, 'INR'), tone: 'success' },
+            { label: 'Refunded (this page)', value: formatMoneyMinor(totals.refunded, 'INR'), tone: 'warning' },
+          ]}
+        />
       </div>
 
-      <div className="card flex flex-wrap items-end gap-2 p-4">
-        <div className="min-w-[200px] flex-1">
+      <Toolbar>
+        <div className="min-w-0 flex-1 sm:min-w-[200px]">
           <label className="label" htmlFor="pay-q">
             Search
           </label>
@@ -143,13 +169,13 @@ export function PaymentsPanel() {
             onChange={(e) => setQuery({ ...query, q: e.target.value, page: '1' })}
           />
         </div>
-        <div>
+        <div className="sm:w-44">
           <label className="label" htmlFor="pay-status">
             Status
           </label>
           <select
             id="pay-status"
-            className="input"
+            className="select"
             value={query.status ?? ''}
             onChange={(e) => setQuery({ ...query, status: e.target.value, page: '1' })}
           >
@@ -164,96 +190,106 @@ export function PaymentsPanel() {
         <button type="button" className="btn-secondary" onClick={() => downloadCsv('payments')}>
           Export CSV
         </button>
-      </div>
+      </Toolbar>
 
       {notice ? <Alert tone="info">{notice}</Alert> : null}
       {error ? <Alert tone="error">{error}</Alert> : null}
 
-      {refundTarget ? (
-        <div className="card space-y-3 p-4">
-          <p className="font-medium">
-            Refund {refundTarget.userEmail} · {formatMoneyMinor(refundTarget.amountMinor, refundTarget.currency)}
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="label" htmlFor="refund-amount">
-                Amount in ₹ (blank = full remaining)
-              </label>
-              <input
-                id="refund-amount"
-                className="input"
-                inputMode="decimal"
-                value={refundAmount}
-                onChange={(e) => setRefundAmount(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="refund-reason">
-                Reason
-              </label>
-              <input
-                id="refund-reason"
-                className="input"
-                value={refundReason}
-                onChange={(e) => setRefundReason(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button type="button" className="btn-danger" disabled={busy} onClick={() => void submitRefund()}>
-              {busy ? 'Processing…' : 'Confirm refund'}
-            </button>
-            <button type="button" className="btn-ghost" onClick={() => setRefundTarget(null)}>
+      <Dialog
+        open={Boolean(refundTarget)}
+        onClose={() => setRefundTarget(null)}
+        title="Refund payment"
+        description={
+          refundTarget
+            ? `${refundTarget.userEmail ?? '—'} · ${formatMoneyMinor(refundTarget.amountMinor, refundTarget.currency)}`
+            : undefined
+        }
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setRefundTarget(null)}>
               Cancel
             </button>
+            <button type="button" className="btn-danger" disabled={busy} onClick={() => void submitRefund()}>
+              {busy ? 'Processing...' : 'Confirm refund'}
+            </button>
+          </>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="refund-amount">
+              Amount in ₹ (blank = full remaining)
+            </label>
+            <input
+              id="refund-amount"
+              className="input"
+              inputMode="decimal"
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="refund-reason">
+              Reason
+            </label>
+            <input
+              id="refund-reason"
+              className="input"
+              value={refundReason}
+              onChange={(e) => setRefundReason(e.target.value)}
+            />
           </div>
         </div>
-      ) : null}
+      </Dialog>
 
       {loading ? (
         <Spinner />
       ) : !data || data.items.length === 0 ? (
-        <EmptyState title="No payments" description="Payments appear here as soon as checkout is live." />
+        <EmptyState
+          icon={<EmptyIcon name="inbox" />}
+          title="No payments"
+          description="Payments appear here as soon as checkout is live."
+        />
       ) : (
         <TableScroll>
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className="bg-surface-overlay text-xs uppercase tracking-wide text-content-muted">
+          <table className="tbl min-w-[860px]">
+            <thead>
               <tr>
-                <th className="px-4 py-2">Date</th>
-                <th className="px-4 py-2">User</th>
-                <th className="px-4 py-2">Description</th>
-                <th className="px-4 py-2">Provider</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2 text-right">Amount</th>
-                <th className="px-4 py-2" />
+                <th>Date</th>
+                <th>User</th>
+                <th>Description</th>
+                <th>Provider</th>
+                <th>Status</th>
+                <th className="text-right">Amount</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {data.items.map((p) => (
-                <tr key={p.id} className="border-t border-surface-border">
-                  <td className="px-4 py-2 text-content-muted">{formatDateTime(p.createdAt)}</td>
-                  <td className="px-4 py-2">{p.userEmail ?? '—'}</td>
-                  <td className="px-4 py-2">
+                <tr key={p.id}>
+                  <td className="whitespace-nowrap text-content-muted">{formatDateTime(p.createdAt)}</td>
+                  <td className="max-w-[220px] truncate">{p.userEmail ?? '—'}</td>
+                  <td>
                     {p.description || 'Subscription'}
                     {p.providerPaymentId ? (
                       <span className="block font-mono text-[11px] text-content-muted">{p.providerPaymentId}</span>
                     ) : null}
                   </td>
-                  <td className="px-4 py-2 text-content-secondary">{p.provider}</td>
-                  <td className="px-4 py-2">
+                  <td className="text-content-secondary">{p.provider}</td>
+                  <td>
                     <span className="badge">{p.status}</span>
                   </td>
-                  <td className="px-4 py-2 text-right font-medium">
+                  <td className="numeric text-right font-medium">
                     {formatMoneyMinor(p.amountMinor - p.refundedMinor, p.currency)}
                     {p.refundedMinor > 0 ? (
-                      <span className="block text-[11px] text-content-muted">
+                      <span className="block text-[11px] font-normal text-content-muted">
                         −{formatMoneyMinor(p.refundedMinor, p.currency)} refunded
                       </span>
                     ) : null}
                   </td>
-                  <td className="px-4 py-2 text-right">
+                  <td className="text-right">
                     {p.status === 'succeeded' || p.status === 'partially_refunded' ? (
-                      <button type="button" className="btn-ghost text-xs" onClick={() => setRefundTarget(p)}>
+                      <button type="button" className="btn-ghost btn-sm" onClick={() => setRefundTarget(p)}>
                         Refund
                       </button>
                     ) : null}
@@ -331,16 +367,21 @@ export function WebhooksPanel() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
-        <div>
-          <p className="font-medium">Payment reconciliation</p>
-          <p className="text-xs text-content-muted">
+    <div className="flex flex-col gap-4">
+      <div className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="heading-3">Payment reconciliation</p>
+          <p className="mt-0.5 text-xs text-content-muted">
             Re-checks pending gateway payments and repairs access drift from missed webhooks.
           </p>
         </div>
-        <button type="button" className="btn-primary" disabled={running} onClick={() => void runReconciliation()}>
-          {running ? 'Running…' : 'Run now'}
+        <button
+          type="button"
+          className="btn-primary shrink-0"
+          disabled={running}
+          onClick={() => void runReconciliation()}
+        >
+          {running ? 'Running...' : 'Run now'}
         </button>
       </div>
 
@@ -348,65 +389,74 @@ export function WebhooksPanel() {
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       {recon && recon.runs.length > 0 ? (
-        <TableScroll>
-          <table className="w-full min-w-[520px] text-left text-sm">
-            <thead className="bg-surface-overlay text-xs uppercase tracking-wide text-content-muted">
-              <tr>
-                <th className="px-4 py-2">Started</th>
-                <th className="px-4 py-2">Trigger</th>
-                <th className="px-4 py-2 text-right">Checked</th>
-                <th className="px-4 py-2 text-right">Repaired</th>
-                <th className="px-4 py-2 text-right">Mismatches</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recon.runs.slice(0, 5).map((run, i) => (
-                <tr key={String(run.id ?? i)} className="border-t border-surface-border">
-                  <td className="px-4 py-2">{formatDateTime(String(run.startedAt ?? ''))}</td>
-                  <td className="px-4 py-2">{String(run.trigger ?? '—')}</td>
-                  <td className="px-4 py-2 text-right">{String(run.checked ?? 0)}</td>
-                  <td className="px-4 py-2 text-right">{String(run.repaired ?? 0)}</td>
-                  <td className="px-4 py-2 text-right">{String(run.mismatches ?? 0)}</td>
+        <div className="section">
+          <div className="section-head">
+            <h3 className="heading-3">Recent runs</h3>
+          </div>
+          <TableScroll>
+            <table className="tbl min-w-[520px]">
+              <thead>
+                <tr>
+                  <th>Started</th>
+                  <th>Trigger</th>
+                  <th className="text-right">Checked</th>
+                  <th className="text-right">Repaired</th>
+                  <th className="text-right">Mismatches</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableScroll>
+              </thead>
+              <tbody>
+                {recon.runs.slice(0, 5).map((run, i) => (
+                  <tr key={String(run.id ?? i)}>
+                    <td className="numeric whitespace-nowrap">{formatDateTime(String(run.startedAt ?? ''))}</td>
+                    <td>{String(run.trigger ?? '—')}</td>
+                    <td className="numeric text-right">{String(run.checked ?? 0)}</td>
+                    <td className="numeric text-right">{String(run.repaired ?? 0)}</td>
+                    <td className="numeric text-right">{String(run.mismatches ?? 0)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        </div>
       ) : null}
 
       {loading ? (
         <Spinner />
       ) : !data || data.items.length === 0 ? (
-        <EmptyState title="No webhooks received yet" description="Gateway callbacks appear here with signature status." />
+        <EmptyState
+          icon={<EmptyIcon name="inbox" />}
+          title="No webhooks received yet"
+          description="Gateway callbacks appear here with signature status."
+        />
       ) : (
         <TableScroll>
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="bg-surface-overlay text-xs uppercase tracking-wide text-content-muted">
+          <table className="tbl min-w-[760px]">
+            <thead>
               <tr>
-                <th className="px-4 py-2">Received</th>
-                <th className="px-4 py-2">Event</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2 text-right">Attempts</th>
-                <th className="px-4 py-2" />
+                <th>Received</th>
+                <th>Event</th>
+                <th>Status</th>
+                <th className="text-right">Attempts</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {data.items.map((w) => (
-                <tr key={w.id} className="border-t border-surface-border">
-                  <td className="px-4 py-2 text-content-muted">{formatDateTime(w.receivedAt)}</td>
-                  <td className="px-4 py-2">
+                <tr key={w.id}>
+                  <td className="numeric whitespace-nowrap text-content-muted">{formatDateTime(w.receivedAt)}</td>
+                  <td>
                     {w.eventType}
                     <span className="block font-mono text-[11px] text-content-muted">{w.eventId}</span>
                   </td>
-                  <td className="px-4 py-2">
+                  <td>
                     <span className="badge">{w.status}</span>
                     {w.lastError ? (
-                      <span className="block text-[11px] text-rose-500">{w.lastError.slice(0, 80)}</span>
+                      <span className="block text-[11px] text-negative">{w.lastError.slice(0, 80)}</span>
                     ) : null}
                   </td>
-                  <td className="px-4 py-2 text-right">{w.attempts}</td>
-                  <td className="px-4 py-2 text-right">
-                    <button type="button" className="btn-ghost text-xs" onClick={() => void replay(w.id)}>
+                  <td className="numeric text-right">{w.attempts}</td>
+                  <td className="text-right">
+                    <button type="button" className="btn-ghost btn-sm" onClick={() => void replay(w.id)}>
                       Replay
                     </button>
                   </td>
@@ -492,39 +542,67 @@ export function AnnouncementsPanel() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="card space-y-3 p-4">
-        <p className="font-medium">New announcement</p>
-        <input
-          className="input"
-          placeholder="Title"
-          value={draft.title}
-          onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-        />
-        <textarea
-          className="input min-h-20"
-          placeholder="Message shown as a site-wide banner"
-          value={draft.body}
-          onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-        />
-        <div className="flex flex-wrap gap-2">
-          <select className="input max-w-[160px]" value={draft.level} onChange={(e) => setDraft({ ...draft, level: e.target.value })}>
-            {['info', 'success', 'warning', 'critical'].map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
-          <select
-            className="input max-w-[180px]"
-            value={draft.audience}
-            onChange={(e) => setDraft({ ...draft, audience: e.target.value })}
-          >
-            <option value="all">Everyone</option>
-            <option value="free">Free accounts</option>
-            <option value="premium">Pass holders</option>
-          </select>
-          <button type="button" className="btn-primary" onClick={() => void create()}>
+    <div className="flex flex-col gap-4">
+      <div className="panel flex flex-col gap-3 p-4">
+        <p className="heading-3">New announcement</p>
+        <div>
+          <label className="label" htmlFor="ann-title">
+            Title
+          </label>
+          <input
+            id="ann-title"
+            className="input"
+            placeholder="Title"
+            value={draft.title}
+            onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="ann-body">
+            Message
+          </label>
+          <textarea
+            id="ann-body"
+            className="input min-h-20"
+            placeholder="Message shown as a site-wide banner"
+            value={draft.body}
+            onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+          />
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="sm:max-w-[160px]">
+            <label className="label" htmlFor="ann-level">
+              Level
+            </label>
+            <select
+              id="ann-level"
+              className="select"
+              value={draft.level}
+              onChange={(e) => setDraft({ ...draft, level: e.target.value })}
+            >
+              {['info', 'success', 'warning', 'critical'].map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="sm:max-w-[180px]">
+            <label className="label" htmlFor="ann-audience">
+              Audience
+            </label>
+            <select
+              id="ann-audience"
+              className="select"
+              value={draft.audience}
+              onChange={(e) => setDraft({ ...draft, audience: e.target.value })}
+            >
+              <option value="all">Everyone</option>
+              <option value="free">Free accounts</option>
+              <option value="premium">Pass holders</option>
+            </select>
+          </div>
+          <button type="button" className="btn-primary sm:ml-auto" onClick={() => void create()}>
             Publish
           </button>
         </div>
@@ -535,26 +613,31 @@ export function AnnouncementsPanel() {
       {loading ? (
         <Spinner />
       ) : items.length === 0 ? (
-        <EmptyState title="No announcements" description="Publish one to show a banner across the site." />
+        <EmptyState
+          icon={<EmptyIcon name="spark" />}
+          title="No announcements"
+          description="Publish one to show a banner across the site."
+        />
       ) : (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2.5">
           {items.map((a) => (
-            <div key={a.id} className="card flex flex-wrap items-start justify-between gap-3 p-4">
+            <div key={a.id} className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <p className="font-medium">
-                  {a.title} <span className="badge ml-1">{a.level}</span>
-                  {!a.active ? <span className="badge ml-1">hidden</span> : null}
-                </p>
-                <p className="mt-1 text-sm text-content-secondary">{a.body}</p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <p className="font-semibold text-content-primary">{a.title}</p>
+                  <span className="badge">{a.level}</span>
+                  {!a.active ? <span className="badge">hidden</span> : null}
+                </div>
+                <p className="mt-1.5 text-sm text-content-secondary">{a.body}</p>
                 <p className="mt-1 text-xs text-content-muted">
                   {a.audience} · {formatDate(a.createdAt)}
                 </p>
               </div>
-              <div className="flex gap-2">
-                <button type="button" className="btn-secondary text-xs" onClick={() => void toggle(a)}>
+              <div className="flex shrink-0 gap-2">
+                <button type="button" className="btn-secondary btn-sm" onClick={() => void toggle(a)}>
                   {a.active ? 'Hide' : 'Show'}
                 </button>
-                <button type="button" className="btn-ghost text-xs" onClick={() => void remove(a.id)}>
+                <button type="button" className="btn-ghost btn-sm" onClick={() => void remove(a.id)}>
                   Delete
                 </button>
               </div>
@@ -594,9 +677,9 @@ export function TicketsPanel() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="card flex flex-wrap items-end gap-2 p-4">
-        <div className="min-w-[200px] flex-1">
+    <div className="flex flex-col gap-4">
+      <Toolbar>
+        <div className="min-w-0 flex-1 sm:min-w-[200px]">
           <label className="label" htmlFor="ticket-q">
             Search
           </label>
@@ -608,13 +691,13 @@ export function TicketsPanel() {
             placeholder="Subject or email"
           />
         </div>
-        <div>
+        <div className="sm:w-44">
           <label className="label" htmlFor="ticket-status">
             Status
           </label>
           <select
             id="ticket-status"
-            className="input"
+            className="select"
             value={query.status ?? ''}
             onChange={(e) => setQuery({ ...query, status: e.target.value, page: '1' })}
           >
@@ -626,7 +709,7 @@ export function TicketsPanel() {
             ))}
           </select>
         </div>
-      </div>
+      </Toolbar>
 
       {notice ? <Alert tone="info">{notice}</Alert> : null}
       {error ? <Alert tone="error">{error}</Alert> : null}
@@ -634,35 +717,39 @@ export function TicketsPanel() {
       {loading ? (
         <Spinner />
       ) : !data || data.items.length === 0 ? (
-        <EmptyState title="No tickets" description="Requests raised from the support page appear here." />
+        <EmptyState
+          icon={<EmptyIcon name="inbox" />}
+          title="No tickets"
+          description="Requests raised from the support page appear here."
+        />
       ) : (
         <TableScroll>
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="bg-surface-overlay text-xs uppercase tracking-wide text-content-muted">
+          <table className="tbl min-w-[720px]">
+            <thead>
               <tr>
-                <th className="px-4 py-2">Updated</th>
-                <th className="px-4 py-2">Subject</th>
-                <th className="px-4 py-2">User</th>
-                <th className="px-4 py-2">Priority</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2" />
+                <th>Updated</th>
+                <th>Subject</th>
+                <th>User</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th className="text-right">Set status</th>
               </tr>
             </thead>
             <tbody>
               {data.items.map((t) => (
-                <tr key={t.id} className="border-t border-surface-border">
-                  <td className="px-4 py-2 text-content-muted">{formatDateTime(t.updatedAt)}</td>
-                  <td className="px-4 py-2">{t.subject}</td>
-                  <td className="px-4 py-2 text-content-secondary">{t.userEmail ?? '—'}</td>
-                  <td className="px-4 py-2">
+                <tr key={t.id}>
+                  <td className="numeric whitespace-nowrap text-content-muted">{formatDateTime(t.updatedAt)}</td>
+                  <td className="font-medium">{t.subject}</td>
+                  <td className="text-content-secondary">{t.userEmail ?? '—'}</td>
+                  <td>
                     <span className="badge">{t.priority}</span>
                   </td>
-                  <td className="px-4 py-2">
+                  <td>
                     <span className="badge">{t.status}</span>
                   </td>
-                  <td className="px-4 py-2 text-right">
+                  <td className="text-right">
                     <select
-                      className="input max-w-[140px] text-xs"
+                      className="select max-w-[140px] text-xs"
                       value={t.status}
                       onChange={(e) => void setStatus(t.id, e.target.value)}
                       aria-label={`Set status for ${t.subject}`}
@@ -735,14 +822,14 @@ export function IntegrationsPanel() {
   ];
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       {rows.map((r) => (
-        <div key={r.name} className="card flex flex-wrap items-center justify-between gap-3 p-4">
-          <div>
-            <p className="font-medium">{r.name}</p>
-            <p className="text-xs text-content-muted">{r.detail}</p>
+        <div key={r.name} className="panel flex flex-wrap items-center justify-between gap-3 p-4">
+          <div className="min-w-0">
+            <p className="font-medium text-content-primary">{r.name}</p>
+            <p className="mt-0.5 font-mono text-xs text-content-muted">{r.detail}</p>
           </div>
-          <span className={r.ok ? 'badge-premium' : 'badge'}>{r.status}</span>
+          <span className={r.ok ? 'badge badge-accent' : 'badge'}>{r.status}</span>
         </div>
       ))}
       <p className="text-xs text-content-muted">Server version {data.version}</p>
@@ -783,15 +870,17 @@ export function BulkUserActions({
   if (userIds.length === 0) return null;
 
   return (
-    <div className="card flex flex-wrap items-center gap-2 p-3 text-sm">
-      <span className="text-content-muted">{userIds.length} selected</span>
-      <button type="button" className="btn-secondary text-xs" disabled={busy} onClick={() => void run('suspend')}>
+    <div className="panel flex flex-wrap items-center gap-2 p-3 text-sm">
+      <span className="chip chip-active" aria-live="polite">
+        {userIds.length} selected
+      </span>
+      <button type="button" className="btn-secondary btn-sm" disabled={busy} onClick={() => void run('suspend')}>
         Suspend
       </button>
-      <button type="button" className="btn-secondary text-xs" disabled={busy} onClick={() => void run('unsuspend')}>
+      <button type="button" className="btn-secondary btn-sm" disabled={busy} onClick={() => void run('unsuspend')}>
         Restore
       </button>
-      <button type="button" className="btn-ghost text-xs" disabled={busy} onClick={() => void run('verify_email')}>
+      <button type="button" className="btn-ghost btn-sm" disabled={busy} onClick={() => void run('verify_email')}>
         Mark verified
       </button>
       {notice ? <span className="text-xs text-content-muted">{notice}</span> : null}

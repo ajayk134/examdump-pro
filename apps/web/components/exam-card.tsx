@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { cn } from '@/lib/format';
-import { IconBookmark, IconChevronRight, IconPlay, IconSparkles } from '@/components/icons';
+import { IconBook, IconBookmark, IconChevronRight, IconPlay } from '@/components/icons';
 import { ProgressBar } from '@/components/ui';
 
 export interface ExamCardData {
@@ -28,6 +28,13 @@ function providerHue(id: string): number {
   return hash;
 }
 
+/**
+ * Exam summary card.
+ *
+ * Information-light by design: code, title, provider, question count and — once
+ * started — progress, alongside bookmark and the two ways in (practice, mock).
+ * The footer is pushed to the bottom so a grid of unequal titles still lines up.
+ */
 export function ExamCard({
   exam,
   onBookmark,
@@ -47,6 +54,7 @@ export function ExamCard({
     <article
       className={cn(
         'surface surface-interactive group relative flex flex-col overflow-hidden',
+        'focus-within:border-accent/60',
         compact ? 'p-3.5' : 'p-4',
         className,
       )}
@@ -59,8 +67,8 @@ export function ExamCard({
       />
 
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="mb-1 flex items-center gap-1.5">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span className="badge badge-accent font-mono text-[0.6875rem] uppercase tracking-wide">{exam.code}</span>
             {exam.lastScore != null ? (
               <span className={cn('badge', exam.lastScore >= 80 ? 'badge-success' : 'badge-warning')}>
@@ -68,7 +76,7 @@ export function ExamCard({
               </span>
             ) : null}
           </div>
-          <h3 className="line-clamp-2 text-[0.9375rem] font-semibold leading-snug tracking-[-0.01em]">
+          <h3 className="mt-1.5 line-clamp-2 text-[0.9375rem] font-semibold leading-snug tracking-[-0.01em]">
             {exam.title}
           </h3>
           <p className="mt-1 truncate text-xs text-content-muted">{exam.providerTitle}</p>
@@ -85,7 +93,7 @@ export function ExamCard({
             aria-label={exam.bookmarked ? 'Remove bookmark' : 'Bookmark this exam'}
             aria-pressed={Boolean(exam.bookmarked)}
             className={cn(
-              'icon-btn -mr-1 -mt-1 shrink-0',
+              'icon-btn -mr-1.5 -mt-1.5 shrink-0',
               exam.bookmarked ? 'text-accent' : 'text-content-muted',
             )}
           >
@@ -96,21 +104,24 @@ export function ExamCard({
 
       {started ? (
         <div className="mt-3">
-          <div className="mb-1 flex items-center justify-between text-[0.6875rem] font-medium text-content-muted">
+          <div className="mb-1.5 flex items-center justify-between text-[0.6875rem] font-medium text-content-muted">
             <span>{exam.attempted ?? 0} answered</span>
             <span className="numeric">{Math.round(exam.progress ?? 0)}%</span>
           </div>
-          <ProgressBar value={exam.progress ?? 0} />
+          <ProgressBar value={exam.progress ?? 0} label={`${exam.code} progress`} />
         </div>
       ) : null}
 
-      <div className="mt-3 flex items-center justify-between gap-2 pt-0.5">
-        <span className="inline-flex items-center gap-1.5 text-xs text-content-muted">
-          <IconSparkles className="h-3.5 w-3.5" />
+      {/* Grows so the action row sits at the bottom of a stretched card. */}
+      <div aria-hidden="true" className="min-h-3.5 flex-1" />
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-surface-border pt-3.5">
+        <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-content-muted">
+          <IconBook className="h-3.5 w-3.5 shrink-0" />
           {exam.questionCount.toLocaleString()} questions
         </span>
 
-        <div className="flex items-center gap-1.5">
+        <div className="ml-auto flex items-center gap-1.5">
           <Link
             href={`/mock?provider=${encodeURIComponent(exam.providerId)}&exam=${encodeURIComponent(exam.examKey)}`}
             className="btn-secondary btn-sm"
@@ -131,13 +142,19 @@ export function ExamCard({
 
 export function ExamCardSkeleton() {
   return (
-    <div className="surface p-4" aria-hidden="true">
-      <div className="skeleton mb-2 h-4 w-16" />
-      <div className="skeleton mb-2 h-4 w-4/5" />
-      <div className="skeleton mb-4 h-3 w-2/5" />
-      <div className="flex justify-between">
+    <div className="surface flex flex-col p-4" aria-hidden="true">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="skeleton mb-2 h-4 w-16 rounded-full" />
+          <div className="skeleton mb-2 h-4 w-4/5" />
+          <div className="skeleton h-3 w-2/5" />
+        </div>
+        <div className="skeleton h-8 w-8 rounded-xl" />
+      </div>
+      <div className="min-h-3.5 flex-1" />
+      <div className="flex items-center justify-between gap-3 border-t border-surface-border pt-3.5">
         <div className="skeleton h-3 w-24" />
-        <div className="skeleton h-7 w-24" />
+        <div className="skeleton h-8 w-28 rounded-lg" />
       </div>
     </div>
   );

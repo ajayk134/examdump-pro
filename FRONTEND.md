@@ -9,12 +9,39 @@ Next.js 15 App Router, React 19, TypeScript strict, Tailwind CSS.
 
 ```
 apps/web/app/          App Router pages (30+ routes)
-apps/web/components/   23 shared components
+apps/web/components/   24 shared components
 apps/web/lib/          client helpers, local-store
 ```
 
-58 `.tsx` files; 46 are client components (exam practice, timers, admin consoles
+58 `.tsx` files; 47 are client components (exam practice, timers, admin consoles
 are inherently interactive).
+
+## Design system ("Aurora")
+
+One token set in `apps/web/app/globals.css` + `apps/web/tailwind.config.ts`
+drives both themes; components never branch on theme directly.
+
+- **Tokens.** `surface-{base,raised,overlay,sunken,inset,border,border-strong}`,
+  `content-{primary,secondary,muted}`, `accent`, `positive`, `caution`,
+  `negative`, the `brand`/`sky` ramps, and `shadow-{xs,sm,md,lg,glow}`.
+- **Layout idioms.** `panel`/`panel-lg` (bordered content container), `tile`
+  (borderless interactive block), `section`/`section-head` (a page region),
+  `rail` (horizontal snap carousel), `hairline`, `grid-fade`.
+- **Controls.** `btn` (+ `-primary -secondary -ghost -danger -sm -lg -block`),
+  `icon-btn`, `input`, `select`, `chip`, `badge` (+ tones), `kbd`, `link`,
+  `link-quiet`. Coarse-pointer rules grow the hit area of every one of these to
+  at least 44 px, so a component can state its mouse size and let the media
+  query handle touch.
+- **Data.** `tbl` (dense table), `metric-value`/`metric-label`, `progress-track`.
+- **Primitives.** `apps/web/components/ui.tsx` exports `PageShell`,
+  `PageHeader`, `Panel`-scale helpers, `StatCard`/`StatStrip`, `ProgressBar`/
+  `ProgressRing`, `Tabs`, `Chip`, `Badge`, `EmptyState`, `ErrorState`, `Alert`,
+  `Skeleton`, plus `useOverlay` and the `Drawer`/`Dialog` built on it.
+
+Use these rather than restyling raw divs; `.surface`/`.card` remain as aliases so
+older markup inherits the current look. Every table that can exceed its column
+goes in `TableScroll` (it is `relative`, which is what keeps a table's
+`sr-only` caption from widening the document).
 
 ## Rules
 

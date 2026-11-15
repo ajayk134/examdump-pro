@@ -20,6 +20,11 @@ often studying on a phone between other commitments. Copy addresses them as "you
    just that something broke.
 5. **No dark patterns.** Cancellation is as easy to find as upgrade. Payment state
    is never overstated.
+6. **Every surface is purpose-built.** Pages share one design language but not
+   one template: the exam interface is quiet and focused, the dashboard reads as
+   a workspace, analytics lead with charts, discovery leads with search, and the
+   admin console is dense. A section should not be laid out just because another
+   section was.
 
 ## Core journeys
 
@@ -35,8 +40,14 @@ often studying on a phone between other commitments. Copy addresses them as "you
 - Touch targets ≥ 44 px; usable at 360 px width.
 - Every interactive element reachable by keyboard with a visible focus ring.
 - Loading and error states for every async view — no blank screens.
-- Destructive actions confirm and are reversible where possible.
+- Destructive actions confirm and are reversible where possible. Confirmations
+  use the shared `Dialog` (focus trap, Escape, scroll lock), never a bare div.
 - Timers derive from a stored deadline, never from incrementing a counter.
+- The exam surface stays quiet: no decorative motion or celebration while a
+  question is on screen, and the answer options are operable with 1–9 as well as
+  a pointer.
+- Lists and tables that can exceed the column scroll inside `TableScroll`, never
+  by widening the page.
 
 ## Payment UI
 

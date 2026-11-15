@@ -8,10 +8,10 @@ import { IconX } from './icons';
 const DISMISS_KEY = 'examdump-dismissed-announcements';
 
 const TONE: Record<string, string> = {
-  info: 'border-brand-400/40 bg-brand-500/10 text-brand-800 dark:text-brand-200',
-  success: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200',
-  warning: 'border-amber-400/40 bg-amber-500/10 text-amber-800 dark:text-amber-200',
-  critical: 'border-rose-400/40 bg-rose-500/10 text-rose-800 dark:text-rose-200',
+  info: 'border-accent/40 bg-accent/[0.08] text-content-primary',
+  success: 'border-positive/40 bg-positive/[0.08] text-content-primary',
+  warning: 'border-caution/40 bg-caution/[0.08] text-content-primary',
+  critical: 'border-negative/40 bg-negative/[0.08] text-content-primary',
 };
 
 function readDismissed(): string[] {

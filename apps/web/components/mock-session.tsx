@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { post } from '@/lib/api';
 import type { Question } from '@/lib/types';
 import { QuestionContent } from './question-content';
-import { Alert, Drawer, ProgressBar, ProgressRing, Skeleton } from './ui';
+import { Alert, Dialog, Drawer, ProgressBar, ProgressRing, Skeleton, StatStrip } from './ui';
 import { AiChat } from './ai-chat';
 import { IconArrowRight, IconCheck, IconClock, IconMessage, IconRefresh, IconX, IconGrid } from './icons';
 import { cn, formatDuration } from '@/lib/format';
@@ -193,7 +193,7 @@ export function MockSession({
   if (!session) {
     return (
       <div className="mx-auto max-w-2xl">
-        <div className="surface p-5" role="status" aria-live="polite">
+        <div className="panel p-5" role="status" aria-live="polite">
           <div className="mb-4 flex items-center gap-2.5">
             <span className="h-5 w-5 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
             <p className="text-sm font-semibold">Preparing your exam…</p>
@@ -217,8 +217,8 @@ export function MockSession({
     const score = result.attempt.scorePercent;
     return (
       <div className="mx-auto flex max-w-4xl flex-col gap-5">
-        <div className="surface relative overflow-hidden p-5 text-center sm:p-6">
-          <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-600 via-sky-400 to-violet-500" />
+        <div className="panel-lg relative overflow-hidden p-5 text-center sm:p-6">
+          <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-600 via-sky-400 to-brand-400" />
           <p className="eyebrow">Exam complete</p>
           <div className="mt-3 flex justify-center">
             <ProgressRing value={score} size={116} stroke={9} tone={score >= 70 ? 'success' : 'warning'}>
@@ -250,21 +250,19 @@ export function MockSession({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2.5">
-          <div className="surface p-3 text-center">
-            <p className="text-[0.6875rem] font-bold uppercase tracking-wider text-content-muted">Correct</p>
-            <p className="numeric mt-1 text-xl font-bold text-positive">{result.attempt.correctCount}</p>
-          </div>
-          <div className="surface p-3 text-center">
-            <p className="text-[0.6875rem] font-bold uppercase tracking-wider text-content-muted">Incorrect</p>
-            <p className="numeric mt-1 text-xl font-bold text-negative">
-              {result.attempt.totalQuestions - result.attempt.correctCount}
-            </p>
-          </div>
-          <div className="surface p-3 text-center">
-            <p className="text-[0.6875rem] font-bold uppercase tracking-wider text-content-muted">Streak</p>
-            <p className="numeric mt-1 text-xl font-bold text-accent">{result.stats.currentStreak}d</p>
-          </div>
+        <div className="panel px-1 py-1">
+          <StatStrip
+            columns={3}
+            items={[
+              { label: 'Correct', value: result.attempt.correctCount, tone: 'success' },
+              {
+                label: 'Incorrect',
+                value: result.attempt.totalQuestions - result.attempt.correctCount,
+                tone: 'default',
+              },
+              { label: 'Streak', value: `${result.stats.currentStreak}d`, tone: 'brand' },
+            ]}
+          />
         </div>
 
         <h2 className="heading-2 mt-1">Review your answers</h2>
@@ -272,7 +270,7 @@ export function MockSession({
           {result.results.map((item, i) => {
             const question = questions.find((q) => q.id === item.questionId);
             return (
-              <details key={item.questionId} className="surface group p-3.5">
+              <details key={item.questionId} className="panel group p-3.5">
                 <summary className="flex cursor-pointer list-none items-center gap-3">
                   <span className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold', item.correct ? 'bg-positive/15 text-positive' : 'bg-negative/15 text-negative')}>
                     {item.correct ? <IconCheck width={14} height={14} /> : <IconX width={14} height={14} />}
@@ -316,7 +314,7 @@ export function MockSession({
       ) : null}
 
       {/* Sticky exam header with timer and progress */}
-      <header className="sticky top-14 z-30 -mx-3.5 border-b border-surface-border/60 bg-surface-base/92 px-3.5 py-2 backdrop-blur-lg sm:top-16 sm:mx-0 sm:rounded-xl sm:border sm:px-3">
+      <header className="sticky top-14 z-30 -mx-3.5 border-b border-surface-border/60 bg-surface-base/[0.92] px-3.5 py-2 backdrop-blur-lg sm:top-16 sm:mx-0 sm:rounded-xl sm:border sm:px-3">
         <div className="flex items-center gap-2.5">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[0.6875rem] font-semibold uppercase tracking-wider text-content-muted">
@@ -360,7 +358,7 @@ export function MockSession({
         </div>
       </header>
 
-      <article className="surface p-4 sm:p-5" aria-label={`Question ${index + 1}`}>
+      <article className="panel p-4 sm:p-5" aria-label={`Question ${index + 1}`}>
         <div className="mb-3.5 flex flex-wrap items-center gap-1.5">
           <span className="badge font-mono">Q{current.number ?? index + 1}</span>
           {current.type === 'multiple' ? <span className="badge">Select all that apply</span> : null}
@@ -484,42 +482,37 @@ export function MockSession({
         </div>
       </Drawer>
 
-      {/* Confirm-before-submit sheet */}
-      {confirmOpen ? (
-        <div className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="confirm-submit-title"
-            className="surface w-full max-w-sm p-5"
-          >
-            <h2 id="confirm-submit-title" className="heading-2">
-              Submit your exam?
-            </h2>
-            <p className="mt-1 text-sm text-content-secondary">
-              You answered {answeredCount} of {questions.length} questions.
-              {answeredCount < questions.length
-                ? ` ${questions.length - answeredCount} will be marked incorrect.`
-                : ' All questions answered.'}
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button className="btn-ghost" onClick={() => setConfirmOpen(false)}>
-                Keep working
-              </button>
-              <button
-                className="btn-primary"
-                onClick={() => {
-                  setConfirmOpen(false);
-                  void submit(session, answers);
-                }}
-                disabled={submitting}
-              >
-                {submitting ? 'Grading…' : 'Submit and grade'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {/* Confirm-before-submit dialog */}
+      <Dialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="Submit your exam?"
+        description={
+          <>
+            You answered {answeredCount} of {questions.length} questions.
+            {answeredCount < questions.length
+              ? ` ${questions.length - answeredCount} will be marked incorrect.`
+              : ' All questions answered.'}
+          </>
+        }
+        footer={
+          <>
+            <button className="btn-ghost w-full sm:w-auto" onClick={() => setConfirmOpen(false)}>
+              Keep working
+            </button>
+            <button
+              className="btn-primary w-full sm:w-auto"
+              onClick={() => {
+                setConfirmOpen(false);
+                void submit(session, answers);
+              }}
+              disabled={submitting}
+            >
+              {submitting ? 'Grading…' : 'Submit and grade'}
+            </button>
+          </>
+        }
+      />
 
       <Drawer
         open={Boolean(chatQuestionId)}

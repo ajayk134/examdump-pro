@@ -25,10 +25,16 @@ export function PageShell({ children, className }: { children: ReactNode; classN
  * whole page grows instead and the browser zooms out to fit it. The fix is to
  * give the wrapper an explicit `w-full` together with `min-w-0`, so it can
  * shrink below the table's min-content width and actually scroll.
+ *
+ * `relative` is not cosmetic: it makes the wrapper the containing block for the
+ * table's absolutely-positioned `<caption class="sr-only">`. Without it the
+ * caption resolves against the viewport, escapes the wrapper's clip, and drags
+ * the page's scroll width out to the table's full width — which on phones also
+ * mis-sizes the fixed bottom nav.
  */
 export function TableScroll({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn('surface w-full min-w-0 max-w-full overflow-x-auto p-0', className)}>{children}</div>
+    <div className={cn('surface relative w-full min-w-0 max-w-full overflow-x-auto p-0', className)}>{children}</div>
   );
 }
 
@@ -49,7 +55,7 @@ export function PageHeader({
     <header className={cn('mb-5 flex flex-col gap-3 sm:mb-7 sm:flex-row sm:items-end sm:justify-between', className)}>
       <div className="min-w-0">
         {eyebrow ? <p className="eyebrow mb-1.5">{eyebrow}</p> : null}
-        <h1 className="heading-1 truncate-0 text-balance">{title}</h1>
+        <h1 className="heading-1 text-balance">{title}</h1>
         {description ? <p className="body-text mt-1.5 max-w-2xl text-pretty">{description}</p> : null}
       </div>
       {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
@@ -193,7 +199,7 @@ export function Alert({
   action?: ReactNode;
 }) {
   const toneClass = {
-    info: 'border-brand-400/35 bg-brand-500/[0.08]',
+    info: 'border-accent/35 bg-accent/[0.07]',
     error: 'border-negative/40 bg-negative/[0.08] text-negative',
     success: 'border-positive/40 bg-positive/[0.08] text-positive',
     warning: 'border-caution/40 bg-caution/[0.1] text-caution',
@@ -252,6 +258,56 @@ export function StatCard({
       </p>
       {hint ? <p className="mt-1.5 text-xs leading-snug text-content-muted">{hint}</p> : null}
     </div>
+  );
+}
+
+/**
+ * Grouped metric strip.
+ *
+ * Unlike a row of identical StatCards, the strip keeps related numbers on one
+ * surface with hairline separators — light enough to sit inside another panel.
+ * Use it for dashboards and result summaries where the metrics belong together.
+ */
+export function StatStrip({
+  items,
+  className,
+  columns,
+}: {
+  items: Array<{ label: string; value: ReactNode; hint?: string; tone?: 'default' | 'success' | 'warning' | 'brand' }>;
+  className?: string;
+  columns?: 2 | 3 | 4;
+}) {
+  const cols = columns ?? (items.length >= 4 ? 4 : items.length === 3 ? 3 : 2);
+  const colClass = { 2: 'grid-cols-2', 3: 'grid-cols-2 sm:grid-cols-3', 4: 'grid-cols-2 sm:grid-cols-4' }[cols];
+
+  return (
+    <dl className={cn('grid divide-y divide-surface-border sm:divide-y-0', colClass, className)}>
+      {items.map((item, index) => {
+        const toneClass = {
+          default: 'text-content-primary',
+          success: 'text-positive',
+          warning: 'text-caution',
+          brand: 'text-accent',
+        }[item.tone ?? 'default'];
+        return (
+          <div
+            key={item.label}
+            className={cn(
+              'flex flex-col gap-1 px-3.5 py-3 sm:px-4',
+              // Hairline separators between columns only where a row exists.
+              index > 0 && 'sm:border-l sm:border-surface-border',
+              index === 1 && 'border-t-0 sm:border-t-0',
+            )}
+          >
+            <dt className="metric-label">{item.label}</dt>
+            <dd className={cn('numeric text-xl font-bold leading-none tracking-[-0.02em] sm:text-2xl', toneClass)}>
+              {item.value}
+            </dd>
+            {item.hint ? <p className="text-[0.6875rem] leading-snug text-content-muted">{item.hint}</p> : null}
+          </div>
+        );
+      })}
+    </dl>
   );
 }
 
@@ -495,44 +551,25 @@ export function Chip({
 }
 
 /* ------------------------------------------------------------------ */
-/* Drawer / modal sheet                                                */
+/* Overlay behaviour (shared by Drawer, Dialog and the mobile menu)    */
 /* ------------------------------------------------------------------ */
 
 /**
- * Accessible overlay panel used for the AI tutor and mobile menus.
+ * Everything a modal overlay must do, in one place:
  *
- * - Traps focus inside the panel while open
- * - Closes on Escape and backdrop click
- * - Locks background scroll
- * - Bottom sheet on phones, right-hand panel from `sm` up
+ * - Traps Tab focus inside `panelRef` while open
+ * - Closes on Escape
+ * - Locks background scroll (document, not just body)
+ * - Restores focus to the trigger on close
+ * - Measures the *visual* viewport so bottom sheets stay on screen while the
+ *   on-screen keyboard is open (a definite height is required for nested
+ *   flex children to size themselves).
  */
-export function Drawer({
-  open,
-  onClose,
-  title,
-  children,
-  side = 'right',
-  className,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  children: ReactNode;
-  side?: 'right' | 'bottom';
-  className?: string;
-}) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  const titleId = useId();
-  /**
-   * Height of the area the user can actually see.
-   *
-   * `dvh` units are unreliable here: on pages taller than the screen the
-   * dynamic viewport reports the document height rather than the visible
-   * height, which made the sheet taller than the screen and pushed it above
-   * y=0. The visual viewport is the only value that stays correct while the
-   * on-screen keyboard is open, so it is measured directly and applied as an
-   * inline height.
-   */
+export function useOverlay(
+  open: boolean,
+  onClose: () => void,
+  panelRef: React.RefObject<HTMLElement | null>,
+): { viewportHeight: number | null } {
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
 
   useEffect(() => {
@@ -606,7 +643,41 @@ export function Drawer({
       document.documentElement.style.overflow = originalHtmlOverflow;
       document.documentElement.style.overscrollBehavior = originalOverscroll;
     };
-  }, [open, onClose]);
+  }, [open, onClose, panelRef]);
+
+  return { viewportHeight };
+}
+
+/* ------------------------------------------------------------------ */
+/* Drawer / modal sheet                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Accessible overlay panel used for the AI tutor and mobile menus.
+ *
+ * - Traps focus inside the panel while open
+ * - Closes on Escape and backdrop click
+ * - Locks background scroll
+ * - Bottom sheet on phones, right-hand panel from `sm` up
+ */
+export function Drawer({
+  open,
+  onClose,
+  title,
+  children,
+  side = 'right',
+  className,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+  side?: 'right' | 'bottom';
+  className?: string;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const { viewportHeight } = useOverlay(open, onClose, panelRef);
 
   if (!open) return null;
 
@@ -619,14 +690,11 @@ export function Drawer({
         aria-modal="true"
         aria-labelledby={titleId}
         style={
-          side === 'bottom'
-            ? viewportHeight
-              ? // A definite height is what lets the flex children below
-                // compute their own heights; with `max-height` alone the
-                // transcript falls back to content height and pushes the
-                // composer past the bottom of the screen.
-                { height: `${Math.round(viewportHeight)}px`, maxHeight: `${Math.round(viewportHeight)}px` }
-              : undefined
+          side === 'bottom' && viewportHeight
+            ? // A definite height is what lets the flex children below compute
+              // their own heights; with `max-height` alone the transcript falls
+              // back to content height and pushes the composer past the bottom.
+              { height: `${Math.round(viewportHeight)}px`, maxHeight: `${Math.round(viewportHeight)}px` }
             : undefined
         }
         className={cn(
@@ -641,22 +709,84 @@ export function Drawer({
           {title}
         </h2>
         {side === 'bottom' ? (
-          <div
-            aria-hidden="true"
-            className="flex shrink-0 justify-center pt-2 pb-1"
-          >
+          <div aria-hidden="true" className="flex shrink-0 justify-center pt-2 pb-1">
             <span className="h-1 w-9 rounded-full bg-surface-border-strong" />
           </div>
         ) : null}
         <div
           className="flex min-h-0 flex-1 flex-col"
-          style={
-            side === 'bottom'
-              ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' }
-              : undefined
-          }
+          style={side === 'bottom' ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' } : undefined}
         >
           {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Centred modal dialog.
+ *
+ * Used for confirmations (end a mock, submit an attempt, delete a note). On
+ * phones it docks to the bottom as a sheet so it never fights the on-screen
+ * keyboard; from `sm` up it is a centred card.
+ */
+export function Dialog({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  className,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  description?: ReactNode;
+  children?: ReactNode;
+  footer?: ReactNode;
+  className?: string;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const descId = useId();
+  const { viewportHeight } = useOverlay(open, onClose, panelRef);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[130] flex items-end justify-center sm:items-center" role="presentation">
+      <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={description ? descId : undefined}
+        style={viewportHeight ? { maxHeight: `${Math.round(viewportHeight - 24)}px` } : undefined}
+        className={cn(
+          'relative flex w-full flex-col overflow-hidden border-surface-border bg-surface-raised shadow-2xl',
+          'animate-sheet rounded-t-3xl border-t sm:animate-pop sm:max-w-md sm:rounded-2xl sm:border',
+          className,
+        )}
+      >
+        <div className="flex flex-col gap-1.5 px-5 pt-5">
+          <h2 id={titleId} className="heading-2 text-balance">
+            {title}
+          </h2>
+          {description ? (
+            <p id={descId} className="text-sm leading-relaxed text-content-muted">
+              {description}
+            </p>
+          ) : null}
+        </div>
+        {children ? <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div> : <div className="h-1" />}
+        <div
+          className="flex flex-col-reverse gap-2 border-t border-surface-border px-5 py-4 sm:flex-row sm:justify-end"
+          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        >
+          {footer}
         </div>
       </div>
     </div>
@@ -750,5 +880,43 @@ export function SegmentedSort({
         </button>
       ))}
     </div>
+  );
+}
+
+/** Keyboard hint, e.g. the 1–9 answer shortcuts in the exam interface. */
+export function KeyHint({ children, className }: { children: ReactNode; className?: string }) {
+  return <kbd className={cn('kbd', className)}>{children}</kbd>;
+}
+
+/**
+ * Small hover/focus tooltip.
+ *
+ * CSS-only and pointer-safe: the bubble is shown on hover for fine pointers and
+ * on focus for everyone, and is announced via `aria-describedby` rather than
+ * replacing the trigger's own label.
+ */
+export function Tooltip({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  const id = useId();
+  return (
+    <span className={cn('group/tip relative inline-flex', className)}>
+      <span aria-describedby={id} className="inline-flex">
+        {children}
+      </span>
+      <span
+        role="tooltip"
+        id={id}
+        className="pointer-events-none absolute left-1/2 top-full z-30 mt-1.5 w-max max-w-[16rem] -translate-x-1/2 scale-95 rounded-lg border border-surface-border bg-surface-raised px-2.5 py-1.5 text-xs leading-snug text-content-secondary opacity-0 shadow-md transition-all duration-150 group-hover/tip:scale-100 group-hover/tip:opacity-100 group-focus-within/tip:scale-100 group-focus-within/tip:opacity-100"
+      >
+        {label}
+      </span>
+    </span>
   );
 }

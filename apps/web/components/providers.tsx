@@ -112,15 +112,21 @@ function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={t.id}
             role="status"
-            className={`pointer-events-auto w-full max-w-sm animate-fade-in rounded-xl border px-4 py-3 text-sm shadow-xl backdrop-blur ${
+            className={`pointer-events-auto flex w-full max-w-sm animate-fade-in items-start gap-2.5 rounded-xl border px-4 py-3 text-sm shadow-xl backdrop-blur ${
               t.type === 'success'
-                ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-200'
+                ? 'border-positive/40 bg-positive/[0.12]'
                 : t.type === 'error'
-                  ? 'border-rose-400/40 bg-rose-500/15 text-rose-700 dark:text-rose-200'
-                  : 'border-surface-border bg-surface-raised/95 text-content-primary'
+                  ? 'border-negative/40 bg-negative/[0.12]'
+                  : 'border-surface-border bg-surface-raised/95'
             }`}
           >
-            {t.message}
+            <span
+              aria-hidden="true"
+              className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
+                t.type === 'success' ? 'bg-positive' : t.type === 'error' ? 'bg-negative' : 'bg-accent'
+              }`}
+            />
+            <span className="min-w-0 text-content-primary">{t.message}</span>
           </div>
         ))}
       </div>

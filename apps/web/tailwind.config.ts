@@ -86,6 +86,14 @@ const config: Config = {
       },
       animation: {
         'fade-in': 'fade-in .32s cubic-bezier(.22,1,.36,1) both',
+        // These mirror the plain CSS classes in globals.css, but registering
+        // them here is what makes responsive variants (e.g. `sm:animate-pop`)
+        // actually emit. A plain class cannot be used with a `sm:`/`hover:`
+        // prefix; a Tailwind animation utility can.
+        rise: 'rise .32s cubic-bezier(.22,1,.36,1)',
+        pop: 'pop .22s cubic-bezier(.22,1,.36,1)',
+        sheet: 'sheet-up .28s cubic-bezier(.22,1,.36,1) both',
+        'slide-in': 'slide-in-right .28s cubic-bezier(.22,1,.36,1) both',
       },
     },
   },

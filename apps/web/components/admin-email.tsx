@@ -7,9 +7,10 @@
  * suppression. Kept responsive throughout — the campaign editor collapses to a
  * single column and preview opens in a drawer on small screens.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { del, get, patch, post } from '@/lib/api';
-import { Alert, Badge, Card, Drawer, EmptyState, Spinner, StatCard } from '@/components/ui';
+import { Alert, Badge, Drawer, EmptyIcon, EmptyState, Spinner, StatStrip, TableScroll, Tabs } from '@/components/ui';
+import { Toolbar } from '@/components/admin-ops';
 import { useToast } from '@/components/providers';
 import { formatNumber } from '@/lib/format';
 
@@ -157,19 +158,56 @@ function Field({
 }: {
   label: string;
   hint?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-semibold uppercase tracking-wide text-content-muted">{label}</span>
+    <label className="flex min-w-0 flex-col gap-1.5">
+      <span className="text-[0.8125rem] font-semibold text-content-secondary">{label}</span>
       {children}
-      {hint ? <span className="text-xs text-content-subtle">{hint}</span> : null}
+      {hint ? <span className="text-xs text-content-muted">{hint}</span> : null}
     </label>
   );
 }
 
-const inputClass =
-  'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-content placeholder:text-content-subtle focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20';
+function Pagination({
+  page,
+  total,
+  pageSize,
+  onChange,
+}: {
+  page: number;
+  total: number;
+  pageSize: number;
+  onChange: (page: number) => void;
+}) {
+  if (total <= pageSize) return null;
+  const totalPages = Math.ceil(total / pageSize);
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="numeric text-content-muted">
+        Page {page} of {totalPages}
+      </span>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          className="btn-secondary btn-sm"
+          disabled={page === 1}
+          onClick={() => onChange(page - 1)}
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          className="btn-secondary btn-sm"
+          disabled={page >= totalPages}
+          onClick={() => onChange(page + 1)}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /* ------------------------------- overview ------------------------------ */
 
@@ -199,42 +237,48 @@ function OverviewView({ onGo }: { onGo: (view: View) => void }) {
   const successRate = attempted > 0 ? Math.round((data.delivery.sent / attempted) * 100) : null;
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
       {!data.configured ? (
         <Alert tone="warning">
           SMTP is not configured, so messages are being stored but not delivered. Set the SMTP
           credentials and redeploy.
         </Alert>
       ) : null}
-      {data.worker.lastError ? (
-        <Alert tone="error">Worker error: {data.worker.lastError}</Alert>
-      ) : null}
+      {data.worker.lastError ? <Alert tone="error">Worker error: {data.worker.lastError}</Alert> : null}
       {data.health.dead > 0 ? (
         <Alert tone="warning">
           {formatNumber(data.health.dead)} message{data.health.dead === 1 ? '' : 's'} in the
           dead-letter queue.{' '}
-          <button className="underline" onClick={() => onGo('queue')}>
+          <button className="link" onClick={() => onGo('queue')}>
             Review them
           </button>
           .
         </Alert>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Queued" value={formatNumber(data.queue.queued)} hint="Waiting to send" />
-        <StatCard label="Sent" value={formatNumber(data.queue.sent)} hint="All time" />
-        <StatCard
-          label="Dead letter"
-          value={formatNumber(data.queue.dead)}
-          hint={data.queue.dead > 0 ? 'Needs attention' : 'All healthy'}
+      <div className="panel overflow-hidden p-0">
+        <StatStrip
+          items={[
+            { label: 'Queued', value: formatNumber(data.queue.queued), hint: 'Waiting to send' },
+            { label: 'Sent', value: formatNumber(data.queue.sent), hint: 'All time' },
+            {
+              label: 'Dead letter',
+              value: formatNumber(data.queue.dead),
+              hint: data.queue.dead > 0 ? 'Needs attention' : 'All healthy',
+              tone: data.queue.dead > 0 ? 'warning' : 'default',
+            },
+            { label: 'Suppressed', value: formatNumber(data.suppressions), hint: 'Opt-outs & bounces' },
+          ]}
+          columns={4}
         />
-        <StatCard label="Suppressed" value={formatNumber(data.suppressions)} hint="Opt-outs & bounces" />
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
-        <Card className="p-4">
-          <h3 className="text-sm font-semibold">Queue worker</h3>
-          <dl className="mt-3 space-y-2 text-sm">
+        <section className="panel p-4" aria-labelledby="email-worker-heading">
+          <h3 id="email-worker-heading" className="heading-3">
+            Queue worker
+          </h3>
+          <dl className="mt-3 flex flex-col gap-2 text-sm">
             <div className="flex justify-between gap-3">
               <dt className="text-content-muted">Status</dt>
               <dd>
@@ -245,66 +289,70 @@ function OverviewView({ onGo }: { onGo: (view: View) => void }) {
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-content-muted">Last run</dt>
-              <dd className="text-right">
+              <dd className="numeric text-right">
                 {data.worker.lastRunAt ? new Date(data.worker.lastRunAt).toLocaleTimeString() : '—'}
               </dd>
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-content-muted">Batch / interval</dt>
-              <dd>
+              <dd className="numeric">
                 {data.worker.batchSize} every {data.worker.intervalSeconds}s
               </dd>
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-content-muted">Hourly ceiling</dt>
-              <dd>{formatNumber(data.worker.hourlyLimit)} messages</dd>
+              <dd className="numeric">{formatNumber(data.worker.hourlyLimit)} messages</dd>
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-content-muted">Sent by this process</dt>
-              <dd>{formatNumber(data.worker.totalSent)}</dd>
+              <dd className="numeric">{formatNumber(data.worker.totalSent)}</dd>
             </div>
           </dl>
-        </Card>
+        </section>
 
-        <Card className="p-4">
-          <h3 className="text-sm font-semibold">Delivery (30 days)</h3>
-          <dl className="mt-3 space-y-2 text-sm">
+        <section className="panel p-4" aria-labelledby="email-delivery-heading">
+          <h3 id="email-delivery-heading" className="heading-3">
+            Delivery (30 days)
+          </h3>
+          <dl className="mt-3 flex flex-col gap-2 text-sm">
             <div className="flex justify-between gap-3">
               <dt className="text-content-muted">Accepted by SMTP</dt>
-              <dd>{formatNumber(data.delivery.sent)}</dd>
+              <dd className="numeric">{formatNumber(data.delivery.sent)}</dd>
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-content-muted">Failed</dt>
-              <dd>{formatNumber(data.delivery.failed)}</dd>
+              <dd className="numeric">{formatNumber(data.delivery.failed)}</dd>
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-content-muted">Suppressed</dt>
-              <dd>{formatNumber(data.delivery.suppressed)}</dd>
+              <dd className="numeric">{formatNumber(data.delivery.suppressed)}</dd>
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-content-muted">Acceptance rate</dt>
-              <dd>{successRate === null ? '—' : `${successRate}%`}</dd>
+              <dd className="numeric">{successRate === null ? '—' : `${successRate}%`}</dd>
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-content-muted">Campaigns</dt>
-              <dd>
+              <dd className="numeric">
                 {data.campaigns.sent} sent · {data.campaigns.scheduled} scheduled
               </dd>
             </div>
           </dl>
-          <p className="mt-3 text-xs text-content-subtle">
+          <p className="mt-3 text-xs text-content-muted">
             «Accepted» means Gmail accepted the message. It does not guarantee inbox placement.
           </p>
-        </Card>
+        </section>
       </div>
 
       <DeliverabilityCard report={data.deliverability} />
 
-      <Card className="p-4">
-        <h3 className="text-sm font-semibold">Volume trend</h3>
-        <p className="text-xs text-content-subtle">{formatNumber(totalTrend)} messages queued in 30 days</p>
+      <section className="panel p-4" aria-labelledby="email-trend-heading">
+        <h3 id="email-trend-heading" className="heading-3">
+          Volume trend
+        </h3>
+        <p className="text-xs text-content-muted">{formatNumber(totalTrend)} messages queued in 30 days</p>
         <TrendChart rows={data.trend} />
-      </Card>
+      </section>
     </div>
   );
 }
@@ -326,7 +374,7 @@ function TrendChart({ rows }: { rows: Array<{ date: string; status: string; valu
       {series.map(([date, value]) => (
         <div
           key={date}
-          className="flex-1 rounded-t bg-brand-500/70 transition hover:bg-brand-500"
+          className="flex-1 rounded-t bg-gradient-to-t from-brand-600 to-sky-400 opacity-80 transition-opacity hover:opacity-100"
           style={{ height: `${Math.max(4, (value / max) * 100)}%` }}
           title={`${date}: ${value}`}
         />
@@ -352,22 +400,24 @@ function DeliverabilityCard({ report }: { report: Overview['deliverability'] }) 
   const tone = report.risk === 'high' ? 'warning' : 'success';
 
   return (
-    <Card className="p-4">
+    <section className="panel p-4" aria-labelledby="email-auth-heading">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-semibold">Sender authentication</h3>
+        <h3 id="email-auth-heading" className="heading-3">
+          Sender authentication
+        </h3>
         <Badge tone={tone}>{report.risk === 'high' ? 'limited' : 'authenticated'}</Badge>
-        <span className="text-xs text-content-subtle">From: {report.fromDomain}</span>
+        <span className="text-xs text-content-muted">From: {report.fromDomain}</span>
       </div>
       <p className="mt-2 text-sm text-content-muted">{report.summary}</p>
 
-      <ul className="mt-3 space-y-2 text-sm">
+      <ul className="mt-3 flex flex-col gap-2 text-sm">
         {rows.map(([name, entry]) => (
           <li key={name} className="flex gap-2">
             <Badge tone={entry.status === 'possible' ? 'success' : 'warning'}>
               {entry.status === 'possible' ? 'available' : 'not possible'}
             </Badge>
             <span className="min-w-0 flex-1">
-              <span className="font-medium">{name}</span>
+              <span className="font-medium text-content-primary">{name}</span>
               <span className="block text-xs text-content-muted">{entry.detail}</span>
             </span>
           </li>
@@ -376,7 +426,12 @@ function DeliverabilityCard({ report }: { report: Overview['deliverability'] }) 
 
       {report.recommendations.length > 0 ? (
         <>
-          <button className="mt-3 text-xs text-content-muted underline" onClick={() => setOpen((v) => !v)}>
+          <button
+            type="button"
+            className="link mt-3 text-xs"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+          >
             {open ? 'Hide' : 'What can be fixed'}
           </button>
           {open ? (
@@ -389,11 +444,11 @@ function DeliverabilityCard({ report }: { report: Overview['deliverability'] }) 
         </>
       ) : null}
 
-      <p className="mt-3 text-xs text-content-subtle">
+      <p className="mt-3 text-xs text-content-muted">
         «Sent» means the SMTP server accepted the message. It does not prove inbox placement — spam
         filtering happens after acceptance.
       </p>
-    </Card>
+    </section>
   );
 }
 
@@ -512,34 +567,47 @@ function CampaignsView() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          className={`${inputClass} max-w-xs`}
-          placeholder="Search campaigns"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-        />
-        <select
-          className={`${inputClass} max-w-[10rem]`}
-          value={status}
-          onChange={(e) => {
-            setStatus(e.target.value);
-            setPage(1);
-          }}
-        >
-          <option value="">All statuses</option>
-          {['draft', 'scheduled', 'sending', 'sent', 'cancelled', 'failed'].map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+    <div className="flex flex-col gap-4">
+      <Toolbar>
+        <div className="min-w-0 flex-1 sm:max-w-xs">
+          <label className="label" htmlFor="campaign-search">
+            Search
+          </label>
+          <input
+            id="campaign-search"
+            className="input"
+            placeholder="Search campaigns"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
+        <div className="sm:w-44">
+          <label className="label" htmlFor="campaign-status">
+            Status
+          </label>
+          <select
+            id="campaign-status"
+            className="select"
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All statuses</option>
+            {['draft', 'scheduled', 'sending', 'sent', 'cancelled', 'failed'].map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
         <button
-          className="ml-auto rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          type="button"
+          className="btn-primary sm:ml-auto"
           onClick={() => {
             setEditing({ ...EMPTY_CAMPAIGN });
             setEditingId(null);
@@ -547,15 +615,15 @@ function CampaignsView() {
         >
           New campaign
         </button>
-      </div>
+      </Toolbar>
 
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       {editing ? (
-        <Card className="space-y-3 p-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">{editingId ? 'Edit campaign' : 'New campaign'}</h3>
-            <button className="text-xs text-content-muted underline" onClick={() => setEditing(null)}>
+        <section className="panel flex flex-col gap-3 p-4" aria-label="Campaign editor">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="heading-3">{editingId ? 'Edit campaign' : 'New campaign'}</h3>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => setEditing(null)}>
               Close
             </button>
           </div>
@@ -563,21 +631,21 @@ function CampaignsView() {
           <div className="grid gap-3 md:grid-cols-2">
             <Field label="Internal name">
               <input
-                className={inputClass}
+                className="input"
                 value={editing.name}
                 onChange={(e) => setEditing({ ...editing, name: e.target.value })}
               />
             </Field>
             <Field label="Subject" hint="Placeholders like {{first_name}} are allowed.">
               <input
-                className={inputClass}
+                className="input"
                 value={editing.subject}
                 onChange={(e) => setEditing({ ...editing, subject: e.target.value })}
               />
             </Field>
             <Field label="Category" hint="Marketing requires opt-in and adds an unsubscribe link.">
               <select
-                className={inputClass}
+                className="select"
                 value={editing.category}
                 onChange={(e) =>
                   setEditing({ ...editing, category: e.target.value as 'marketing' | 'transactional' })
@@ -589,7 +657,7 @@ function CampaignsView() {
             </Field>
             <Field label="Audience plan">
               <select
-                className={inputClass}
+                className="select"
                 value={editing.segment.plan ?? 'any'}
                 onChange={(e) =>
                   setEditing({
@@ -607,73 +675,71 @@ function CampaignsView() {
 
           <Field label="HTML body">
             <textarea
-              className={`${inputClass} min-h-[180px] font-mono text-xs`}
+              className="input min-h-[180px] font-mono text-xs"
               value={editing.html}
               onChange={(e) => setEditing({ ...editing, html: e.target.value })}
             />
           </Field>
           <Field label="Plain-text fallback" hint="Leave blank to generate automatically from the HTML.">
             <textarea
-              className={`${inputClass} min-h-[80px] font-mono text-xs`}
+              className="input min-h-[80px] font-mono text-xs"
               value={editing.text}
               onChange={(e) => setEditing({ ...editing, text: e.target.value })}
             />
           </Field>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm text-content-muted">
-              {audience === null ? 'Counting audience…' : `${formatNumber(audience)} eligible recipients`}
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <p className="text-sm text-content-muted" aria-live="polite">
+              {audience === null ? 'Counting audience...' : `${formatNumber(audience)} eligible recipients`}
             </p>
-            <div className="ml-auto flex flex-wrap gap-2">
-              <button className="rounded-xl border border-border px-3 py-2 text-sm" onClick={runPreview}>
+            <div className="flex flex-wrap gap-2 sm:ml-auto">
+              <button type="button" className="btn-secondary btn-sm" onClick={runPreview}>
                 Preview
               </button>
-              <button
-                className="rounded-xl border border-border px-3 py-2 text-sm disabled:opacity-50"
-                disabled={busy}
-                onClick={() => save(false)}
-              >
+              <button type="button" className="btn-secondary btn-sm" disabled={busy} onClick={() => save(false)}>
                 Save draft
               </button>
-              <button
-                className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                disabled={busy}
-                onClick={() => save(true)}
-              >
+              <button type="button" className="btn-primary btn-sm" disabled={busy} onClick={() => save(true)}>
                 Queue for sending
               </button>
             </div>
           </div>
-        </Card>
+        </section>
       ) : null}
 
       {loading ? (
         <Spinner label="Loading campaigns" />
       ) : rows.length === 0 ? (
-        <EmptyState icon="inbox" title="No campaigns yet" description="Create one to reach your audience." />
+        <EmptyState
+          icon={<EmptyIcon name="inbox" />}
+          title="No campaigns yet"
+          description="Create one to reach your audience."
+        />
       ) : (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2.5">
           {rows.map((campaign) => (
-            <Card key={campaign.id} className="flex flex-wrap items-center gap-3 p-3">
+            <div key={campaign.id} className="panel flex flex-wrap items-center gap-3 p-3.5">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="truncate font-medium">{campaign.name}</p>
+                  <p className="truncate font-medium text-content-primary">{campaign.name}</p>
                   {statusBadge(campaign.status)}
                   <Badge tone={campaign.category === 'marketing' ? 'accent' : 'default'}>
                     {campaign.category}
                   </Badge>
                 </div>
                 <p className="truncate text-xs text-content-muted">{campaign.subject}</p>
-                <p className="mt-1 text-xs text-content-subtle">
+                <p className="numeric mt-1 text-xs text-content-muted">
                   {formatNumber(campaign.sentCount)} sent · {formatNumber(campaign.failedCount)} failed ·{' '}
-                  {formatNumber(campaign.suppressedCount)} skipped · {formatNumber(campaign.totalRecipients)} audience
+                  {formatNumber(campaign.suppressedCount)} skipped · {formatNumber(campaign.totalRecipients)}{' '}
+                  audience
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {['draft', 'scheduled'].includes(campaign.status) ? (
                   <>
                     <button
-                      className="rounded-lg border border-border px-2.5 py-1.5 text-xs"
+                      type="button"
+                      className="btn-secondary btn-sm"
                       onClick={() => {
                         setEditingId(campaign.id);
                         setEditing({
@@ -690,7 +756,8 @@ function CampaignsView() {
                       Edit
                     </button>
                     <button
-                      className="rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white"
+                      type="button"
+                      className="btn-primary btn-sm"
                       onClick={() => void post(`/admin-ops/email/campaigns/${campaign.id}/send`).then(load)}
                     >
                       Send
@@ -699,56 +766,35 @@ function CampaignsView() {
                 ) : null}
                 {['sending', 'scheduled'].includes(campaign.status) ? (
                   <button
-                    className="rounded-lg border border-danger-300 px-2.5 py-1.5 text-xs text-danger-600"
+                    type="button"
+                    className="btn-ghost btn-sm text-negative"
                     onClick={() => cancel(campaign.id)}
                   >
                     Cancel
                   </button>
                 ) : null}
               </div>
-            </Card>
+            </div>
           ))}
         </div>
       )}
 
-      {total > pageSize ? (
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-content-muted">
-            Page {page} of {Math.ceil(total / pageSize)}
-          </span>
-          <div className="flex gap-2">
-            <button
-              className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40"
-              disabled={page === 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              Previous
-            </button>
-            <button
-              className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40"
-              disabled={page >= Math.ceil(total / pageSize)}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <Pagination page={page} total={total} pageSize={pageSize} onChange={setPage} />
 
       <Drawer open={Boolean(preview)} onClose={() => setPreview(null)} title="Email preview">
         {preview ? (
-          <div className="space-y-3">
-            <p className="text-sm font-semibold">{preview.subject}</p>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm font-semibold text-content-primary">{preview.subject}</p>
             {/* Sandboxed so template HTML can never run script in the admin app. */}
             <iframe
               title="Email preview"
               sandbox=""
               srcDoc={preview.html}
-              className="h-[420px] w-full rounded-xl border border-border bg-white"
+              className="h-[420px] w-full rounded-xl border border-surface-border bg-white"
             />
             <div>
-              <p className="text-xs font-semibold uppercase text-content-muted">Plain text</p>
-              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-muted p-2 text-xs">
+              <p className="eyebrow">Plain text</p>
+              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-sunken p-2 text-xs text-content-secondary">
                 {preview.text}
               </pre>
             </div>
@@ -827,13 +873,14 @@ function TemplatesView() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <p className="text-sm text-content-muted">
           Built-in templates render from code unless you supply an enabled override here.
         </p>
         <button
-          className="ml-auto rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
+          type="button"
+          className="btn-primary sm:ml-auto"
           onClick={() => setDraft({ ...BLANK_TEMPLATE, key: '' })}
         >
           New template
@@ -843,24 +890,24 @@ function TemplatesView() {
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       {draft ? (
-        <Card className="space-y-3 p-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">{draft.key ? `Edit ${draft.key}` : 'New template'}</h3>
-            <button className="text-xs text-content-muted underline" onClick={() => setDraft(null)}>
+        <section className="panel flex flex-col gap-3 p-4" aria-label="Template editor">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="heading-3">{draft.key ? `Edit ${draft.key}` : 'New template'}</h3>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => setDraft(null)}>
               Close
             </button>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <Field label="Key" hint="Lowercase letters, numbers, underscores.">
               <input
-                className={inputClass}
+                className="input"
                 value={draft.key}
                 onChange={(e) => setDraft({ ...draft, key: e.target.value })}
               />
             </Field>
             <Field label="Subject">
               <input
-                className={inputClass}
+                className="input"
                 value={draft.subject}
                 onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
               />
@@ -868,20 +915,20 @@ function TemplatesView() {
           </div>
           <Field label="HTML body">
             <textarea
-              className={`${inputClass} min-h-[200px] font-mono text-xs`}
+              className="input min-h-[200px] font-mono text-xs"
               value={draft.body}
               onChange={(e) => setDraft({ ...draft, body: e.target.value })}
             />
           </Field>
           <Field label="Plain-text fallback" hint="Generated from the HTML when empty.">
             <textarea
-              className={`${inputClass} min-h-[80px] font-mono text-xs`}
+              className="input min-h-[80px] font-mono text-xs"
               value={draft.textBody}
               onChange={(e) => setDraft({ ...draft, textBody: e.target.value })}
             />
           </Field>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm text-content-secondary">
               <input
                 type="checkbox"
                 checked={draft.enabled}
@@ -889,41 +936,46 @@ function TemplatesView() {
               />
               Enabled
             </label>
-            <div className="ml-auto flex gap-2">
-              <button className="rounded-xl border border-border px-3 py-2 text-sm" onClick={runPreview}>
+            <div className="flex gap-2 sm:ml-auto">
+              <button type="button" className="btn-secondary btn-sm" onClick={runPreview}>
                 Preview
               </button>
-              <button
-                className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                disabled={busy}
-                onClick={save}
-              >
+              <button type="button" className="btn-primary btn-sm" disabled={busy} onClick={save}>
                 Save
               </button>
             </div>
           </div>
-        </Card>
+        </section>
       ) : null}
 
       {loading ? (
         <Spinner label="Loading templates" />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          icon={<EmptyIcon name="inbox" />}
+          title="No templates"
+          description="Built-in templates are used until you add an override."
+        />
       ) : (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2.5">
           {rows.map((template) => (
-            <Card key={template.key} className="flex flex-wrap items-center gap-3 p-3">
+            <div key={template.key} className="panel flex flex-wrap items-center gap-3 p-3.5">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-mono text-sm font-medium">{template.key}</p>
+                  <p className="font-mono text-sm font-medium text-content-primary">{template.key}</p>
                   <Badge tone={template.enabled && template.body ? 'success' : 'default'}>
                     {template.body ? (template.enabled ? 'override on' : 'override off') : 'built-in'}
                   </Badge>
                   {template.isSystem ? <Badge tone="accent">system</Badge> : null}
                 </div>
-                <p className="text-xs text-content-muted">{template.description || template.subject || '—'}</p>
+                <p className="truncate text-xs text-content-muted">
+                  {template.description || template.subject || '—'}
+                </p>
               </div>
               <div className="flex gap-2">
                 <button
-                  className="rounded-lg border border-border px-2.5 py-1.5 text-xs"
+                  type="button"
+                  className="btn-secondary btn-sm"
                   onClick={() =>
                     setDraft({
                       key: template.key,
@@ -940,31 +992,32 @@ function TemplatesView() {
                 </button>
                 {!template.isSystem ? (
                   <button
-                    className="rounded-lg border border-danger-300 px-2.5 py-1.5 text-xs text-danger-600"
+                    type="button"
+                    className="btn-ghost btn-sm text-negative"
                     onClick={() =>
-                      void del(`/admin-ops/email/templates/${template.key}`).then(load).catch(() =>
-                        toast('Built-in templates cannot be deleted', 'error'),
-                      )
+                      void del(`/admin-ops/email/templates/${template.key}`)
+                        .then(load)
+                        .catch(() => toast('Built-in templates cannot be deleted', 'error'))
                     }
                   >
                     Delete
                   </button>
                 ) : null}
               </div>
-            </Card>
+            </div>
           ))}
         </div>
       )}
 
       <Drawer open={Boolean(preview)} onClose={() => setPreview(null)} title="Template preview">
         {preview ? (
-          <div className="space-y-3">
-            <p className="text-sm font-semibold">{preview.subject}</p>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm font-semibold text-content-primary">{preview.subject}</p>
             <iframe
               title="Template preview"
               sandbox=""
               srcDoc={preview.html}
-              className="h-[420px] w-full rounded-xl border border-border bg-white"
+              className="h-[420px] w-full rounded-xl border border-surface-border bg-white"
             />
           </div>
         ) : null}
@@ -1025,109 +1078,131 @@ function QueueView() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          className={`${inputClass} max-w-xs`}
-          placeholder="Search recipient or subject"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-        />
-        <select
-          className={`${inputClass} max-w-[10rem]`}
-          value={status}
-          onChange={(e) => {
-            setStatus(e.target.value);
-            setPage(1);
-          }}
-        >
-          <option value="">All statuses</option>
-          {['queued', 'sending', 'sent', 'failed', 'dead', 'suppressed', 'cancelled'].map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+    <div className="flex flex-col gap-4">
+      <Toolbar>
+        <div className="min-w-0 flex-1 sm:max-w-xs">
+          <label className="label" htmlFor="queue-search">
+            Search
+          </label>
+          <input
+            id="queue-search"
+            className="input"
+            placeholder="Search recipient or subject"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
+        <div className="sm:w-44">
+          <label className="label" htmlFor="queue-status">
+            Status
+          </label>
+          <select
+            id="queue-status"
+            className="select"
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All statuses</option>
+            {['queued', 'sending', 'sent', 'failed', 'dead', 'suppressed', 'cancelled'].map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
         {selected.length > 0 ? (
-          <button className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white" onClick={retry}>
+          <button type="button" className="btn-primary sm:ml-auto" onClick={retry}>
             Retry {selected.length}
           </button>
         ) : null}
-      </div>
+      </Toolbar>
 
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       {loading ? (
         <Spinner label="Loading queue" />
       ) : rows.length === 0 ? (
-        <EmptyState icon="inbox" title="Nothing here" description="No messages match this filter." />
+        <EmptyState icon={<EmptyIcon name="inbox" />} title="Nothing here" description="No messages match this filter." />
       ) : (
-        <div className="space-y-2">
-          {rows.map((message) => (
-            <Card key={message.id} className="flex flex-wrap items-start gap-3 p-3">
-              {['dead', 'failed', 'cancelled'].includes(message.status) ? (
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={selected.includes(message.id)}
-                  onChange={(e) =>
-                    setSelected((prev) =>
-                      e.target.checked ? [...prev, message.id] : prev.filter((id) => id !== message.id),
-                    )
-                  }
-                />
-              ) : null}
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="truncate text-sm font-medium">{message.subject}</p>
-                  {statusBadge(message.status)}
-                  <Badge tone={message.category === 'marketing' ? 'accent' : 'default'}>{message.category}</Badge>
-                </div>
-                <p className="truncate text-xs text-content-muted">
-                  {message.recipient} · {message.template}
-                </p>
-                <p className="mt-1 text-xs text-content-subtle">
-                  attempt {message.attempts}/{message.maxAttempts} ·{' '}
-                  {new Date(message.createdAt).toLocaleString()}
-                  {message.messageId ? ` · id ${message.messageId}` : ''}
-                </p>
-                {message.lastError ? (
-                  <p className="mt-1 break-words rounded-lg bg-danger-50 px-2 py-1 text-xs text-danger-700">
-                    {message.lastError}
-                  </p>
-                ) : null}
-              </div>
-            </Card>
-          ))}
-        </div>
+        <TableScroll>
+          <table className="tbl min-w-[860px]">
+            <thead>
+              <tr>
+                <th className="w-12">
+                  <span className="sr-only">Select</span>
+                </th>
+                <th>Message</th>
+                <th>Recipient</th>
+                <th>Attempts</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((message) => {
+                const selectable = ['dead', 'failed', 'cancelled'].includes(message.status);
+                return (
+                  <tr key={message.id}>
+                    <td>
+                      {selectable ? (
+                        <label className="inline-flex min-h-11 min-w-11 items-center justify-center">
+                          <input
+                            type="checkbox"
+                            className="h-5 w-5 accent-[rgb(var(--accent))]"
+                            aria-label={`Select ${message.subject}`}
+                            checked={selected.includes(message.id)}
+                            onChange={(e) =>
+                              setSelected((prev) =>
+                                e.target.checked
+                                  ? [...prev, message.id]
+                                  : prev.filter((id) => id !== message.id),
+                              )
+                            }
+                          />
+                        </label>
+                      ) : null}
+                    </td>
+                    <td className="max-w-[280px]">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="truncate text-sm font-medium text-content-primary">
+                          {message.subject}
+                        </span>
+                        {statusBadge(message.status)}
+                        <Badge tone={message.category === 'marketing' ? 'accent' : 'default'}>
+                          {message.category}
+                        </Badge>
+                      </div>
+                      <span className="block truncate text-xs text-content-muted">{message.template}</span>
+                      {message.lastError ? (
+                        <span className="mt-1 block break-words rounded-lg bg-negative/10 px-2 py-1 text-xs text-negative">
+                          {message.lastError}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="max-w-[200px] truncate text-content-secondary">{message.recipient}</td>
+                    <td className="numeric whitespace-nowrap text-content-secondary">
+                      {message.attempts}/{message.maxAttempts}
+                    </td>
+                    <td className="whitespace-nowrap text-xs text-content-muted">
+                      {new Date(message.createdAt).toLocaleString()}
+                      {message.messageId ? (
+                        <span className="block font-mono text-[11px]">id {message.messageId}</span>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
 
-      {total > pageSize ? (
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-content-muted">
-            Page {page} of {Math.ceil(total / pageSize)} · {formatNumber(total)} total
-          </span>
-          <div className="flex gap-2">
-            <button
-              className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40"
-              disabled={page === 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              Previous
-            </button>
-            <button
-              className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40"
-              disabled={page >= Math.ceil(total / pageSize)}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <Pagination page={page} total={total} pageSize={pageSize} onChange={setPage} />
     </div>
   );
 }
@@ -1171,25 +1246,38 @@ function SuppressionView() {
   }, [load]);
 
   return (
-    <div className="space-y-4">
-      <Card className="flex flex-wrap items-end gap-2 p-3">
-        <Field label="Suppress address">
+    <div className="flex flex-col gap-4">
+      <Toolbar>
+        <div className="min-w-0 sm:flex-1">
+          <label className="label" htmlFor="suppress-email">
+            Suppress address
+          </label>
           <input
-            className={inputClass}
+            id="suppress-email"
+            className="input"
             placeholder="someone@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-        </Field>
-        <Field label="Reason">
-          <select className={inputClass} value={reason} onChange={(e) => setReason(e.target.value as 'manual')}>
+        </div>
+        <div className="sm:w-44">
+          <label className="label" htmlFor="suppress-reason">
+            Reason
+          </label>
+          <select
+            id="suppress-reason"
+            className="select"
+            value={reason}
+            onChange={(e) => setReason(e.target.value as 'manual')}
+          >
             <option value="manual">Manual</option>
             <option value="hard_bounce">Hard bounce</option>
             <option value="complaint">Complaint</option>
           </select>
-        </Field>
+        </div>
         <button
-          className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white"
+          type="button"
+          className="btn-primary"
           onClick={() =>
             void post('/admin-ops/email/suppressions', { email, reason, scope: 'marketing' })
               .then(() => {
@@ -1202,72 +1290,75 @@ function SuppressionView() {
         >
           Add
         </button>
-        <input
-          className={`${inputClass} ml-auto max-w-xs`}
-          placeholder="Search suppressions"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-        />
-      </Card>
+        <div className="min-w-0 sm:ml-auto sm:w-56">
+          <label className="label" htmlFor="suppress-search">
+            Search
+          </label>
+          <input
+            id="suppress-search"
+            className="input"
+            placeholder="Search suppressions"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
+      </Toolbar>
 
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       {loading ? (
         <Spinner label="Loading suppressions" />
       ) : rows.length === 0 ? (
-        <EmptyState icon="inbox" title="No suppressed addresses" description="Opt-outs and bounces appear here." />
+        <EmptyState
+          icon={<EmptyIcon name="inbox" />}
+          title="No suppressed addresses"
+          description="Opt-outs and bounces appear here."
+        />
       ) : (
-        <div className="space-y-2">
-          {rows.map((row) => (
-            <Card key={row.id} className="flex flex-wrap items-center gap-3 p-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{row.email}</p>
-                <p className="text-xs text-content-muted">
-                  {row.reason} · {row.scope === 'all' ? 'all mail' : 'marketing only'} ·{' '}
-                  {new Date(row.createdAt).toLocaleDateString()}
-                </p>
-              </div>
-              <button
-                className="rounded-lg border border-border px-2.5 py-1.5 text-xs"
-                onClick={() =>
-                  void del(`/admin-ops/email/suppressions/${encodeURIComponent(row.email)}`)
-                    .then(() => load())
-                    .catch((err) => toast(`Failed: ${(err as Error).message}`, 'error'))
-                }
-              >
-                Remove
-              </button>
-            </Card>
-          ))}
-        </div>
+        <TableScroll>
+          <table className="tbl min-w-[640px]">
+            <thead>
+              <tr>
+                <th>Address</th>
+                <th>Reason</th>
+                <th>Scope</th>
+                <th>Added</th>
+                <th className="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td className="max-w-[260px] truncate font-medium text-content-primary">{row.email}</td>
+                  <td className="text-content-secondary">{row.reason}</td>
+                  <td className="text-content-muted">{row.scope === 'all' ? 'all mail' : 'marketing only'}</td>
+                  <td className="numeric whitespace-nowrap text-content-muted">
+                    {new Date(row.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="text-right">
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm"
+                      onClick={() =>
+                        void del(`/admin-ops/email/suppressions/${encodeURIComponent(row.email)}`)
+                          .then(() => load())
+                          .catch((err) => toast(`Failed: ${(err as Error).message}`, 'error'))
+                      }
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
 
-      {total > pageSize ? (
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-content-muted">
-            Page {page} of {Math.ceil(total / pageSize)}
-          </span>
-          <div className="flex gap-2">
-            <button
-              className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40"
-              disabled={page === 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              Previous
-            </button>
-            <button
-              className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40"
-              disabled={page >= Math.ceil(total / pageSize)}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <Pagination page={page} total={total} pageSize={pageSize} onChange={setPage} />
     </div>
   );
 }
@@ -1277,25 +1368,9 @@ function SuppressionView() {
 export function EmailCenterPanel() {
   const [view, setView] = useState<View>('overview');
 
-  const views = useMemo(() => VIEWS, []);
-
   return (
-    <div className="space-y-4">
-      <div className="flex gap-1 overflow-x-auto pb-1">
-        {views.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setView(item.id)}
-            className={`shrink-0 rounded-xl px-3 py-1.5 text-sm font-medium transition ${
-              view === item.id
-                ? 'bg-brand-600 text-white'
-                : 'border border-border text-content-muted hover:text-content'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+    <div className="flex flex-col gap-4">
+      <Tabs<View> tabs={VIEWS} value={view} onChange={setView} />
 
       {view === 'overview' ? <OverviewView onGo={setView} /> : null}
       {view === 'campaigns' ? <CampaignsView /> : null}

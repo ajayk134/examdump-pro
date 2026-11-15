@@ -4,6 +4,26 @@ All notable changes to ExamDump Pro.
 
 ## [Unreleased]
 
+### Changed
+
+- **Frontend redesign — the Aurora design system applied per surface.** Every
+  route was rebuilt so it has a layout that fits its job instead of one repeated
+  card grid, while sharing one token set. The system gained explicit layout
+  idioms (`.panel`, `.panel-lg`, `.tile`, `.section`, `.rail`, `.tbl`, `.kbd`,
+  `.link-quiet`) alongside the existing `.surface`/`.card` aliases, a shared
+  `useOverlay` hook (focus trap, scroll lock, Escape, visual-viewport sizing)
+  now used by both `Drawer` and the new `Dialog`, and new primitives
+  (`StatStrip`, `Tooltip`, `KeyHint`). Highlights: split hero with a live
+  catalogue strip on the landing page; provider/exam discovery with phone filters
+  in a drawer; a briefing-style exam detail page; a workspace dashboard with a
+  "continue" hero, grouped metrics and a chart-led performance panel; a focus
+  practice interface with 1–9 answer shortcuts; a mock exam whose submit
+  confirmation uses the shared dialog; analytics, pricing (compare table + FAQ),
+  the AI tutor transcript and a dense admin console with a responsive side rail;
+  and a premium footer rendered at every breakpoint. `PAYMENTS_ENABLED` and
+  `UPI_AUTO_APPROVE` are untouched, no API contract changed, and no dependency
+  was added.
+
 ### Added
 
 - **YouPI-PG standalone UPI gateway integration.** Opt-in provider
@@ -34,6 +54,26 @@ All notable changes to ExamDump Pro.
   artefacts are removed, leaving no unused integration surface.
 
 ### Fixed
+
+- **Pricing comparison widened the whole document on phones.** The table's
+  `sr-only` `<caption>` is `position: absolute`; because the scroll wrapper was
+  `position: static`, the caption resolved against the viewport, escaped the
+  wrapper's `overflow-x` clip and dragged `documentElement.scrollWidth` (and the
+  fixed bottom nav) out to the table's full width. `TableScroll` is now
+  `relative`, so it is the caption's containing block and clips it as intended.
+- **`sm:animate-pop` on the shared dialog emitted no CSS.** `animate-pop` was a
+  plain class, which cannot take a `sm:` prefix. The animation is now registered
+  in `tailwind.config.ts` (`pop`, `sheet`, `slide-in`, `rise`, mirroring the
+  existing keyframes) so responsive variants emit.
+- Removed two dead class names that produced no CSS: `inline-math`
+  (`components/markdown.tsx`) and `truncate-0` (`components/ui.tsx`,
+  `app/dashboard/page.tsx`).
+- The `Alert` "info" tone now uses the `accent` token instead of a raw brand
+  ramp, and toasts use `positive`/`negative` tokens with a text-coloured
+  message, so both themes read consistently.
+- Coarse-pointer minimum height for `.chip` and `.btn-sm` raised to 44 px, and a
+  `.link-quiet` idiom gives footer and "view all" text links the same touch
+  hit-area expansion `.link` already had.
 
 - **YouPI checkout was reachable while payments were disabled.**
   `POST /api/payments/pay/youpi/checkout` was gated only by `YOUPI_ENABLED`, so

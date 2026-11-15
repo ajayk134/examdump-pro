@@ -5,7 +5,7 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { StudySession } from '@/components/study-session';
 import { MockSession } from '@/components/mock-session';
-import { Alert, Spinner } from '@/components/ui';
+import { EmptyIcon, EmptyState, Spinner } from '@/components/ui';
 
 function StudyInner() {
   const params = useSearchParams();
@@ -16,8 +16,16 @@ function StudyInner() {
   if (!provider || !exam) {
     return (
       <div className="mx-auto max-w-lg">
-        <Alert tone="warning">No exam selected. Pick one from the catalogue.</Alert>
-        <Link href="/exams" className="btn-primary mt-4">Browse exams</Link>
+        <EmptyState
+          icon={<EmptyIcon name="search" />}
+          title="No exam selected"
+          description="Pick a certification from the catalogue to start a practice session."
+          action={
+            <Link href="/exams" className="btn-primary">
+              Browse exams
+            </Link>
+          }
+        />
       </div>
     );
   }

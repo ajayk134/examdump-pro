@@ -7,6 +7,7 @@ import { AuthShell } from '@/components/auth-shell';
 import { Alert, Spinner } from '@/components/ui';
 import { useAuth } from '@/components/providers';
 import { post } from '@/lib/api';
+import { IconCheckCircle } from '@/components/icons';
 
 function VerifyEmailInner() {
   const params = useSearchParams();
@@ -37,17 +38,26 @@ function VerifyEmailInner() {
 
   return (
     <AuthShell title="Email verification" subtitle="Confirming your email address.">
-      {status === 'loading' ? <Spinner label="Verifying…" /> : null}
+      {status === 'loading' ? <Spinner label="Verifying..." /> : null}
+
       {status === 'success' ? (
         <div className="flex flex-col gap-4">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-positive/10 text-positive">
+            <IconCheckCircle width={22} height={22} />
+          </span>
           <Alert tone="success">Your email is verified. You are all set!</Alert>
-          <Link href="/dashboard" className="btn-primary w-full py-3">Go to dashboard</Link>
+          <Link href="/dashboard" className="btn-primary w-full">
+            Go to dashboard
+          </Link>
         </div>
       ) : null}
+
       {status === 'error' ? (
         <div className="flex flex-col gap-4">
           <Alert tone="error">{message}</Alert>
-          <Link href="/login" className="btn-secondary w-full py-3">Back to sign in</Link>
+          <Link href="/login" className="btn-secondary w-full">
+            Back to sign in
+          </Link>
         </div>
       ) : null}
     </AuthShell>
@@ -56,7 +66,7 @@ function VerifyEmailInner() {
 
 export default function VerifyEmailPage() {
   return (
-    <Suspense fallback={<div className="py-16 text-center text-content-muted">Loading…</div>}>
+    <Suspense fallback={<Spinner label="Loading..." />}>
       <VerifyEmailInner />
     </Suspense>
   );

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { AuthShell } from '@/components/auth-shell';
 import { GoogleButton } from '@/components/google-button';
-import { Alert } from '@/components/ui';
+import { Alert, Spinner } from '@/components/ui';
 import { useAuth, useToast } from '@/components/providers';
 import { post } from '@/lib/api';
 import type { User } from '@/lib/types';
@@ -67,15 +67,17 @@ function RegisterForm() {
   if (done) {
     return (
       <AuthShell title="Check your inbox" subtitle="We sent you a verification link.">
-        <div className="flex flex-col gap-4 text-sm text-content-secondary">
+        <div className="flex flex-col gap-4">
           <Alert tone="success">Your account is created. Verify your email to unlock everything.</Alert>
           {devVerify ? (
             <Alert tone="info">
               Development mode: no email provider configured.{' '}
-              <a className="link break-all" href={devVerify}>Open verification link</a>
+              <a className="link break-all" href={devVerify}>
+                Open verification link
+              </a>
             </Alert>
           ) : null}
-          <button onClick={() => router.push('/dashboard')} className="btn-primary w-full py-3">
+          <button type="button" onClick={() => router.push('/dashboard')} className="btn-primary w-full">
             Go to your dashboard
           </button>
         </div>
@@ -90,38 +92,110 @@ function RegisterForm() {
       footer={
         <>
           Already have an account?{' '}
-          <Link href="/login" className="link">Sign in</Link>
+          <Link href="/login" className="link">
+            Sign in
+          </Link>
         </>
       }
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
         {error ? <Alert tone="error">{error}</Alert> : null}
+
         <div>
-          <label htmlFor="name" className="label">Full name</label>
-          <input id="name" required className="input" value={form.name} onChange={(e) => update('name')(e.target.value)} placeholder="Alex Chen" autoComplete="name" />
+          <label htmlFor="name" className="label">
+            Full name
+          </label>
+          <input
+            id="name"
+            name="name"
+            required
+            className="input"
+            value={form.name}
+            onChange={(e) => update('name')(e.target.value)}
+            placeholder="Alex Chen"
+            autoComplete="name"
+          />
         </div>
+
         <div>
-          <label htmlFor="email" className="label">Email</label>
-          <input id="email" type="email" required className="input" value={form.email} onChange={(e) => update('email')(e.target.value)} placeholder="you@example.com" autoComplete="email" />
+          <label htmlFor="email" className="label">
+            Email
+          </label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            inputMode="email"
+            required
+            className="input"
+            value={form.email}
+            onChange={(e) => update('email')(e.target.value)}
+            placeholder="you@example.com"
+            autoComplete="email"
+          />
         </div>
+
         <div>
-          <label htmlFor="password" className="label">Password</label>
-          <input id="password" type="password" required className="input" value={form.password} onChange={(e) => update('password')(e.target.value)} placeholder="At least 8 characters" autoComplete="new-password" />
-          <p className="mt-1 text-xs text-content-muted">Use 8+ characters with upper, lower and a number.</p>
+          <label htmlFor="password" className="label">
+            Password
+          </label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            required
+            className="input"
+            value={form.password}
+            onChange={(e) => update('password')(e.target.value)}
+            placeholder="At least 8 characters"
+            autoComplete="new-password"
+            aria-describedby="password-help"
+          />
+          <p id="password-help" className="caption mt-1.5">
+            Use 8+ characters with upper, lower and a number.
+          </p>
         </div>
+
         <div>
-          <label htmlFor="referralCode" className="label">Referral code <span className="text-content-muted">(optional)</span></label>
-          <input id="referralCode" className="input" value={form.referralCode} onChange={(e) => update('referralCode')(e.target.value.toUpperCase())} placeholder="SAVE10" />
+          <label htmlFor="referralCode" className="label">
+            Referral code <span className="font-normal text-content-muted">(optional)</span>
+          </label>
+          <input
+            id="referralCode"
+            name="referralCode"
+            className="input"
+            value={form.referralCode}
+            onChange={(e) => update('referralCode')(e.target.value.toUpperCase())}
+            placeholder="SAVE10"
+          />
         </div>
-        <label className="flex items-start gap-2 text-sm text-content-secondary">
-          <input type="checkbox" className="mt-1 h-4 w-4 rounded border-surface-border" checked={form.acceptTerms} onChange={(e) => update('acceptTerms')(e.target.checked)} />
-          <span>
-            I agree to the <Link href="/terms" className="link">terms</Link> and <Link href="/privacy" className="link">privacy policy</Link>.
+
+        <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl px-1 py-1.5 text-sm text-content-secondary">
+          <input
+            id="acceptTerms"
+            name="acceptTerms"
+            type="checkbox"
+            className="mt-0.5 h-5 w-5 shrink-0 rounded border-surface-border-strong accent-brand-600"
+            checked={form.acceptTerms}
+            onChange={(e) => update('acceptTerms')(e.target.checked)}
+          />
+          <span className="leading-relaxed">
+            I agree to the{' '}
+            <Link href="/terms" className="link">
+              terms
+            </Link>{' '}
+            and{' '}
+            <Link href="/privacy" className="link">
+              privacy policy
+            </Link>
+            .
           </span>
         </label>
-        <button type="submit" className="btn-primary mt-1 w-full py-3" disabled={loading}>
-          {loading ? 'Creating account…' : 'Create account'}
+
+        <button type="submit" className="btn-primary mt-1 w-full" disabled={loading}>
+          {loading ? 'Creating account...' : 'Create account'}
         </button>
+
         <GoogleButton label="Sign up with Google" />
       </form>
     </AuthShell>
@@ -130,7 +204,7 @@ function RegisterForm() {
 
 export default function RegisterPage() {
   return (
-    <Suspense fallback={<div className="py-16 text-center text-content-muted">Loading…</div>}>
+    <Suspense fallback={<Spinner label="Loading..." />}>
       <RegisterForm />
     </Suspense>
   );

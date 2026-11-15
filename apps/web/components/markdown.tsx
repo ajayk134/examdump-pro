@@ -19,7 +19,7 @@ import { latexToUnicode } from '@/lib/math';
 
 function MathInline({ latex }: { latex: string }) {
   return (
-    <span className="inline-math rounded bg-surface-sunken/70 px-1 py-0.5 font-mono text-[0.92em] text-brand-700 dark:text-brand-200">
+    <span className="rounded bg-surface-sunken/70 px-1 py-0.5 font-mono text-[0.92em] text-brand-700 dark:text-brand-200">
       {latexToUnicode(latex)}
     </span>
   );
@@ -268,7 +268,7 @@ export function Markdown({ content, className }: { content: string; className?: 
         out.push(
           <blockquote
             key={k}
-            className="my-3 rounded-r-lg border-l-2 border-brand-400/60 bg-brand-500/5 py-2 pl-3 pr-2 text-sm text-content-secondary"
+            className="my-3 rounded-r-lg border-l-2 border-accent/50 bg-accent/[0.05] py-2 pl-3 pr-2 text-sm text-content-secondary"
           >
             {quote.map((q, qi) => (
               <p key={qi} className="my-0.5">

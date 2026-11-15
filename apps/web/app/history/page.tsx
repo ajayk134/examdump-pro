@@ -5,9 +5,23 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/providers';
 import { get } from '@/lib/api';
 import type { AttemptSummary, Paginated } from '@/lib/types';
-import { Alert, EmptyState, Spinner, TableScroll } from '@/components/ui';
-import { IconHistory } from '@/components/icons';
-import { formatDateTime, formatDuration, scoreColor } from '@/lib/format';
+import { Alert, EmptyState, EmptyIcon, PageHeader, Spinner, TableScroll } from '@/components/ui';
+import { formatDateTime, formatDuration } from '@/lib/format';
+
+/** Accuracy banding from design tokens, so light and dark both hold. */
+function scoreTone(score: number): string {
+  if (score >= 80) return 'text-positive';
+  if (score >= 60) return 'text-caution';
+  return 'text-negative';
+}
+
+function Score({ status, score }: { status: string; score?: number }) {
+  if (status !== 'completed') {
+    return <span className="badge capitalize">{status.replace('_', ' ')}</span>;
+  }
+  const value = score ?? 0;
+  return <span className={`numeric font-bold ${scoreTone(value)}`}>{value}%</span>;
+}
 
 export default function HistoryPage() {
   const { user, loading } = useAuth();
@@ -26,49 +40,86 @@ export default function HistoryPage() {
   if (loading) return <Spinner />;
   if (!user) return <EmptyState title="Sign in to view your history" action={<Link href="/login" className="btn-primary">Sign in</Link>} />;
 
+  const pagination = data?.pagination;
+
   return (
-    <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-5">
-      <header>
-        <h1 className="heading-1 flex items-center gap-2"><IconHistory className="text-brand-400" /> Practice history</h1>
-        <p className="mt-1 text-content-muted">Every attempt, score and session.</p>
-      </header>
+    <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5">
+      <PageHeader
+        eyebrow="Analytics"
+        title="Practice history"
+        description="Every attempt, score and session time. Retake one or ask the AI tutor about it."
+        actions={
+          <Link href="/dashboard" className="btn-secondary btn-sm">
+            Dashboard
+          </Link>
+        }
+      />
+
       {error ? <Alert tone="error">{error}</Alert> : null}
+
       {!data ? (
         <Spinner />
       ) : data.items.length === 0 ? (
-        <EmptyState title="No attempts yet" description="Start practising to build your history." action={<Link href="/exams" className="btn-primary">Browse exams</Link>} />
+        <EmptyState
+          icon={<EmptyIcon name="inbox" />}
+          title="No attempts yet"
+          description="Start practising to build your history."
+          action={<Link href="/exams" className="btn-primary">Browse exams</Link>}
+        />
       ) : (
         <>
-          <TableScroll>
-            <table className="w-full min-w-[560px] text-left text-sm">
-              <thead className="border-b border-surface-border text-xs uppercase tracking-wide text-content-muted">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="caption">
+              {pagination
+                ? `Showing ${(pagination.page - 1) * pagination.pageSize + 1}–${Math.min(
+                    pagination.page * pagination.pageSize,
+                    pagination.total,
+                  )} of ${pagination.total.toLocaleString()}`
+                : null}
+            </p>
+          </div>
+
+          <TableScroll className="hidden md:block">
+            <table className="tbl min-w-[640px]">
+              <caption className="sr-only">Practice attempts, newest first</caption>
+              <thead>
                 <tr>
-                  <th className="px-4 py-3">Exam</th>
-                  <th className="px-4 py-3">Mode</th>
-                  <th className="px-4 py-3">Score</th>
-                  <th className="px-4 py-3">Time</th>
-                  <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3"></th>
+                  <th scope="col">Exam</th>
+                  <th scope="col">Mode</th>
+                  <th scope="col">Score</th>
+                  <th scope="col">Time</th>
+                  <th scope="col">Date</th>
+                  <th scope="col">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-surface-border">
+              <tbody>
                 {data.items.map((attempt) => (
-                  <tr key={attempt.id} className="hover:bg-surface-overlay/60">
-                    <td className="px-4 py-3 font-medium">{attempt.examCode || attempt.examKey}</td>
-                    <td className="px-4 py-3 capitalize text-content-muted">{attempt.mode}</td>
-                    <td className="px-4 py-3">
-                      {attempt.status === 'completed' ? (
-                        <span className={`font-bold ${scoreColor(attempt.scorePercent ?? 0)}`}>{attempt.scorePercent ?? 0}%</span>
-                      ) : (
-                        <span className="badge">{attempt.status.replace('_', ' ')}</span>
-                      )}
+                  <tr key={attempt.id}>
+                    <th scope="row" className="border-t border-surface-border px-3 py-2.5 text-left align-middle font-medium">
+                      {attempt.examCode || attempt.examKey}
+                    </th>
+                    <td className="capitalize text-content-muted">{attempt.mode}</td>
+                    <td>
+                      <Score status={attempt.status} score={attempt.scorePercent} />
                     </td>
-                    <td className="px-4 py-3 text-content-muted">{attempt.timeSpentMs ? formatDuration(attempt.timeSpentMs) : '—'}</td>
-                    <td className="px-4 py-3 text-content-muted">{formatDateTime(attempt.createdAt)}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="text-content-muted">{attempt.timeSpentMs ? formatDuration(attempt.timeSpentMs) : '—'}</td>
+                    <td className="whitespace-nowrap text-content-muted">{formatDateTime(attempt.createdAt)}</td>
+                    <td className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Link href={`/study?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}&mode=practice`} className="btn-ghost !px-3 !py-1.5 text-xs">Retake</Link>
-                        <Link href={`/ask?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}`} className="btn-ghost !px-3 !py-1.5 text-xs">Ask AI</Link>
+                        <Link
+                          href={`/study?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}&mode=practice`}
+                          className="btn-ghost btn-sm"
+                        >
+                          Retake
+                        </Link>
+                        <Link
+                          href={`/ask?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}`}
+                          className="btn-ghost btn-sm"
+                        >
+                          Ask AI
+                        </Link>
                       </div>
                     </td>
                   </tr>
@@ -76,11 +127,59 @@ export default function HistoryPage() {
               </tbody>
             </table>
           </TableScroll>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <button className="btn-secondary" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={!data.pagination.hasPrev}>Previous</button>
-            <span className="text-sm text-content-muted">Page {data.pagination.page} of {data.pagination.totalPages}</span>
-            <button className="btn-secondary" onClick={() => setPage((p) => p + 1)} disabled={!data.pagination.hasNext}>Next</button>
-          </div>
+
+          {/* Phone layout: one card per attempt, nothing truncated. */}
+          <ul className="flex flex-col gap-2.5 md:hidden">
+            {data.items.map((attempt) => (
+              <li key={attempt.id} className="panel p-4">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="min-w-0 truncate text-sm font-semibold">{attempt.examCode || attempt.examKey}</p>
+                  <Score status={attempt.status} score={attempt.scorePercent} />
+                </div>
+                <p className="caption mt-1 capitalize">
+                  {attempt.mode} · {formatDateTime(attempt.createdAt)}
+                  {attempt.timeSpentMs ? ` · ${formatDuration(attempt.timeSpentMs)}` : ''}
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Link
+                    href={`/study?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}&mode=practice`}
+                    className="btn-secondary btn-sm flex-1"
+                  >
+                    Retake
+                  </Link>
+                  <Link
+                    href={`/ask?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}`}
+                    className="btn-ghost btn-sm flex-1"
+                  >
+                    Ask AI
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={!data.pagination.hasPrev}
+            >
+              Previous
+            </button>
+            <span className="text-sm text-content-muted" aria-live="polite">
+              Page <span className="numeric font-semibold text-content-secondary">{data.pagination.page}</span> of{' '}
+              <span className="numeric font-semibold text-content-secondary">{Math.max(1, data.pagination.totalPages)}</span>
+            </span>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={!data.pagination.hasNext}
+            >
+              Next
+            </button>
+          </nav>
         </>
       )}
     </div>

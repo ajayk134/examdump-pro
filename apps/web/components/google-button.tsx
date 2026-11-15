@@ -67,16 +67,22 @@ export function GoogleButton({ label = 'Continue with Google' }: { label?: strin
   if (!clientId) return null;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex w-full min-w-0 flex-col gap-3">
       <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" onLoad={() => setReady(true)} />
-      <div ref={containerRef} className={visible ? 'flex justify-center' : 'hidden'} />
-      {!visible ? (
-        <button type="button" className="btn-secondary w-full" disabled>
-          <IconGoogle /> {label}
-        </button>
-      ) : null}
-      <div className="flex items-center gap-3 text-xs text-content-muted">
-        <span className="h-px flex-1 bg-surface-border" /> or <span className="h-px flex-1 bg-surface-border" />
+
+      {/* The rendered button and its placeholder share one slot so the layout
+          does not jump when the script finishes loading. */}
+      <div className="flex min-h-[2.75rem] w-full min-w-0 flex-col justify-center">
+        <div ref={containerRef} className={visible ? 'flex max-w-full justify-center' : 'hidden'} />
+        {!visible ? (
+          <button type="button" className="btn-secondary w-full" disabled>
+            <IconGoogle /> {label}
+          </button>
+        ) : null}
+      </div>
+
+      <div className="flex items-center gap-3 text-xs font-medium text-content-muted" aria-hidden="true">
+        <span className="hairline h-px flex-1" /> or <span className="hairline h-px flex-1" />
       </div>
     </div>
   );

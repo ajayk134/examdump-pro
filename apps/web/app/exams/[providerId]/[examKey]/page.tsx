@@ -51,7 +51,7 @@ const MODES: ModeSpec[] = [
     title: 'Mock test',
     blurb: 'Exam conditions. Timer, no hints, full score report at the end.',
     icon: IconTrophy,
-    accent: 'from-violet-600 to-fuchsia-500',
+    accent: 'from-sky-600 to-brand-400',
     cta: 'Start mock test',
   },
   {
@@ -59,7 +59,7 @@ const MODES: ModeSpec[] = [
     title: 'Quick drill',
     blurb: 'Ten questions pulled at random across the whole bank.',
     icon: IconLightning,
-    accent: 'from-amber-500 to-orange-500',
+    accent: 'from-caution to-caution/70',
     cta: 'Start drill',
   },
 ];
@@ -117,14 +117,14 @@ export default function ExamDetailPage() {
         <div className="mb-4">
           <Skeleton className="h-4 w-28" />
         </div>
-        <div className="surface mb-4 p-5">
+        <div className="panel-lg mb-4 p-5 sm:p-6">
           <Skeleton className="mb-3 h-5 w-24" />
           <Skeleton className="mb-2 h-7 w-3/4" />
           <Skeleton className="h-4 w-1/3" />
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-32 rounded-2xl" />
+            <Skeleton key={i} className="h-36 rounded-2xl" />
           ))}
         </div>
       </PageShell>
@@ -137,38 +137,48 @@ export default function ExamDetailPage() {
   const limited = entitlement.isLimited;
 
   return (
-    <PageShell className="flex flex-col gap-4 sm:gap-5">
+    <PageShell className="flex flex-col gap-5 sm:gap-6">
       <Link
         href={`/exams/${encodeURIComponent(providerId)}`}
-        className="inline-flex items-center gap-1.5 text-[0.8125rem] font-medium text-content-muted transition-colors hover:text-content-primary"
+        className="inline-flex w-fit items-center gap-1.5 text-[0.8125rem] font-medium text-content-muted transition-colors hover:text-content-primary"
       >
         <IconArrowLeft className="h-4 w-4" />
         {data.provider.title}
       </Link>
 
-      {/* Hero */}
-      <section className="surface relative overflow-hidden p-4 sm:p-6">
+      {/* Briefing header — identity, access and the primary ways in */}
+      <section className="panel-lg relative overflow-hidden p-5 sm:p-6">
         <span
           aria-hidden="true"
-          className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-600 via-sky-400 to-violet-500"
+          className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-600 via-sky-400 to-sky-300"
         />
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <Badge tone="accent" className="font-mono uppercase">
                 {exam.code}
               </Badge>
-              {limited ? <Badge tone="warning">Preview · {accessible} free</Badge> : <Badge tone="success">Full access</Badge>}
+              {limited ? (
+                <Badge tone="warning">Preview · {accessible} free</Badge>
+              ) : (
+                <Badge tone="success">Full access</Badge>
+              )}
             </div>
-            <h1 className="display-2 text-balance">{exam.title}</h1>
-            <p className="body-text mt-1.5">
-              {data.provider.title} · {total.toLocaleString()} questions
+            <h1 className="display-2 mt-3 text-balance">{exam.title}</h1>
+            <p className="body-text mt-2">
+              <Link href={`/exams/${encodeURIComponent(providerId)}`} className="link">
+                {data.provider.title}
+              </Link>
+              <span aria-hidden="true" className="mx-2 text-content-muted">
+                ·
+              </span>
+              {total.toLocaleString()} questions
             </p>
           </div>
 
-          <div className="flex items-center gap-2 sm:flex-col sm:items-end">
-            <ProgressRing value={limited ? (accessible / Math.max(total, 1)) * 100 : 100} size={62} label="Access">
-              <span className="numeric text-[0.8125rem] font-bold">{accessible}</span>
+          <div className="flex items-center gap-3 lg:flex-col lg:items-end">
+            <ProgressRing value={limited ? (accessible / Math.max(total, 1)) * 100 : 100} size={68} label="Access">
+              <span className="numeric text-[0.9375rem] font-bold">{accessible}</span>
             </ProgressRing>
             <button
               type="button"
@@ -186,35 +196,43 @@ export default function ExamDetailPage() {
         </div>
       </section>
 
-      {/* Modes */}
-      <section aria-labelledby="modes-heading">
-        <h2 id="modes-heading" className="sr-only">
-          Study modes
-        </h2>
+      {/* How to begin */}
+      <section aria-labelledby="modes-heading" className="flex flex-col gap-3">
+        <div className="section-head">
+          <div>
+            <h2 id="modes-heading" className="heading-1">
+              How would you like to study?
+            </h2>
+            <p className="caption mt-1">Choose a mode — you can switch at any time.</p>
+          </div>
+        </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          {MODES.map((mode) => {
+          {MODES.map((mode, index) => {
             const Icon = mode.icon;
             return (
               <button
                 key={mode.id}
                 type="button"
                 onClick={() => start(mode.id)}
-                className="surface surface-interactive group flex flex-col items-start p-4 text-left"
+                className={cn(
+                  'surface surface-interactive group flex flex-col items-start p-4 text-left',
+                  index === 0 && 'border-accent/40',
+                )}
               >
                 <span
                   className={cn(
-                    'mb-3 grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br text-white shadow-sm',
+                    'mb-3 grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br text-white shadow-sm',
                     mode.accent,
                   )}
                   aria-hidden="true"
                 >
                   <Icon className="h-5 w-5" />
                 </span>
-                <span className="heading-3">{mode.title}</span>
+                <span className="heading-2">{mode.title}</span>
                 <span className="mt-1 text-xs leading-relaxed text-content-muted">{mode.blurb}</span>
                 <span className="mt-3 inline-flex items-center gap-1 text-[0.8125rem] font-semibold text-accent">
                   {mode.cta}
-                  <IconChevronRight className="h-3.5 w-3.5" />
+                  <IconChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                 </span>
               </button>
             );
@@ -222,19 +240,24 @@ export default function ExamDetailPage() {
         </div>
       </section>
 
-      {/* Quick facts */}
-      <section className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        <Fact label="Questions" value={total.toLocaleString()} />
-        <Fact label="Unlocked" value={accessible.toLocaleString()} tone={limited ? 'warning' : 'success'} />
-        <Fact label="Est. practice" value={`${Math.max(1, Math.round(total * 1.2 / 60))}h`} hint="~1.2 min / question" />
-        <Fact label="Provider" value={data.provider.title} />
+      {/* At a glance */}
+      <section aria-labelledby="facts-heading" className="flex flex-col gap-3">
+        <h2 id="facts-heading" className="heading-2">
+          At a glance
+        </h2>
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          <Fact label="Questions" value={total.toLocaleString()} />
+          <Fact label="Unlocked" value={accessible.toLocaleString()} tone={limited ? 'warning' : 'success'} />
+          <Fact label="Est. practice" value={`${Math.max(1, Math.round(total * 1.2 / 60))}h`} hint="~1.2 min / question" />
+          <Fact label="Provider" value={data.provider.title} />
+        </div>
       </section>
 
       {limited ? (
         <div className="surface flex flex-col gap-3 border-caution/40 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-caution/15 text-caution">
-              <IconSparkles className="h-4.5 w-4.5" />
+              <IconSparkles className="h-4 w-4" />
             </span>
             <div>
               <p className="heading-3">You have {accessible} questions unlocked</p>
@@ -267,7 +290,7 @@ export default function ExamDetailPage() {
       <p className="caption flex items-center gap-1.5">
         <IconClock className="h-3.5 w-3.5" />
         Progress is saved automatically as you answer.
-        <button type="button" onClick={load} className="ml-auto inline-flex items-center gap-1 text-accent">
+        <button type="button" onClick={load} className="ml-auto inline-flex items-center gap-1 text-accent touch:min-h-11">
           <IconRefresh className="h-3.5 w-3.5" />
           Refresh
         </button>
@@ -288,8 +311,8 @@ function Fact({
   tone?: 'default' | 'success' | 'warning';
 }) {
   return (
-    <div className="surface p-3">
-      <p className="text-[0.6875rem] font-bold uppercase tracking-wider text-content-muted">{label}</p>
+    <div className="tile p-3.5">
+      <p className="metric-label">{label}</p>
       <p
         className={cn(
           'mt-1 truncate text-sm font-bold',

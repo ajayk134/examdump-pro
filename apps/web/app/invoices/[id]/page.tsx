@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { get } from '@/lib/api';
 import type { Invoice } from '@/lib/types';
-import { Spinner } from '@/components/ui';
+import { ErrorState, Spinner } from '@/components/ui';
+import { IconArrowLeft } from '@/components/icons';
 import { formatDate, formatMoneyMinor } from '@/lib/format';
 
 interface InvoiceResponse {
@@ -27,96 +28,114 @@ export default function InvoicePage() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-2xl py-12 text-center">
-        <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
-        <Link href="/profile" className="btn-secondary mt-4">
-          Back to profile
-        </Link>
+      <div className="mx-auto w-full max-w-2xl py-10">
+        <ErrorState title="Invoice unavailable" description={error} />
+        <div className="mt-4 text-center">
+          <Link href="/profile" className="btn-secondary">
+            Back to profile
+          </Link>
+        </div>
       </div>
     );
   }
 
-  if (!data) return <Spinner label="Loading invoice…" />;
+  if (!data) return <Spinner label="Loading invoice..." />;
 
   const { invoice, buyer } = data;
+  const lineItems = invoice.lineItems ?? [];
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 py-6">
-      <div className="flex items-center justify-between print:hidden">
-        <Link href="/profile" className="btn-ghost">
-          ← Back
+    <div className="mx-auto w-full max-w-2xl space-y-4 py-2 sm:py-6">
+      <div className="flex items-center justify-between gap-3 print:hidden">
+        <Link href="/profile" className="btn-ghost btn-sm">
+          <IconArrowLeft width={16} height={16} />
+          Back
         </Link>
-        <button type="button" className="btn-secondary" onClick={() => window.print()}>
+        <button type="button" className="btn-secondary btn-sm" onClick={() => window.print()}>
           Print / save PDF
         </button>
       </div>
 
-      <article className="card p-8 print:border-0 print:shadow-none">
-        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-surface-border pb-5">
-          <div>
-            <p className="text-lg font-bold">ExamDump Pro</p>
-            <p className="text-xs text-content-muted">Exam preparation platform</p>
-            <p className="text-xs text-content-muted">support@examdump.pro</p>
+      <article className="panel overflow-hidden p-0 print:border-0 print:shadow-none">
+        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-surface-border px-5 py-5 sm:px-7">
+          <div className="min-w-0">
+            <span className="inline-flex items-center gap-2.5">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-600 to-sky-400 text-sm font-black text-white">
+                E
+              </span>
+              <span className="text-lg font-bold tracking-tight">ExamDump Pro</span>
+            </span>
+            <p className="caption mt-2">Exam preparation platform</p>
+            <p className="caption">support@examdump.pro</p>
           </div>
-          <div className="text-right">
-            <p className="text-xs uppercase tracking-wide text-content-muted">Invoice</p>
-            <p className="font-mono text-sm font-semibold">{invoice.number}</p>
-            <p className="mt-1 text-xs text-content-muted">Issued {formatDate(invoice.issuedAt)}</p>
+          <div className="min-w-0 sm:text-right">
+            <p className="eyebrow">Invoice</p>
+            <p className="mt-1 font-mono text-sm font-semibold">{invoice.number}</p>
+            <p className="caption mt-1">Issued {formatDate(invoice.issuedAt)}</p>
           </div>
         </header>
 
-        <section className="mt-5 grid gap-4 sm:grid-cols-2">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-content-muted">Billed to</p>
-            <p className="mt-1 text-sm font-medium">{buyer?.name || invoice.billedTo.name}</p>
-            <p className="text-sm text-content-secondary">{buyer?.email || invoice.billedTo.email}</p>
+        <section className="grid gap-4 px-5 py-5 sm:grid-cols-2 sm:px-7">
+          <div className="min-w-0">
+            <p className="eyebrow">Billed to</p>
+            <p className="mt-1.5 text-sm font-medium">{buyer?.name || invoice.billedTo.name}</p>
+            <p className="break-words text-sm text-content-secondary">{buyer?.email || invoice.billedTo.email}</p>
           </div>
-          <div className="sm:text-right">
-            <p className="text-xs uppercase tracking-wide text-content-muted">Status</p>
-            <p className="mt-1 text-sm font-medium capitalize">{invoice.status.replace('_', ' ')}</p>
-            <p className="text-xs text-content-muted">Payment {invoice.paymentId.slice(0, 8)}</p>
+          <div className="min-w-0 sm:text-right">
+            <p className="eyebrow">Status</p>
+            <p className="mt-1.5 text-sm font-medium capitalize">{invoice.status.replace('_', ' ')}</p>
+            <p className="caption">Payment {invoice.paymentId.slice(0, 8)}</p>
           </div>
         </section>
 
-        <table className="mt-6 w-full text-sm">
-          <thead className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-content-muted">
-            <tr>
-              <th className="py-2">Description</th>
-              <th className="py-2 text-center">Qty</th>
-              <th className="py-2 text-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(invoice.lineItems ?? []).map((item, i) => (
-              <tr key={`${item.description}-${i}`} className="border-b border-surface-border/60">
-                <td className="py-2">{item.description}</td>
-                <td className="py-2 text-center">{item.quantity}</td>
-                <td className="py-2 text-right">
-                  {formatMoneyMinor(item.amountMinor * item.quantity, invoice.currency)}
-                </td>
+        <div className="px-5 sm:px-7">
+          <table className="tbl">
+            <caption className="sr-only">Invoice line items</caption>
+            <thead>
+              <tr>
+                <th scope="col">Description</th>
+                <th scope="col" className="text-center">
+                  Qty
+                </th>
+                <th scope="col" className="text-right">
+                  Amount
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div className="mt-4 ml-auto w-full max-w-xs space-y-1 text-sm">
-          <div className="flex justify-between">
-            <span className="text-content-secondary">Subtotal</span>
-            <span>{formatMoneyMinor(invoice.subtotalMinor, invoice.currency)}</span>
-          </div>
-          {invoice.discountMinor > 0 ? (
-            <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
-              <span>Discount</span>
-              <span>-{formatMoneyMinor(invoice.discountMinor, invoice.currency)}</span>
-            </div>
-          ) : null}
-          <div className="flex justify-between border-t border-surface-border pt-1 font-semibold">
-            <span>Total</span>
-            <span>{formatMoneyMinor(invoice.totalMinor, invoice.currency)}</span>
-          </div>
+            </thead>
+            <tbody>
+              {lineItems.map((item, i) => (
+                <tr key={`${item.description}-${i}`}>
+                  <td className="text-content-primary">{item.description}</td>
+                  <td className="numeric text-center text-content-secondary">{item.quantity}</td>
+                  <td className="numeric whitespace-nowrap text-right font-medium">
+                    {formatMoneyMinor(item.amountMinor * item.quantity, invoice.currency)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
 
-        <p className="mt-6 text-xs text-content-muted">
+        <div className="mt-5 flex justify-end px-5 pt-5 sm:px-7">
+          <dl className="w-full max-w-xs space-y-1.5 text-sm sm:max-w-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="text-content-secondary">Subtotal</dt>
+              <dd className="numeric">{formatMoneyMinor(invoice.subtotalMinor, invoice.currency)}</dd>
+            </div>
+            {invoice.discountMinor > 0 ? (
+              <div className="flex justify-between gap-4 text-positive">
+                <dt>Discount</dt>
+                <dd className="numeric">-{formatMoneyMinor(invoice.discountMinor, invoice.currency)}</dd>
+              </div>
+            ) : null}
+            <div className="flex justify-between gap-4 border-t border-surface-border pt-2 text-base font-semibold text-content-primary">
+              <dt>Total</dt>
+              <dd className="numeric">{formatMoneyMinor(invoice.totalMinor, invoice.currency)}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <p className="mt-5 border-t border-surface-border px-5 py-4 text-xs text-content-muted sm:px-7">
           This is a computer-generated receipt for a digital subscription. No physical goods are shipped.
         </p>
       </article>

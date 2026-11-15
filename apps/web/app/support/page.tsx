@@ -5,10 +5,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth, useToast } from '@/components/providers';
 import { get, post } from '@/lib/api';
 import type { SupportTicket, TicketMessage } from '@/lib/types';
-import { Alert, EmptyState, Spinner } from '@/components/ui';
+import { Alert, Badge, EmptyState, EmptyIcon, PageHeader, Spinner } from '@/components/ui';
+import { IconChevronDown, IconMessage, IconSend, IconTrophy } from '@/components/icons';
 import { formatDateTime } from '@/lib/format';
 
 const CATEGORIES = ['general', 'billing', 'payments', 'refund', 'account', 'content', 'technical'] as const;
+
+type Category = (typeof CATEGORIES)[number];
 
 interface TicketListResponse {
   tickets: SupportTicket[];
@@ -17,6 +20,13 @@ interface TicketListResponse {
 interface TicketDetailResponse {
   ticket: SupportTicket;
   messages: TicketMessage[];
+}
+
+function statusTone(status: SupportTicket['status']): 'accent' | 'warning' | 'success' | 'default' {
+  if (status === 'open') return 'accent';
+  if (status === 'pending') return 'warning';
+  if (status === 'resolved') return 'success';
+  return 'default';
 }
 
 export default function SupportPage() {
@@ -31,7 +41,7 @@ export default function SupportPage() {
 
   const [draft, setDraft] = useState({
     subject: '',
-    category: 'general' as (typeof CATEGORIES)[number],
+    category: 'general' as Category,
     message: '',
     email: user?.email ?? '',
   });
@@ -102,18 +112,58 @@ export default function SupportPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold tracking-tight">Support</h1>
-        <p className="mt-1 text-sm text-content-secondary">
-          Questions about billing, access or content? Open a ticket and we will reply by email.
-        </p>
-      </header>
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 sm:gap-6">
+      <PageHeader
+        eyebrow="Help"
+        title="Support"
+        description="Questions about billing, access or content? Open a ticket and we will reply by email."
+      />
 
-      <section className="card space-y-3 p-5">
-        <h2 className="text-base font-semibold">New ticket</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
+      {/* Three real routes to help, so nobody has to guess what to do first. */}
+      <section aria-label="Ways to get help" className="grid gap-2.5 sm:grid-cols-3">
+        <a
+          href="#new-ticket"
+          className="panel flex items-start gap-3 p-4 transition-colors hover:border-accent/45"
+        >
+          <IconSend width={18} height={18} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold">Open a ticket</span>
+            <span className="block text-xs leading-relaxed text-content-muted">
+              Best for billing, payments and account questions.
+            </span>
+          </span>
+        </a>
+        <a
+          href="mailto:support@examdump.pro"
+          className="panel flex items-start gap-3 p-4 transition-colors hover:border-accent/45"
+        >
+          <IconMessage width={18} height={18} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold">Email us</span>
+            <span className="block text-xs leading-relaxed text-content-muted">support@examdump.pro</span>
+          </span>
+        </a>
+        <Link href="/pricing" className="panel flex items-start gap-3 p-4 transition-colors hover:border-accent/45">
+          <IconTrophy width={18} height={18} className="mt-0.5 shrink-0 text-caution" aria-hidden="true" />
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold">Passes and plans</span>
+            <span className="block text-xs leading-relaxed text-content-muted">
+              Compare passes before you buy or upgrade.
+            </span>
+          </span>
+        </Link>
+      </section>
+
+      <section id="new-ticket" aria-labelledby="new-ticket-heading" className="panel scroll-mt-24 p-4 sm:p-5">
+        <div className="mb-4">
+          <h2 id="new-ticket-heading" className="heading-2">
+            New ticket
+          </h2>
+          <p className="caption mt-1">A clear subject and the exact error get the fastest answer.</p>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <div>
             <label className="label" htmlFor="ticket-subject">
               Subject
             </label>
@@ -125,23 +175,26 @@ export default function SupportPage() {
               placeholder="Short summary"
             />
           </div>
+
           <div>
             <label className="label" htmlFor="ticket-category">
               Category
             </label>
             <select
               id="ticket-category"
-              className="input"
+              className="select"
               value={draft.category}
-              onChange={(e) => setDraft({ ...draft, category: e.target.value as (typeof CATEGORIES)[number] })}
+              onChange={(e) => setDraft({ ...draft, category: e.target.value as Category })}
             >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+              {CATEGORIES.map((category) => (
+                <option key={category} value={category}>
+                  {category}
                 </option>
               ))}
             </select>
+            <p className="caption mt-1.5">Pick the closest match.</p>
           </div>
+
           {!user ? (
             <div>
               <label className="label" htmlFor="ticket-email">
@@ -157,22 +210,27 @@ export default function SupportPage() {
               />
             </div>
           ) : null}
-          <div className="sm:col-span-2">
+
+          <div>
             <label className="label" htmlFor="ticket-message">
               Message
             </label>
             <textarea
               id="ticket-message"
-              className="input min-h-28"
+              className="input min-h-32"
               value={draft.message}
               onChange={(e) => setDraft({ ...draft, message: e.target.value })}
               placeholder="Include your payment reference if this is about a charge."
             />
           </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" className="btn-primary" disabled={busy} onClick={() => void createTicket()}>
+              {busy ? 'Sending...' : 'Submit ticket'}
+            </button>
+            <p className="text-xs text-content-muted">Replies arrive by email, and appear below.</p>
+          </div>
         </div>
-        <button type="button" className="btn-primary" disabled={busy} onClick={() => void createTicket()}>
-          {busy ? 'Sending…' : 'Submit ticket'}
-        </button>
       </section>
 
       {!user ? (
@@ -183,78 +241,125 @@ export default function SupportPage() {
           to track replies from this page.
         </Alert>
       ) : loading || tickets === null ? (
-        <Spinner label="Loading your tickets…" />
+        <Spinner label="Loading your tickets..." />
       ) : tickets.length === 0 ? (
-        <EmptyState title="No tickets yet" description="Your support conversations will appear here." />
+        <EmptyState
+          icon={<EmptyIcon name="inbox" />}
+          title="No tickets yet"
+          description="Your support conversations will appear here."
+        />
       ) : (
-        <section className="space-y-2">
-          <h2 className="text-base font-semibold">Your tickets</h2>
-          {tickets.map((t) => (
-            <div key={t.id} className="card">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-3 p-4 text-left"
-                onClick={() => setOpenId(openId === t.id ? null : t.id)}
-                aria-expanded={openId === t.id}
-              >
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">{t.subject}</span>
-                  <span className="text-xs text-content-muted">
-                    {t.category} · updated {formatDateTime(t.updatedAt)}
-                  </span>
-                </span>
-                <span className="badge shrink-0">{t.status}</span>
-              </button>
+        <section aria-labelledby="tickets-heading" className="flex flex-col gap-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 id="tickets-heading" className="heading-2">
+              Your tickets
+            </h2>
+            <span className="badge numeric shrink-0">{tickets.length}</span>
+          </div>
 
-              {openId === t.id ? (
-                <div className="space-y-3 border-t border-surface-border p-4">
-                  {!detail ? (
-                    <Spinner />
-                  ) : (
-                    <>
-                      {detail.messages.map((m) => (
-                        <div
-                          key={m.id}
-                          className={`rounded-xl border p-3 text-sm ${
-                            m.authorRole === 'admin'
-                              ? 'border-brand-400/40 bg-brand-500/5'
-                              : 'border-surface-border bg-surface-overlay/60'
-                          }`}
-                        >
-                          <p className="mb-1 text-xs font-semibold text-content-muted">
-                            {m.authorRole === 'admin' ? 'Support' : 'You'} · {formatDateTime(m.createdAt)}
+          <ul className="flex flex-col gap-2.5">
+            {tickets.map((ticket) => {
+              const expanded = openId === ticket.id;
+              const panelId = `ticket-panel-${ticket.id}`;
+              const replyId = `ticket-reply-${ticket.id}`;
+              return (
+                <li key={ticket.id} className="panel overflow-hidden p-0">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-3 p-4 text-left transition-colors hover:bg-surface-overlay/60"
+                    onClick={() => setOpenId(expanded ? null : ticket.id)}
+                    aria-expanded={expanded}
+                    aria-controls={panelId}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold">{ticket.subject}</span>
+                      <span className="caption block capitalize">
+                        {ticket.category} · updated {formatDateTime(ticket.updatedAt)}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <Badge tone={statusTone(ticket.status)}>{ticket.status}</Badge>
+                      <IconChevronDown
+                        width={16}
+                        height={16}
+                        aria-hidden="true"
+                        className={`text-content-muted transition-transform ${expanded ? 'rotate-180' : ''}`}
+                      />
+                    </span>
+                  </button>
+
+                  <div id={panelId} hidden={!expanded} className="border-t border-surface-border p-4">
+                    {!detail ? (
+                      <Spinner />
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        {detail.messages.map((message) => {
+                          const fromSupport = message.authorRole === 'admin';
+                          return (
+                            <div
+                              key={message.id}
+                              className={
+                                fromSupport
+                                  ? 'rounded-xl border border-accent/30 bg-accent/[0.06] p-3 text-sm'
+                                  : 'rounded-xl border border-surface-border bg-surface-overlay/60 p-3 text-sm'
+                              }
+                            >
+                              <p className="mb-1 flex flex-wrap items-center gap-x-2 text-xs font-semibold text-content-muted">
+                                <span>{fromSupport ? 'Support' : 'You'}</span>
+                                <span className="font-normal">{formatDateTime(message.createdAt)}</span>
+                              </p>
+                              <p className="whitespace-pre-wrap text-content-secondary">{message.body}</p>
+                            </div>
+                          );
+                        })}
+
+                        {detail.ticket.status !== 'closed' ? (
+                          <div className="flex flex-col gap-2">
+                            <label className="label" htmlFor={replyId}>
+                              Add a reply
+                            </label>
+                            <textarea
+                              id={replyId}
+                              className="input min-h-24"
+                              placeholder="Add a reply..."
+                              value={reply}
+                              onChange={(e) => setReply(e.target.value)}
+                            />
+                            <button
+                              type="button"
+                              className="btn-primary btn-sm self-start"
+                              disabled={busy || !reply.trim()}
+                              onClick={() => void sendReply()}
+                            >
+                              {busy ? 'Sending...' : 'Send reply'}
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-content-muted">
+                            This ticket is closed. Open a new ticket if you need help with something else.
                           </p>
-                          <p className="whitespace-pre-wrap text-content-secondary">{m.body}</p>
-                        </div>
-                      ))}
-                      {detail.ticket.status !== 'closed' ? (
-                        <div className="space-y-2">
-                          <textarea
-                            className="input min-h-20"
-                            placeholder="Add a reply…"
-                            value={reply}
-                            onChange={(e) => setReply(e.target.value)}
-                          />
-                          <button
-                            type="button"
-                            className="btn-primary text-sm"
-                            disabled={busy || !reply.trim()}
-                            onClick={() => void sendReply()}
-                          >
-                            Send reply
-                          </button>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-content-muted">This ticket is closed.</p>
-                      )}
-                    </>
-                  )}
-                </div>
-              ) : null}
-            </div>
-          ))}
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </section>
       )}
+
+      {/* What to include, so a ticket can be answered on the first reply. */}
+      <section aria-labelledby="before-heading" className="panel-sunken p-4 sm:p-5">
+        <h2 id="before-heading" className="heading-3">
+          Before you write
+        </h2>
+        <ul className="mt-2.5 flex flex-col gap-1.5 text-xs leading-relaxed text-content-secondary">
+          <li>For a charge or refund, include your payment reference from the invoice.</li>
+          <li>For a content problem, include the exam code and the question number.</li>
+          <li>For a technical problem, describe what you tapped and what you expected to happen.</li>
+        </ul>
+      </section>
     </div>
   );
 }

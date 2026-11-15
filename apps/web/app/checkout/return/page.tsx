@@ -1,13 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth, useToast } from '@/components/providers';
 import { get, post } from '@/lib/api';
 import type { Invoice, Payment } from '@/lib/types';
 import { Alert, Spinner } from '@/components/ui';
-import { IconCheck, IconX } from '@/components/icons';
+import { IconAlertCircle, IconCheck, IconClock, IconX } from '@/components/icons';
 import { formatMoneyMinor } from '@/lib/format';
 
 interface VerifyResponse {
@@ -20,12 +20,22 @@ interface VerifyResponse {
 const POLL_MS = 3000;
 const MAX_ATTEMPTS = 20;
 
+/** Rounded status mark shared by every terminal state. */
+function StatusMark({ tone, children }: { tone: 'positive' | 'negative' | 'accent'; children: ReactNode }) {
+  const toneClass = {
+    positive: 'bg-positive/10 text-positive',
+    negative: 'bg-negative/10 text-negative',
+    accent: 'bg-accent/10 text-accent',
+  }[tone];
+  return <span className={`grid h-14 w-14 place-items-center rounded-2xl ${toneClass}`}>{children}</span>;
+}
+
 export default function CheckoutReturnPage() {
   return (
     <Suspense
       fallback={
         <div className="mx-auto max-w-xl py-12">
-          <Spinner label="Preparing checkout…" />
+          <Spinner label="Preparing checkout..." />
         </div>
       }
     >
@@ -125,87 +135,97 @@ function CheckoutReturn() {
   }, [loading, user, verify]);
 
   return (
-    <div className="mx-auto max-w-xl py-12">
-      <div className="card-elevated p-8 text-center">
-        {state === 'succeeded' ? (
-          <>
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-              <IconCheck className="h-7 w-7" />
-            </div>
-            <h1 className="mt-4 text-2xl font-bold">Payment successful</h1>
-            <p className="mt-2 text-sm text-content-secondary">
-              Your pass is active. Full question banks, mocks and AI explanations are unlocked.
-            </p>
-            {payment ? (
-              <p className="mt-4 text-sm text-content-muted">
-                {formatMoneyMinor(payment.amountMinor, payment.currency)} · {payment.description}
+    <div className="mx-auto w-full max-w-xl py-8 sm:py-12">
+      <div className="panel-lg overflow-hidden">
+        <div className="flex flex-col items-center px-5 py-8 text-center sm:px-8 sm:py-10">
+          {state === 'succeeded' ? (
+            <>
+              <StatusMark tone="positive">
+                <IconCheck width={28} height={28} />
+              </StatusMark>
+              <h1 className="heading-1 mt-4">Payment successful</h1>
+              <p className="body-text mx-auto mt-2 max-w-sm">
+                Your pass is active. Full question banks, mocks and AI explanations are unlocked.
               </p>
-            ) : null}
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
-              <Link href="/dashboard" className="btn-primary">
-                Go to dashboard
-              </Link>
-              <Link href="/exams" className="btn-secondary">
-                Start practising
-              </Link>
-              {invoice ? (
-                <Link href={`/invoices/${invoice.id}`} className="btn-ghost">
-                  View invoice
-                </Link>
+              {payment ? (
+                <p className="caption mt-4">
+                  {formatMoneyMinor(payment.amountMinor, payment.currency)} · {payment.description}
+                </p>
               ) : null}
-            </div>
-          </>
-        ) : state === 'failed' ? (
-          <>
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400">
-              <IconX className="h-7 w-7" />
-            </div>
-            <h1 className="mt-4 text-2xl font-bold">Payment did not go through</h1>
-            <p className="mt-2 text-sm text-content-secondary">{message}</p>
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
-              <Link href="/pricing" className="btn-primary">
-                Try again
-              </Link>
-              <Link href="/support" className="btn-secondary">
-                Contact support
-              </Link>
-            </div>
-          </>
-        ) : state === 'error' ? (
-          <>
-            <h1 className="text-2xl font-bold">We could not confirm the payment</h1>
-            <Alert tone="error">{message}</Alert>
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
-              <button type="button" className="btn-primary" onClick={() => void verify()}>
-                Retry
-              </button>
-              <Link href="/support" className="btn-secondary">
-                Contact support
-              </Link>
-            </div>
-          </>
-        ) : state === 'pending' ? (
-          <>
-            <Spinner label="Waiting for the bank to confirm…" />
-            <h1 className="text-xl font-semibold">Confirming your payment</h1>
-            <p className="mt-2 text-sm text-content-secondary">{message}</p>
-            {gatewayPaymentId ? (
-              <p className="mt-3 font-mono text-xs text-content-muted">Ref: {gatewayPaymentId}</p>
-            ) : null}
-            <div className="mt-6 flex justify-center gap-3">
-              <Link href="/profile" className="btn-secondary">
-                Back to profile
-              </Link>
-            </div>
-          </>
-        ) : (
-          <>
-            <Spinner label={loading ? 'Checking your session…' : 'Checking payment status…'} />
-            <p className="mt-3 text-sm text-content-muted">
-              This usually takes a few seconds. Please do not close the page.
-            </p>
-          </>
-        )}
+              <div className="mt-6 flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:justify-center">
+                <Link href="/dashboard" className="btn-primary">
+                  Go to dashboard
+                </Link>
+                <Link href="/exams" className="btn-secondary">
+                  Start practising
+                </Link>
+                {invoice ? (
+                  <Link href={`/invoices/${invoice.id}`} className="btn-ghost">
+                    View invoice
+                  </Link>
+                ) : null}
+              </div>
+            </>
+          ) : state === 'failed' ? (
+            <>
+              <StatusMark tone="negative">
+                <IconX width={28} height={28} />
+              </StatusMark>
+              <h1 className="heading-1 mt-4">Payment did not go through</h1>
+              <p className="body-text mx-auto mt-2 max-w-sm">{message}</p>
+              <div className="mt-6 flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:justify-center">
+                <Link href="/pricing" className="btn-primary">
+                  Try again
+                </Link>
+                <Link href="/support" className="btn-secondary">
+                  Contact support
+                </Link>
+              </div>
+            </>
+          ) : state === 'error' ? (
+            <>
+              <StatusMark tone="negative">
+                <IconAlertCircle width={28} height={28} />
+              </StatusMark>
+              <h1 className="heading-1 mt-4">We could not confirm the payment</h1>
+              <div className="mt-4 w-full">
+                <Alert tone="error">{message}</Alert>
+              </div>
+              <div className="mt-6 flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:justify-center">
+                <button type="button" className="btn-primary" onClick={() => void verify()}>
+                  Retry
+                </button>
+                <Link href="/support" className="btn-secondary">
+                  Contact support
+                </Link>
+              </div>
+            </>
+          ) : state === 'pending' ? (
+            <>
+              <StatusMark tone="accent">
+                <IconClock width={28} height={28} />
+              </StatusMark>
+              <h1 className="heading-1 mt-4">Confirming your payment</h1>
+              <p className="body-text mx-auto mt-2 max-w-sm">{message}</p>
+              {gatewayPaymentId ? (
+                <p className="mt-3 font-mono text-xs text-content-muted">Ref: {gatewayPaymentId}</p>
+              ) : null}
+              <Spinner label="Waiting for the bank to confirm..." />
+              <div className="flex justify-center">
+                <Link href="/profile" className="btn-secondary">
+                  Back to profile
+                </Link>
+              </div>
+            </>
+          ) : (
+            <>
+              <Spinner label={loading ? 'Checking your session...' : 'Checking payment status...'} />
+              <p className="mt-3 text-sm text-content-muted">
+                This usually takes a few seconds. Please do not close the page.
+              </p>
+            </>
+          )}
+        </div>
       </div>
 
       <p className="mt-4 text-center text-xs text-content-muted">

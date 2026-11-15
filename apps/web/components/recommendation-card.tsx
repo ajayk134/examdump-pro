@@ -1,9 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { cn } from '@/lib/format';
+import { cn, formatNumber } from '@/lib/format';
 import { IconChevronRight } from '@/components/icons';
-import { formatNumber } from '@/lib/format';
 import type { Exam } from '@/lib/types';
 
 /** Stable hue per provider so each recommendation is recognisable at a glance. */
@@ -44,10 +43,10 @@ export function RecommendationCard({
     <Link
       href={href}
       className={cn(
-        'group relative flex min-w-0 items-center gap-3 overflow-hidden rounded-xl border border-surface-border',
-        'bg-surface-raised p-3 transition-colors',
-        'hover:border-accent/50 hover:bg-surface-overlay',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
+        'group relative flex min-w-0 items-center gap-3 overflow-hidden rounded-2xl border border-surface-border',
+        'bg-surface-raised p-3.5 pl-4 transition-all duration-200',
+        'hover:border-accent/45 hover:bg-surface-overlay hover:shadow-sm',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base',
         className,
       )}
     >
@@ -59,23 +58,33 @@ export function RecommendationCard({
         style={{ background: `linear-gradient(180deg, hsl(${hue} 82% 58%), hsl(${(hue + 40) % 360} 86% 62%))` }}
       />
 
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5 pl-1">
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-semibold text-content-primary">{rec.exam.code}</span>
-          <span className="badge numeric shrink-0 px-1.5 py-0 text-[11px] text-content-secondary">
+          <span className="truncate font-mono text-[0.6875rem] font-bold uppercase tracking-wide text-accent">
+            {rec.exam.code}
+          </span>
+          <span className="badge numeric shrink-0 px-1.5 py-0 text-[0.6875rem] text-content-secondary">
             {formatNumber(rec.exam.questionCount)} Q
           </span>
         </span>
-        <span className="truncate text-xs text-content-secondary">{rec.exam.title}</span>
-        <span className="truncate text-[11px] text-content-muted">
-          {rec.exam.providerTitle} · {rec.reason}
+
+        <span className="line-clamp-2 text-sm font-semibold leading-snug text-content-primary">
+          {rec.exam.title}
+        </span>
+
+        <span className="truncate text-xs text-content-muted">{rec.exam.providerTitle}</span>
+
+        <span className="mt-0.5 inline-flex min-w-0 items-center gap-1.5 text-[0.6875rem] leading-snug text-content-secondary">
+          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent/70" />
+          <span className="truncate">{rec.reason}</span>
         </span>
       </span>
 
       <IconChevronRight
         width={16}
         height={16}
-        className="shrink-0 text-content-muted transition-transform group-hover:translate-x-0.5 group-hover:text-accent"
+        className="shrink-0 text-content-muted transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-accent"
+        aria-hidden="true"
       />
     </Link>
   );

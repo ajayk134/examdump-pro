@@ -23,6 +23,7 @@ import {
   IconSparkles,
   IconStop,
   IconTrash,
+  IconX,
 } from './icons';
 import { cn } from '@/lib/format';
 
@@ -51,11 +52,20 @@ interface ChatPanelProps {
 function AssistantAvatar({ size = 30 }: { size?: number }) {
   return (
     <span
-      className="grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-accent to-sky-400 text-white shadow-sm shadow-accent/30"
+      className="grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-600 to-sky-400 text-white shadow-sm shadow-brand-500/30 ring-1 ring-inset ring-white/25"
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
       <IconSparkles width={Math.round(size * 0.55)} height={Math.round(size * 0.55)} />
+    </span>
+  );
+}
+
+/** Three-dot "working" indicator built on the shared .dot-pulse animation. */
+function DotPulse({ className }: { className?: string }) {
+  return (
+    <span className={cn('dot-pulse', className)} aria-hidden="true">
+      <span />
     </span>
   );
 }
@@ -65,13 +75,7 @@ function AssistantAvatar({ size = 30 }: { size?: number }) {
  * `reasoning_content`; it is a model-authored summary, so it is shown as-is and
  * kept visually separate from the final answer.
  */
-function ReasoningPanel({
-  text,
-  streaming,
-}: {
-  text: string;
-  streaming?: boolean;
-}) {
+function ReasoningPanel({ text, streaming }: { text: string; streaming?: boolean }) {
   const [open, setOpen] = useState(true);
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -87,7 +91,7 @@ function ReasoningPanel({
   if (!text.trim()) return null;
 
   return (
-    <div className="mb-2 overflow-hidden rounded-xl border border-surface-border bg-surface-overlay/60">
+    <div className="mb-2.5 overflow-hidden rounded-xl border border-surface-border bg-surface-overlay/60">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -101,14 +105,16 @@ function ReasoningPanel({
           )}
           aria-hidden="true"
         />
-        <span className="text-xs font-medium text-content-secondary">
-          {streaming ? 'Thinking it through…' : 'Reasoning summary'}
+        <span className="text-xs font-semibold text-content-secondary">
+          {streaming ? 'Thinking it through...' : 'Reasoning summary'}
         </span>
+        {streaming ? <DotPulse className="ml-auto text-accent" /> : null}
         <IconChevronDown
           width={14}
           height={14}
           className={cn(
-            'ml-auto shrink-0 text-content-muted transition-transform duration-200',
+            'shrink-0 text-content-muted transition-transform duration-200',
+            !streaming && 'ml-auto',
             open && 'rotate-180',
           )}
         />
@@ -438,17 +444,28 @@ export function AiChat({
     return questionId ? 'Ask about this question' : examLabel ? `AI tutor · ${examLabel}` : 'AI tutor';
   }, [conversationId, conversations, questionId, examLabel]);
 
+  // Announced to assistive tech without narrating every streamed token.
+  const liveStatus = streaming
+    ? 'Generating a response'
+    : lastMessage?.role === 'assistant' && lastMessage?.content
+      ? 'Response complete'
+      : '';
+
   return (
-    <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-surface-base">
       {/* Header */}
       <div
         className={cn(
-          'flex shrink-0 items-center gap-2 border-b border-surface-border px-3 sm:px-4',
+          'flex shrink-0 items-center gap-2 border-b border-surface-border bg-surface-raised/85 px-3 backdrop-blur sm:px-4',
           embedded ? 'py-2' : 'py-2.5',
           '[@media(max-height:480px)]:py-1',
         )}
       >
-        {!embedded ? <span className="[@media(max-height:480px)]:hidden"><AssistantAvatar size={30} /></span> : null}
+        {!embedded ? (
+          <span className="[@media(max-height:480px)]:hidden">
+            <AssistantAvatar size={32} />
+          </span>
+        ) : null}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-content-primary">
             {embedded ? 'Conversation' : headerTitle}
@@ -457,79 +474,85 @@ export function AiChat({
             {questionAnchored ? 'Grounded in this question' : 'Certification tutor'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={startNew}
-          className="btn-ghost !px-2 !py-1.5 touch:h-11 touch:w-11"
-          aria-label="New conversation"
-          title="New conversation"
-        >
-          <IconPlus width={18} height={18} />
-        </button>
-        <button
-          type="button"
-          onClick={() => setHistoryOpen((v) => !v)}
-          className="btn-ghost !px-2 !py-1.5 touch:h-11 touch:w-11"
-          aria-label="Conversation history"
-          aria-expanded={historyOpen}
-          title="History"
-        >
-          <IconChevronDown
-            width={18}
-            height={18}
-            className={cn('transition-transform duration-200', historyOpen && 'rotate-180')}
-          />
-        </button>
-        {onClose ? (
+        <div className="flex shrink-0 items-center gap-0.5">
           <button
             type="button"
-            onClick={onClose}
-            className="btn-ghost !px-2 !py-1.5 touch:h-11 touch:w-11"
-            aria-label="Close"
+            onClick={startNew}
+            className="icon-btn !h-9 !w-9 touch:!h-11 touch:!w-11"
+            aria-label="New conversation"
+            title="New conversation"
           >
-            ✕
+            <IconPlus width={18} height={18} />
           </button>
-        ) : null}
+          <button
+            type="button"
+            onClick={() => setHistoryOpen((v) => !v)}
+            className="icon-btn !h-9 !w-9 touch:!h-11 touch:!w-11"
+            aria-label="Conversation history"
+            aria-expanded={historyOpen}
+            title="History"
+          >
+            <IconChevronDown
+              width={18}
+              height={18}
+              className={cn('transition-transform duration-200', historyOpen && 'rotate-180')}
+            />
+          </button>
+          {onClose ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="icon-btn !h-9 !w-9 touch:!h-11 touch:!w-11"
+              aria-label="Close"
+            >
+              <IconX width={18} height={18} />
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {/* History */}
       {historyOpen ? (
-        <div className="max-h-52 shrink-0 overflow-y-auto border-b border-surface-border bg-surface-overlay/50 px-2 py-2">
+        <div className="max-h-56 shrink-0 overflow-y-auto border-b border-surface-border bg-surface-overlay/50 px-2 py-2">
           {conversations.length === 0 ? (
             <p className="px-2 py-3 text-xs text-content-muted">No conversations yet.</p>
           ) : (
             <ul className="flex flex-col gap-0.5">
-              {conversations.map((c) => (
-                <li key={c.id} className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setHistoryOpen(false);
-                      void loadConversation(c.id);
-                    }}
-                    className={cn(
-                      'min-h-9 min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-left text-xs transition-colors hover:bg-surface-overlay',
-                      c.id === conversationId
-                        ? 'bg-accent/10 font-semibold text-accent'
-                        : 'text-content-secondary',
-                    )}
-                  >
-                    {c.title}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Delete ${c.title}`}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-content-muted transition-colors hover:bg-negative/10 hover:text-negative"
-                    onClick={async () => {
-                      await del(`/ai/chat/conversations/${c.id}`).catch(() => undefined);
-                      setConversations((prev) => prev.filter((x) => x.id !== c.id));
-                      if (c.id === conversationId) startNew();
-                    }}
-                  >
-                    <IconTrash width={14} height={14} />
-                  </button>
-                </li>
-              ))}
+              {conversations.map((c) => {
+                const current = c.id === conversationId;
+                return (
+                  <li key={c.id} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      aria-current={current ? 'true' : undefined}
+                      onClick={() => {
+                        setHistoryOpen(false);
+                        void loadConversation(c.id);
+                      }}
+                      className={cn(
+                        'min-h-9 min-w-0 flex-1 truncate rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors touch:min-h-11',
+                        current
+                          ? 'bg-accent/10 font-semibold text-accent'
+                          : 'text-content-secondary hover:bg-surface-overlay',
+                      )}
+                    >
+                      {c.title}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Delete ${c.title}`}
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-content-muted transition-colors hover:bg-negative/10 hover:text-negative touch:h-11 touch:w-11"
+                      onClick={async () => {
+                        await del(`/ai/chat/conversations/${c.id}`).catch(() => undefined);
+                        setConversations((prev) => prev.filter((x) => x.id !== c.id));
+                        if (c.id === conversationId) startNew();
+                      }}
+                    >
+                      <IconTrash width={14} height={14} />
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -543,103 +566,104 @@ export function AiChat({
       >
         <div className="mx-auto w-full max-w-3xl px-3.5 py-3.5 sm:px-5 sm:py-5">
           {loading ? (
-            <div className="flex flex-col gap-3">
-              <div className="ml-auto h-10 w-2/5 animate-pulse rounded-2xl bg-surface-overlay" />
-              <div className="h-24 w-full animate-pulse rounded-2xl bg-surface-overlay" />
+            <div className="flex flex-col gap-3" role="status" aria-label="Loading conversation">
+              <div className="ml-auto h-10 w-2/5 skeleton" />
+              <div className="h-24 w-full skeleton" />
             </div>
           ) : !hasMessages ? (
             <div className="flex flex-col items-center gap-3 py-10 text-center sm:py-16">
-              <AssistantAvatar size={48} />
+              <AssistantAvatar size={52} />
               <div>
-                <p className="heading-3">
-                  Ask anything about this {questionAnchored ? 'question' : 'exam'}
-                </p>
+                <p className="heading-3">Ask anything about this {questionAnchored ? 'question' : 'exam'}</p>
                 <p className="body-text mx-auto mt-1 max-w-sm">
                   Step-by-step reasoning, why distractors are wrong, examples and memory tricks.
                 </p>
               </div>
             </div>
           ) : (
-            <ol className="flex flex-col gap-4">
-              {messages.map((message) => (
-                <li key={message.id}>
-                  {message.role === 'user' ? (
-                    <div className="flex justify-end">
-                      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-accent px-3.5 py-2.5 text-sm leading-relaxed break-words whitespace-pre-wrap text-white shadow-sm">
-                        {message.content}
-                      </div>
+            <ol className="flex flex-col gap-5" aria-label="Conversation">
+              {messages.map((message) =>
+                message.role === 'user' ? (
+                  <li key={message.id} className="flex justify-end">
+                    <div className="max-w-[85%] rounded-2xl rounded-br-md bg-accent px-3.5 py-2.5 text-sm leading-relaxed break-words whitespace-pre-wrap text-[rgb(var(--accent-contrast))] shadow-sm sm:max-w-[75%]">
+                      {message.content}
                     </div>
-                  ) : (
-                    <div className="flex gap-2.5">
-                      <AssistantAvatar />
-                      <div className="min-w-0 flex-1">
-                        <ReasoningPanel
-                          text={message.reasoning ?? ''}
-                          streaming={message.reasoningStreaming}
-                        />
+                  </li>
+                ) : (
+                  <li key={message.id} className="flex gap-2.5 sm:gap-3">
+                    <AssistantAvatar />
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-1 text-[0.6875rem] font-bold uppercase tracking-[0.09em] text-content-muted">
+                        AI tutor
+                      </p>
 
-                        {message.content ? (
-                          <div className="answer-prose text-sm text-content-primary">
-                            <Markdown content={message.content} />
-                            {message.pending ? (
-                              <span className="caret ml-0.5 align-middle" aria-hidden="true" />
-                            ) : null}
-                          </div>
-                        ) : message.error ? null : message.reasoning ? null : (
-                          <div className="inline-flex items-center gap-1.5 py-1 text-xs text-content-muted">
-                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
-                            {message.reasoningStreaming ? 'Thinking…' : 'Writing…'}
-                          </div>
-                        )}
+                      <ReasoningPanel text={message.reasoning ?? ''} streaming={message.reasoningStreaming} />
 
-                        {message.error ? (
-                          <div className="mt-1">
-                            <Alert tone="error">{message.error}</Alert>
-                          </div>
-                        ) : null}
+                      {message.content ? (
+                        <div className="answer-prose">
+                          <Markdown content={message.content} />
+                          {message.pending ? (
+                            <span className="caret ml-0.5 align-middle" aria-hidden="true" />
+                          ) : null}
+                        </div>
+                      ) : message.error ? null : message.reasoning ? null : (
+                        <div
+                          className="inline-flex items-center gap-2 py-1 text-xs font-medium text-content-muted"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          <DotPulse className="text-accent" />
+                          {message.reasoningStreaming ? 'Thinking it through...' : 'Writing the answer...'}
+                        </div>
+                      )}
 
-                        {!message.pending ? (
-                          <div className="mt-1.5 flex items-center gap-0.5">
+                      {message.error ? (
+                        <div className="mt-1.5">
+                          <Alert tone="error">{message.error}</Alert>
+                        </div>
+                      ) : null}
+
+                      {!message.pending ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void copyMessage(message)}
+                            className="icon-btn !h-9 !w-9 touch:!h-10 touch:!w-10"
+                            aria-label="Copy answer"
+                            title="Copy"
+                          >
+                            <IconCopy width={15} height={15} />
+                          </button>
+                          {message.id === lastMessage?.id && !streaming ? (
                             <button
                               type="button"
-                              onClick={() => void copyMessage(message)}
-                              className="grid h-8 w-8 place-items-center rounded-md text-content-muted transition-colors hover:bg-surface-overlay hover:text-content-primary touch:h-10 touch:w-10"
-                              aria-label="Copy answer"
-                              title="Copy"
+                              onClick={regenerate}
+                              className="icon-btn !h-9 !w-9 touch:!h-10 touch:!w-10"
+                              aria-label="Regenerate answer"
+                              title="Regenerate"
                             >
-                              <IconCopy width={14} height={14} />
+                              <IconRefresh width={15} height={15} />
                             </button>
-                            {message.id === lastMessage?.id && !streaming ? (
-                              <button
-                                type="button"
-                                onClick={regenerate}
-                                className="grid h-8 w-8 place-items-center rounded-md text-content-muted transition-colors hover:bg-surface-overlay hover:text-content-primary touch:h-10 touch:w-10"
-                                aria-label="Regenerate answer"
-                                title="Regenerate"
-                              >
-                                <IconRefresh width={14} height={14} />
-                              </button>
-                            ) : null}
-                            {copiedId === message.id ? (
-                              <span className="text-[0.6875rem] font-medium text-positive">
-                                Copied
-                              </span>
-                            ) : null}
-                            {message.stopped ? (
-                              <span className="text-[0.6875rem] text-content-muted">Stopped</span>
-                            ) : null}
-                            {message.degraded ? (
-                              <span className="text-[0.6875rem] text-caution">
-                                offline explanation
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
+                          ) : null}
+                          {copiedId === message.id ? (
+                            <span className="ml-0.5 text-[0.6875rem] font-semibold text-positive" role="status">
+                              Copied
+                            </span>
+                          ) : null}
+                          {message.stopped ? (
+                            <span className="ml-0.5 text-[0.6875rem] text-content-muted">Stopped</span>
+                          ) : null}
+                          {message.degraded ? (
+                            <span className="ml-0.5 text-[0.6875rem] font-medium text-caution">
+                              offline explanation
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
-                  )}
-                </li>
-              ))}
+                  </li>
+                ),
+              )}
             </ol>
           )}
 
@@ -651,6 +675,11 @@ export function AiChat({
         </div>
       </div>
 
+      {/* Screen-reader status for async streaming without narrating each token. */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {liveStatus}
+      </span>
+
       {/* Jump to latest: floats above the composer while the reader is
           scrolled away from the newest message. */}
       {showJump ? (
@@ -658,7 +687,7 @@ export function AiChat({
           <button
             type="button"
             onClick={() => scrollToBottom()}
-            className="pointer-events-auto mb-2 inline-flex min-h-10 items-center gap-1.5 rounded-full border border-surface-border-strong bg-surface-raised/95 px-3.5 py-1.5 text-xs font-semibold text-content-primary shadow-lg backdrop-blur transition-colors hover:border-accent/50"
+            className="pointer-events-auto mb-2 inline-flex min-h-10 items-center gap-1.5 rounded-full border border-surface-border-strong bg-surface-raised/95 px-3.5 py-1.5 text-xs font-semibold text-content-primary shadow-lg backdrop-blur transition-colors hover:border-accent/50 touch:min-h-11"
             aria-label="Jump to latest message"
           >
             <IconChevronDown width={14} height={14} />
@@ -668,10 +697,10 @@ export function AiChat({
       ) : null}
 
       {/* Composer */}
-      <div className="shrink-0 border-t border-surface-border bg-surface-raised/80 px-2.5 py-2 backdrop-blur sm:px-4 sm:py-2.5 [@media(max-height:480px)]:py-1.5">
+      <div className="shrink-0 border-t border-surface-border bg-surface-raised/85 px-2.5 py-2 backdrop-blur sm:px-4 sm:py-3 [@media(max-height:480px)]:py-1.5">
         <div className="mx-auto w-full max-w-3xl">
           {showSuggestions ? (
-            <div className="mb-2 -mx-1 flex snap-x snap-mandatory gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [@media(max-height:480px)]:mb-1">
+            <div className="mb-2 -mx-1 flex snap-x snap-mandatory gap-1.5 overflow-x-auto px-1 pb-1 no-scrollbar [@media(max-height:480px)]:mb-1">
               {suggestions.slice(0, 4).map((s) => (
                 <button
                   key={s}
@@ -686,8 +715,8 @@ export function AiChat({
             </div>
           ) : null}
 
-          <form onSubmit={onSubmit}>
-            <div className="flex items-end gap-1.5 rounded-2xl border border-surface-border-strong bg-surface-base p-1.5 transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
+          <form onSubmit={onSubmit} aria-label="Ask the AI tutor">
+            <div className="flex items-end gap-1.5 rounded-2xl border border-surface-border-strong bg-surface-base p-1.5 shadow-xs transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -695,7 +724,7 @@ export function AiChat({
                 onKeyDown={onKeyDown}
                 rows={1}
                 maxLength={4000}
-                placeholder="Ask a follow-up question…"
+                placeholder="Ask a follow-up question..."
                 aria-label="Message the AI tutor"
                 className="max-h-32 min-h-[38px] flex-1 resize-none bg-transparent px-2 py-2 text-base leading-relaxed text-content-primary outline-none placeholder:text-content-muted sm:text-sm"
                 onInput={(e) => {
@@ -725,18 +754,25 @@ export function AiChat({
               )}
             </div>
           </form>
-          <p className="mt-1.5 px-1 text-[0.6875rem] text-content-muted [@media(max-height:480px)]:hidden">
-            {!anchored && !conversationId ? (
-              <>
-                Pick an exam to ground the tutor:{' '}
-                <Link href="/exams" className="link">
-                  browse exams
-                </Link>
-              </>
-            ) : (
-              'AI can make mistakes — verify against the official exam guide.'
-            )}
-          </p>
+
+          <div className="mt-1.5 flex items-center justify-between gap-2 px-1 [@media(max-height:480px)]:hidden">
+            <p className="text-[0.6875rem] text-content-muted">
+              {!anchored && !conversationId ? (
+                <>
+                  Pick an exam to ground the tutor:{' '}
+                  <Link href="/exams" className="link">
+                    browse exams
+                  </Link>
+                </>
+              ) : (
+                'AI can make mistakes — verify against the official exam guide.'
+              )}
+            </p>
+            <p className="hidden shrink-0 text-[0.6875rem] text-content-muted sm:block">
+              <span className="kbd">Enter</span> to send ·{' '}
+              <span className="kbd">Shift</span> + <span className="kbd">Enter</span> for a new line
+            </p>
+          </div>
         </div>
       </div>
     </div>

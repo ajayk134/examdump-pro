@@ -308,27 +308,67 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
   const sortedCorrect = correct.split('').sort().join('');
   const isCorrect = correct.length > 0 && sortedSelected === sortedCorrect;
 
+  /**
+   * 1–9 select a choice while the question is unanswered. The session handles
+   * ←/→/j/k for navigation; this keeps the whole question answerable from the
+   * keyboard. Disabled once the answer is revealed so it cannot change a
+   * graded result.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (revealed || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      const n = Number(e.key);
+      if (!Number.isInteger(n) || n < 1 || n > question.choices.length) return;
+      const key = question.choices[n - 1]?.key;
+      if (!key) return;
+      e.preventDefault();
+      setSelected((prev) => {
+        if (prev.includes(key)) return prev.filter((k) => k !== key);
+        if (!isMulti) return [key];
+        if (prev.length >= required) return [key];
+        return [...prev, key];
+      });
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [revealed, isMulti, required, question.choices]);
+
   const choiceClass = (key: string) => {
     const isSelected = selected.includes(key);
     if (!revealed) {
       return isSelected
-        ? 'border-accent bg-accent/10 ring-1 ring-accent/30'
+        ? 'border-accent bg-accent/[0.08] ring-1 ring-accent/30'
         : 'border-surface-border-strong hover:border-accent/50 hover:bg-surface-overlay active:bg-surface-overlay';
     }
     const isAnswer = correct.includes(key);
-    if (isAnswer) return 'border-positive/60 bg-positive/10';
-    if (isSelected && !isAnswer) return 'border-negative/60 bg-negative/10';
+    if (isAnswer) return 'border-positive/60 bg-positive/[0.08]';
+    if (isSelected && !isAnswer) return 'border-negative/60 bg-negative/[0.08]';
     return 'border-surface-border opacity-70';
   };
 
+  const letterClass = (key: string) => {
+    const isSelected = selected.includes(key);
+    if (revealed) {
+      const isAnswer = correct.includes(key);
+      if (isAnswer) return 'border-transparent bg-positive text-white';
+      if (isSelected) return 'border-transparent bg-negative text-white';
+      return 'border-surface-border text-content-muted';
+    }
+    return isSelected
+      ? 'border-transparent bg-accent text-white'
+      : 'border-surface-border-strong text-content-muted';
+  };
+
   return (
-    <article className="surface p-4 sm:p-5" aria-label={`Question ${index !== undefined ? index + 1 : ''}`}>
-      <header className="mb-3.5 flex flex-wrap items-start justify-between gap-2">
+    <article className="panel p-4 sm:p-5" aria-label={`Question ${index !== undefined ? index + 1 : ''}`}>
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="badge font-mono text-content-secondary">
+          <span className="numeric text-sm font-bold text-content-secondary">
             Q{question.number ?? (index !== undefined ? index + 1 : '')}
           </span>
-          {question.type === 'multiple' ? <span className="badge">Multi-select</span> : null}
+          {question.type === 'multiple' ? <span className="badge badge-accent">Select all that apply</span> : null}
           {question.type === 'dragdrop' ? <span className="badge">Visual</span> : null}
           {question.stemImages.length > 0 ? (
             <span className="badge">
@@ -357,13 +397,13 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
         </div>
       </header>
 
-      <div className="text-[0.9375rem] leading-relaxed text-content-primary sm:text-[0.9375rem]">
+      <div className="max-w-[68ch] text-[0.9375rem] leading-relaxed text-content-primary">
         <QuestionContent items={question.stem} />
       </div>
 
       {question.choices.length > 0 ? (
         <ul className="mt-5 flex flex-col gap-2" role={isMulti ? 'group' : 'radiogroup'} aria-label="Answer choices">
-          {question.choices.map((choice) => {
+          {question.choices.map((choice, i) => {
             const isSelected = selected.includes(choice.key);
             return (
               <li key={choice.key}>
@@ -377,16 +417,32 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
                     choiceClass(choice.key),
                   )}
                 >
-                  <span className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-md border text-xs font-bold', isSelected ? 'border-brand-400 text-brand-400' : 'border-surface-border text-content-muted')}>
-                    {revealed && correct.includes(choice.key) ? <IconCheck width={14} height={14} /> : revealed && isSelected ? <IconX width={14} height={14} /> : choice.key}
+                  <span
+                    className={cn(
+                      'grid h-6 w-6 shrink-0 place-items-center rounded-lg border text-xs font-bold transition-colors',
+                      letterClass(choice.key),
+                    )}
+                  >
+                    {revealed && correct.includes(choice.key) ? (
+                      <IconCheck width={14} height={14} />
+                    ) : revealed && isSelected ? (
+                      <IconX width={14} height={14} />
+                    ) : (
+                      choice.key
+                    )}
                   </span>
-                  <span className="flex-1 text-content-primary">
+                  <span className="min-w-0 flex-1 text-content-primary">
                     <QuestionContent items={stripOptionLabelFromContent(choice.content, choice.key)} />
                     {choice.images.map((src) => (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img key={src} src={src} alt="Answer option" loading="lazy" referrerPolicy="no-referrer" className="mt-2 max-h-48 rounded-lg border border-surface-border bg-white p-1 object-contain" />
                     ))}
                   </span>
+                  {!revealed && i < 9 ? (
+                    <span className="ml-auto hidden shrink-0 pt-0.5 sm:block" aria-hidden="true">
+                      <span className="kbd">{i + 1}</span>
+                    </span>
+                  ) : null}
                 </button>
               </li>
             );
@@ -439,8 +495,25 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
             </>
           ) : null}
           {revealed && correct ? (
-            <span className={cn('text-sm font-semibold', isCorrect ? 'text-emerald-500' : 'text-rose-500')}>
-              {selected.length === 0 ? `Answer: ${correct}` : isCorrect ? 'Correct' : `Incorrect — answer: ${correct}`}
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 text-sm font-semibold',
+                isCorrect ? 'text-positive' : 'text-negative',
+              )}
+            >
+              {selected.length === 0 ? (
+                <>
+                  Answer: <span className="numeric">{correct}</span>
+                </>
+              ) : isCorrect ? (
+                <>
+                  <IconCheck width={16} height={16} /> Correct
+                </>
+              ) : (
+                <>
+                  <IconX width={16} height={16} /> Incorrect — answer: <span className="numeric">{correct}</span>
+                </>
+              )}
             </span>
           ) : null}
         </div>
@@ -452,7 +525,11 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
             <p className="text-[0.8125rem] font-semibold text-positive">
               Suggested answer: {stripAnswerLabel(question.answerText ?? '') || correct || 'See explanation'}
             </p>
-            {question.explanation ? <div className="prose-answer mt-2 text-sm text-content-secondary"><QuestionContent items={[{ type: 'text', value: question.explanation }]} /></div> : null}
+            {question.explanation ? (
+              <div className="answer-prose mt-2">
+                <QuestionContent items={[{ type: 'text', value: question.explanation }]} />
+              </div>
+            ) : null}
           </div>
           {question.votes.length > 0 ? (
             <div>
@@ -463,7 +540,7 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
                     key={`${vote.answer}-${i}`}
                     title={`${vote.answer}: ${vote.percentage}%`}
                     style={{ width: `${vote.percentage}%` }}
-                    className={i === 0 ? 'bg-emerald-500' : i === 1 ? 'bg-brand-500' : 'bg-slate-500'}
+                    className={i === 0 ? 'bg-positive' : i === 1 ? 'bg-accent' : 'bg-content-muted'}
                   />
                 ))}
               </div>
@@ -480,9 +557,9 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
       ) : null}
 
       {hintText || hintLoading || hintError ? (
-        <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-500/5 p-3.5 sm:p-4">
+        <div className="mt-4 rounded-xl border border-caution/30 bg-caution/[0.06] p-3.5 sm:p-4">
           <div className="mb-1.5 flex items-center justify-between gap-2">
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-600 dark:text-amber-300">
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-caution">
               <IconSparkles width={16} height={16} /> Hint
             </p>
             {hintStreaming ? (
@@ -505,7 +582,7 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
               {hintStreaming ? (
                 <span
                   aria-hidden="true"
-                  className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.15em] animate-pulse rounded-full bg-amber-500 align-middle"
+                  className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.15em] animate-pulse rounded-full bg-caution align-middle"
                 />
               ) : null}
             </p>

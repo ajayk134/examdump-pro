@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useAuth, useToast } from '@/components/providers';
 import { get } from '@/lib/api';
-import { Alert, EmptyState, Spinner, StatCard } from '@/components/ui';
-import { IconTrophy } from '@/components/icons';
-import { formatDate } from '@/lib/format';
+import { Alert, EmptyState, PageHeader, Spinner, StatStrip } from '@/components/ui';
+import { IconCheckCircle, IconClock, IconCopy, IconSend, IconSparkles, IconTrophy } from '@/components/icons';
+import { formatDate, formatNumber } from '@/lib/format';
 
 interface ReferralStats {
   code: string;
@@ -15,6 +15,24 @@ interface ReferralStats {
   shareUrl: string;
   referrals: Array<{ id: string; status: string; rewardDays: number; createdAt: string }>;
 }
+
+const STEPS = [
+  {
+    icon: IconSend,
+    title: 'Share your link',
+    body: 'Send your code or invite link to someone preparing for the same certification.',
+  },
+  {
+    icon: IconSparkles,
+    title: 'They join and verify',
+    body: 'They create an account with your code and confirm their email address.',
+  },
+  {
+    icon: IconTrophy,
+    title: 'You both get days',
+    body: 'They receive 3 bonus days; your account receives 7 once they verify.',
+  },
+];
 
 export default function ReferralsPage() {
   const { user, loading } = useAuth();
@@ -41,48 +59,156 @@ export default function ReferralsPage() {
   if (loading) return <Spinner />;
   if (!user) return <EmptyState title="Sign in to view referrals" action={<Link href="/login" className="btn-primary">Sign in</Link>} />;
   if (error) return <Alert tone="error">{error}</Alert>;
-  if (!stats) return <Spinner label="Loading referrals…" />;
+  if (!stats) return <Spinner label="Loading referrals..." />;
+
+  const pending = stats.referrals.filter((referral) => referral.status === 'pending').length;
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-5">
-      <header>
-        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight"><IconTrophy className="text-amber-400" /> Refer a friend</h1>
-        <p className="mt-1 text-content-muted">You both get bonus Premium days when they verify their email.</p>
-      </header>
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 sm:gap-6">
+      <PageHeader
+        eyebrow="Rewards"
+        title="Refer a friend"
+        description="You both get bonus Premium days when they verify their email."
+      />
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StatCard label="Friends referred" value={stats.totalReferrals} />
-        <StatCard label="Reward days earned" value={stats.totalRewardDays} />
-        <StatCard label="Your code" value={<span className="font-mono text-xl">{stats.code}</span>} />
-      </div>
+      {/* Share block: the one thing a visitor to this page came to do. */}
+      <section className="panel-lg relative isolate overflow-hidden p-5 sm:p-6">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-20 -top-24 h-60 w-60 rounded-full bg-accent/[0.14] blur-3xl"
+        />
 
-      <div className="card p-5">
-        <p className="label">Your invite link</p>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input readOnly className="input font-mono text-xs" value={stats.shareUrl} />
-          <button onClick={() => copy(stats.shareUrl)} className="btn-primary">Copy link</button>
+        <div className="relative grid gap-5 lg:grid-cols-2 lg:items-center">
+          <div className="min-w-0">
+            <p className="eyebrow">Your invite code</p>
+            <p className="mt-2 font-mono text-[1.75rem] font-black tracking-[0.14em] text-content-primary sm:text-3xl">
+              {stats.code}
+            </p>
+            <p className="caption mt-2">
+              Friends receive 3 bonus days; you receive 7 when they verify their email.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button" className="btn-primary" onClick={() => void copy(stats.shareUrl)}>
+                <IconCopy width={16} height={16} aria-hidden="true" />
+                Copy invite link
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => void copy(stats.code)}>
+                Copy code
+              </button>
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <label className="label" htmlFor="invite-link">
+              Your invite link
+            </label>
+            <input
+              id="invite-link"
+              readOnly
+              className="input font-mono text-xs"
+              value={stats.shareUrl}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+            <p className="caption mt-2">
+              Share the link, or read the code out — both work when someone signs up.
+            </p>
+          </div>
         </div>
-        <p className="mt-2 text-xs text-content-muted">Friends receive 3 bonus days; you receive 7 when they verify their email.</p>
-      </div>
+      </section>
 
-      <div className="card p-5">
-        <h2 className="mb-3 text-lg font-semibold">Referral activity</h2>
+      <section aria-label="Referral totals" className="panel overflow-hidden">
+        <StatStrip
+          columns={2}
+          items={[
+            {
+              label: 'Friends referred',
+              value: formatNumber(stats.totalReferrals),
+              hint: pending > 0 ? `${pending} awaiting verification` : 'Verified referrals so far',
+            },
+            {
+              label: 'Reward days earned',
+              value: formatNumber(stats.totalRewardDays),
+              hint: 'Bonus Premium days added to your account',
+              tone: stats.totalRewardDays > 0 ? 'success' : 'default',
+            },
+          ]}
+        />
+      </section>
+
+      <section aria-labelledby="how-heading" className="section">
+        <div className="section-head">
+          <h2 id="how-heading" className="heading-2">
+            How it works
+          </h2>
+        </div>
+        <ol className="grid gap-3 sm:grid-cols-3">
+          {STEPS.map((step, index) => {
+            const Icon = step.icon;
+            return (
+              <li key={step.title} className="tile flex flex-col gap-2 p-4">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent">
+                    <Icon width={16} height={16} aria-hidden="true" />
+                  </span>
+                  <span className="numeric text-2xl font-black leading-none text-accent/25">{index + 1}</span>
+                </div>
+                <p className="text-sm font-semibold">{step.title}</p>
+                <p className="text-xs leading-relaxed text-content-muted">{step.body}</p>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+
+      <section aria-labelledby="activity-heading" className="panel p-4 sm:p-5">
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <h2 id="activity-heading" className="heading-2">
+            Referral activity
+          </h2>
+          {stats.referrals.length > 0 ? (
+            <span className="badge numeric shrink-0">{stats.referrals.length} shown</span>
+          ) : null}
+        </div>
+
         {stats.referrals.length === 0 ? (
-          <p className="py-6 text-center text-sm text-content-muted">No referrals yet. Share your link to get started.</p>
+          <p className="py-6 text-center text-sm text-content-muted">
+            No referrals yet. Share your link to get started.
+          </p>
         ) : (
           <ul className="divide-y divide-surface-border">
-            {stats.referrals.map((referral) => (
-              <li key={referral.id} className="flex items-center justify-between py-3 text-sm">
-                <div>
-                  <p className="font-medium capitalize">{referral.status}</p>
-                  <p className="text-xs text-content-muted">{formatDate(referral.createdAt)}</p>
-                </div>
-                <span className="badge">+{referral.rewardDays} days</span>
-              </li>
-            ))}
+            {stats.referrals.map((referral) => {
+              const completed = referral.status === 'completed';
+              return (
+                <li key={referral.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span
+                      aria-hidden="true"
+                      className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${
+                        completed ? 'bg-positive/[0.12] text-positive' : 'bg-caution/[0.12] text-caution'
+                      }`}
+                    >
+                      {completed ? <IconCheckCircle width={16} height={16} /> : <IconClock width={16} height={16} />}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {completed ? 'Verified' : referral.status === 'pending' ? 'Awaiting verification' : referral.status}
+                      </p>
+                      <p className="caption mt-0.5">Referred {formatDate(referral.createdAt)}</p>
+                    </div>
+                  </div>
+                  <span
+                    className={`numeric shrink-0 text-sm font-semibold ${
+                      referral.rewardDays > 0 ? 'text-positive' : 'text-content-muted'
+                    }`}
+                  >
+                    {referral.rewardDays > 0 ? `+${referral.rewardDays} days` : 'No reward yet'}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
-      </div>
+      </section>
     </div>
   );
 }

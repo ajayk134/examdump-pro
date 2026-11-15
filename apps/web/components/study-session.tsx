@@ -179,7 +179,7 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
           <Skeleton className="h-8 w-24 rounded-lg" />
         </div>
         <Skeleton className="mb-3 h-1.5 w-full rounded-full" />
-        <div className="surface p-4">
+        <div className="panel p-4">
           <Skeleton className="mb-3 h-4 w-24" />
           <Skeleton className="mb-2 h-5 w-full" />
           <Skeleton className="mb-5 h-5 w-4/5" />
@@ -211,7 +211,7 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
   return (
     <div className="mx-auto w-full max-w-3xl">
       {/* ---------- Header: progress + palette trigger ---------- */}
-      <header className="sticky top-14 z-30 -mx-3.5 mb-3 border-b border-surface-border/60 bg-surface-base/92 px-3.5 py-2 backdrop-blur-lg sm:top-16 sm:mx-0 sm:rounded-xl sm:border sm:px-3">
+      <header className="sticky top-14 z-30 -mx-3.5 mb-3 border-b border-surface-border/60 bg-surface-base/[0.92] px-3.5 py-2 backdrop-blur-lg sm:top-16 sm:mx-0 sm:rounded-xl sm:border sm:px-3">
         <div className="flex items-center gap-2">
           <Link
             href={`/exams/${encodeURIComponent(providerId)}/${encodeURIComponent(examKey)}`}
@@ -293,7 +293,11 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
           Previous
         </button>
 
-        <span className="caption hidden shrink-0 sm:block">Swipe or use ← →</span>
+        <span className="hidden shrink-0 items-center gap-1.5 sm:flex" aria-hidden="true">
+          <span className="kbd">←</span>
+          <span className="kbd">→</span>
+          <span className="text-[0.6875rem] text-content-muted">or swipe</span>
+        </span>
 
         {index === total - 1 ? (
           <button
@@ -314,7 +318,7 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
 
       {/* ---------- Session summary ---------- */}
       {doneCount > 0 && doneCount === total ? (
-        <div className="surface mt-4 flex items-center gap-3 p-4">
+        <div className="panel mt-4 flex items-center gap-3 p-4">
           <ProgressRing value={100} size={52} tone="success">
             <IconCheck className="h-5 w-5 text-positive" />
           </ProgressRing>

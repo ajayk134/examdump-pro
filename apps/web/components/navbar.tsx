@@ -2,14 +2,17 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { useAuth, useToast } from '@/components/providers';
-import { Avatar } from '@/components/ui';
+import { useEffect, useRef, useState } from 'react';
+import { useAuth, useTheme, useToast } from '@/components/providers';
+import { Avatar, Drawer } from '@/components/ui';
 import {
   IconBook,
+  IconBookmark,
   IconChart,
+  IconHistory,
   IconHome,
   IconLogout,
+  IconMenu,
   IconMessage,
   IconMoon,
   IconSearch,
@@ -18,7 +21,6 @@ import {
   IconSun,
   IconUser,
   IconX,
-  IconMenu,
 } from '@/components/icons';
 import { cn } from '@/lib/format';
 import { api } from '@/lib/api';
@@ -61,43 +63,13 @@ export function Navbar() {
   const router = useRouter();
   const { user, refresh } = useAuth();
   const { toast } = useToast();
+  const { resolved, toggle } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [dark, setDark] = useState(false);
-
-  useEffect(() => {
-    setDark(document.documentElement.classList.contains('dark'));
-  }, []);
 
   // Close the sheet whenever the route changes.
   useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMenuOpen(false);
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = previous;
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [menuOpen]);
-
-  function toggleTheme() {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.classList.toggle('dark', next);
-    document.documentElement.style.colorScheme = next ? 'dark' : 'light';
-    try {
-      localStorage.setItem('examdump-theme', next ? 'dark' : 'light');
-    } catch {
-      /* storage may be blocked; theme still applies for this session */
-    }
-  }
 
   async function signOut() {
     try {
@@ -112,6 +84,7 @@ export function Navbar() {
   }
 
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
+  const dark = resolved === 'dark';
 
   return (
     <>
@@ -120,7 +93,7 @@ export function Navbar() {
         className="sticky top-0 z-50 border-b border-surface-border/80 glass"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <nav className="mx-auto flex h-14 w-full max-w-7xl items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-6" aria-label="Main">
+        <nav className="mx-auto flex h-14 w-full max-w-7xl items-center gap-1.5 px-3 sm:h-16 sm:gap-3 sm:px-6" aria-label="Main">
           <Link href="/" className="flex min-h-11 shrink-0 items-center gap-2 lg:min-h-0" aria-label="ExamDump Pro home">
             <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-brand-600 to-sky-400 text-sm font-black text-white shadow-glow sm:h-9 sm:w-9 sm:text-base">
               E
@@ -142,13 +115,19 @@ export function Navbar() {
                 href={item.href}
                 aria-current={isActive(item.href) ? 'page' : undefined}
                 className={cn(
-                  'rounded-lg px-2.5 py-2 text-[0.8125rem] font-semibold transition-colors',
+                  'relative rounded-lg px-2.5 py-2 text-[0.8125rem] font-semibold transition-colors',
                   isActive(item.href)
                     ? 'bg-surface-overlay text-content-primary'
                     : 'text-content-secondary hover:bg-surface-overlay/60 hover:text-content-primary',
                 )}
               >
                 {item.label}
+                {isActive(item.href) ? (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-x-2.5 -bottom-[0.6rem] h-0.5 rounded-full bg-accent sm:-bottom-[0.85rem]"
+                  />
+                ) : null}
               </Link>
             ))}
             {user?.role === 'admin' ? (
@@ -169,24 +148,16 @@ export function Navbar() {
           <div className="ml-auto flex items-center gap-1">
             <button
               type="button"
-              onClick={toggleTheme}
+              onClick={toggle}
               className="icon-btn"
               aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+              aria-pressed={dark}
             >
               {dark ? <IconSun /> : <IconMoon />}
             </button>
 
             {user ? (
-              <Link
-                href="/profile"
-                className="hidden items-center gap-2 rounded-full py-1 pl-1 pr-3 transition-colors hover:bg-surface-overlay sm:flex"
-                aria-label="Your profile"
-              >
-                <Avatar name={user.name ?? user.email ?? 'You'} size={30} />
-                <span className="max-w-[9rem] truncate text-[0.8125rem] font-semibold">
-                  {user.name ?? user.email}
-                </span>
-              </Link>
+              <AccountMenu user={user} onSignOut={signOut} />
             ) : (
               <div className="hidden items-center gap-2 sm:flex">
                 <Link href="/login" className="btn-ghost btn-sm">
@@ -212,110 +183,199 @@ export function Navbar() {
       </header>
 
       {/* ---------------- Mobile sheet menu ---------------- */}
-      {menuOpen ? (
-        <div className="fixed inset-0 z-[110] lg:hidden" role="presentation">
-          <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Menu"
-            className="absolute inset-x-0 bottom-0 max-h-[85dvh] animate-sheet overflow-y-auto rounded-t-3xl border-t border-surface-border bg-surface-raised"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-          >
-            <div className="sticky top-0 flex items-center justify-between border-b border-surface-border bg-surface-raised px-4 py-3">
-              <span className="heading-3">Menu</span>
-              <button type="button" onClick={() => setMenuOpen(false)} className="icon-btn" aria-label="Close menu">
-                <IconX />
-              </button>
-            </div>
+      <Drawer open={menuOpen} onClose={() => setMenuOpen(false)} title="Menu" side="bottom" className="lg:hidden">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-surface-border bg-surface-raised px-4 py-3">
+          <span className="heading-3">Menu</span>
+          <button type="button" onClick={() => setMenuOpen(false)} className="icon-btn" aria-label="Close menu">
+            <IconX />
+          </button>
+        </div>
 
-            <div className="grid grid-cols-2 gap-2 p-3">
-              {[...PRIMARY, { href: '/mock', label: 'Mock tests', icon: 'book' as const }].map((item) => {
-                const Icon = ICONS[item.icon];
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      'flex items-center gap-2.5 rounded-xl border p-3 text-sm font-semibold transition-colors',
-                      isActive(item.href)
-                        ? 'border-accent/40 bg-accent/10 text-accent'
-                        : 'border-surface-border bg-surface-overlay text-content-secondary',
-                    )}
-                  >
-                    <Icon className="h-[18px] w-[18px]" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid grid-cols-2 gap-2 p-3">
+            {[...PRIMARY, { href: '/mock', label: 'Mock tests', icon: 'book' as const }].map((item) => {
+              const Icon = ICONS[item.icon];
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center gap-2.5 rounded-xl border p-3 text-sm font-semibold transition-colors',
+                    isActive(item.href)
+                      ? 'border-accent/40 bg-accent/10 text-accent'
+                      : 'border-surface-border bg-surface-overlay text-content-secondary',
+                  )}
+                >
+                  <Icon className="h-[18px] w-[18px]" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
 
-            <div className="px-3 pb-1">
-              <p className="eyebrow mb-2 px-1">More</p>
-              <div className="flex flex-col">
-                {SECONDARY.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      'flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                      isActive(item.href) ? 'text-accent' : 'text-content-secondary hover:bg-surface-overlay',
-                    )}
-                  >
-                    {item.label}
-                    <span className="text-content-muted" aria-hidden="true">
-                      ›
-                    </span>
-                  </Link>
-                ))}
-                {user?.role === 'admin' ? (
-                  <Link href="/admin" className="rounded-lg px-3 py-2.5 text-sm font-medium text-content-secondary">
-                    Admin console
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="border-t border-surface-border p-3">
-              {user ? (
-                <div className="flex flex-col gap-2">
-                  <Link href="/profile" className="flex items-center gap-3 rounded-xl bg-surface-overlay p-3">
-                    <Avatar name={user.name ?? user.email ?? 'You'} size={36} />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">{user.name ?? 'Your account'}</p>
-                      <p className="truncate text-xs text-content-muted">{user.email}</p>
-                    </div>
-                  </Link>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Link href="/profile" className="btn-secondary btn-sm">
-                      <IconUser /> Profile
-                    </Link>
-                    <Link href="/security" className="btn-secondary btn-sm">
-                      <IconSettings /> Security
-                    </Link>
-                  </div>
-                  <button type="button" onClick={signOut} className="btn-ghost btn-sm justify-start text-negative">
-                    <IconLogout /> Sign out
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  <Link href="/login" className="btn-secondary">
-                    Sign in
-                  </Link>
-                  <Link href="/register" className="btn-primary">
-                    Get started
-                  </Link>
-                </div>
-              )}
+          <div className="px-3 pb-1">
+            <p className="eyebrow mb-2 px-1">More</p>
+            <div className="flex flex-col">
+              {SECONDARY.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                    isActive(item.href) ? 'text-accent' : 'text-content-secondary hover:bg-surface-overlay',
+                  )}
+                >
+                  {item.label}
+                  <span className="text-content-muted" aria-hidden="true">
+                    ›
+                  </span>
+                </Link>
+              ))}
+              {user?.role === 'admin' ? (
+                <Link href="/admin" className="rounded-lg px-3 py-2.5 text-sm font-medium text-content-secondary">
+                  Admin console
+                </Link>
+              ) : null}
             </div>
           </div>
+
+          <div className="border-t border-surface-border p-3">
+            {user ? (
+              <div className="flex flex-col gap-2">
+                <Link href="/profile" className="flex items-center gap-3 rounded-xl bg-surface-overlay p-3">
+                  <Avatar name={user.name ?? user.email ?? 'You'} size={36} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{user.name ?? 'Your account'}</p>
+                    <p className="truncate text-xs text-content-muted">{user.email}</p>
+                  </div>
+                </Link>
+                <div className="grid grid-cols-2 gap-2">
+                  <Link href="/profile" className="btn-secondary btn-sm">
+                    <IconUser /> Profile
+                  </Link>
+                  <Link href="/security" className="btn-secondary btn-sm">
+                    <IconSettings /> Security
+                  </Link>
+                </div>
+                <button type="button" onClick={signOut} className="btn-ghost btn-sm justify-start text-negative">
+                  <IconLogout /> Sign out
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <Link href="/login" className="btn-secondary">
+                  Sign in
+                </Link>
+                <Link href="/register" className="btn-primary">
+                  Get started
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
-      ) : null}
+      </Drawer>
 
       {/* ---------------- Mobile bottom tab bar ---------------- */}
       <BottomNav pathname={pathname} />
     </>
+  );
+}
+
+/** Desktop account dropdown. Hidden on phones (the sheet covers it there). */
+function AccountMenu({
+  user,
+  onSignOut,
+}: {
+  user: { name: string | null; email: string | null; role?: string };
+  onSignOut: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const items = [
+    { href: '/dashboard', label: 'Dashboard', icon: IconChart },
+    { href: '/bookmarks', label: 'Bookmarks', icon: IconBookmark },
+    { href: '/history', label: 'History', icon: IconHistory },
+    { href: '/referrals', label: 'Refer a friend', icon: IconStar },
+    { href: '/profile', label: 'Settings', icon: IconSettings },
+  ];
+
+  return (
+    <div ref={ref} className="relative hidden lg:block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 transition-colors hover:bg-surface-overlay"
+      >
+        <Avatar name={user.name ?? user.email ?? 'You'} size={30} />
+        <span className="max-w-[9rem] truncate text-[0.8125rem] font-semibold">{user.name ?? user.email}</span>
+      </button>
+
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-60 animate-pop overflow-hidden rounded-xl border border-surface-border bg-surface-raised p-1.5 shadow-lg"
+        >
+          <div className="px-3 py-2">
+            <p className="truncate text-sm font-semibold">{user.name ?? 'Your account'}</p>
+            <p className="truncate text-xs text-content-muted">{user.email}</p>
+          </div>
+          <div className="my-1 h-px bg-surface-border" />
+          {items.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                role="menuitem"
+                className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-content-secondary transition-colors hover:bg-surface-overlay hover:text-content-primary"
+              >
+                <Icon width={16} height={16} />
+                {item.label}
+              </Link>
+            );
+          })}
+          {user.role === 'admin' ? (
+            <Link
+              href="/admin"
+              role="menuitem"
+              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-content-secondary transition-colors hover:bg-surface-overlay hover:text-content-primary"
+            >
+              <IconSettings width={16} height={16} />
+              Admin console
+            </Link>
+          ) : null}
+          <div className="my-1 h-px bg-surface-border" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={onSignOut}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-negative transition-colors hover:bg-negative/10"
+          >
+            <IconLogout width={16} height={16} />
+            Sign out
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

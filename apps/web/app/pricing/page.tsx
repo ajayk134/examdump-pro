@@ -16,9 +16,9 @@ import type {
   Subscription,
   User,
 } from '@/lib/types';
-import { Alert, EmptyState, PremiumBadge, Spinner } from '@/components/ui';
-import { IconCheck, IconSparkles, IconX } from '@/components/icons';
-import { formatDate, formatMoneyMinor } from '@/lib/format';
+import { Alert, Badge, EmptyState, PremiumBadge, Spinner, TableScroll } from '@/components/ui';
+import { IconCheck, IconChevronDown, IconSparkles, IconX } from '@/components/icons';
+import { cn, formatDate, formatMoneyMinor } from '@/lib/format';
 
 interface PlansResponse {
   plans: Plan[];
@@ -44,6 +44,25 @@ const FREE_FEATURES = [
   '1 timed mock exam per day',
   '20 random practice questions per day',
   'Progress tracking and streaks',
+];
+
+const FAQ_ITEMS = [
+  {
+    q: 'How do exam slots work on the Multi-Exam Pass?',
+    a: 'Pick up to three exams at checkout. You can move a slot to a different exam at any time from your profile without losing the remaining days.',
+  },
+  {
+    q: 'What happens when my pass ends?',
+    a: 'Your account falls back to the free tier: 5 questions per exam, one mock per day, and all your history, bookmarks and notes are kept.',
+  },
+  {
+    q: 'Can I upgrade mid-cycle?',
+    a: 'Yes. Buying a bigger pass immediately supersedes the overlapping access and starts a fresh period from the purchase date.',
+  },
+  {
+    q: 'Do you offer refunds?',
+    a: 'Refunds are handled by our team. Contact support with your payment reference from the profile page and we will review it.',
+  },
 ];
 
 export default function PricingPage() {
@@ -223,19 +242,46 @@ export default function PricingPage() {
 
   const activePlanId = me?.subscription?.planId ?? null;
 
+  /*
+   * Feature comparison derived from the plans the API returned. The union of
+   * every plan's feature strings becomes the rows, so nothing is invented —
+   * a tick only ever reflects a string the plan actually advertises.
+   */
+  const comparison = useMemo(() => {
+    if (!plans || plans.length === 0) return null;
+    const columns = [
+      { id: 'free', name: 'Free', features: new Set(FREE_FEATURES) },
+      ...plans.map((p) => ({ id: p.id, name: p.name, features: new Set(p.features) })),
+    ];
+    const rows: string[] = [];
+    for (const column of columns) {
+      for (const feature of column.features) {
+        if (!rows.includes(feature)) rows.push(feature);
+      }
+    }
+    return { columns, rows };
+  }, [plans]);
+
   return (
-    <div className="space-y-12">
-      <header className="mx-auto max-w-3xl text-center">
-        <span className="badge mx-auto mb-4">Pricing</span>
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-          Pass once. Practice <span className="text-gradient">without limits</span>.
+    <div className="flex flex-col gap-12 sm:gap-14">
+      <header className="mx-auto max-w-2xl text-center">
+        <span className="badge mx-auto mb-4">
+          <IconSparkles width={13} height={13} />
+          Pricing
+        </span>
+        <h1 className="display-2 text-balance">
+          Pass once. Practice{' '}
+          <span className="bg-gradient-to-r from-brand-500 via-brand-400 to-sky-400 bg-clip-text text-transparent dark:from-brand-300 dark:via-sky-300 dark:to-brand-400">
+            without limits
+          </span>
+          .
         </h1>
-        <p className="mt-3 text-content-secondary">
-          Every exam has {freeQuestions} free questions. Unlock full question banks, timed mocks, AI
-          explanations and analytics with a pass that fits how many exams you are taking.
+        <p className="body-text mx-auto mt-4 max-w-xl text-pretty sm:text-[0.9375rem]">
+          Every exam has {freeQuestions} free questions. Unlock full question banks, timed mocks, AI explanations
+          and analytics with a pass that fits how many exams you are taking.
         </p>
         {me?.entitlements.expiresAt ? (
-          <p className="mt-3 text-sm text-content-muted">
+          <p className="caption mt-3">
             Your current access runs until{' '}
             <strong className="text-content-primary">{formatDate(me.entitlements.expiresAt)}</strong>.
           </p>
@@ -254,60 +300,79 @@ export default function PricingPage() {
           <Spinner />
         </div>
       ) : (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
-          <PlanCard
-            id="free"
-            name="Free"
-            price="₹0"
-            cadence="forever"
-            description={`${freeQuestions} questions per exam, unlimited browsing.`}
-            features={FREE_FEATURES}
-            active={!me?.entitlements.allAccess && (me?.entitlements.examKeys.length ?? 0) === 0}
-            current={!me?.subscription}
-            cta={
-              <Link href={user ? '/exams' : '/register'} className="btn-secondary w-full">
-                {user ? 'Browse exams' : 'Start free'}
-              </Link>
-            }
-          />
-          {plans.map((p) => (
+        <section className="flex flex-col gap-5" aria-labelledby="plans-heading">
+          <h2 id="plans-heading" className="sr-only">
+            Plans
+          </h2>
+          <div className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <PlanCard
-              key={p.id}
-              id={p.id}
-              name={p.name}
-              price={formatMoneyMinor(p.priceMinor, p.currency)}
-              cadence={p.durationDays >= 365 ? 'per year' : `per ${p.durationDays} days`}
-              description={p.description}
-              features={p.features}
-              highlight={p.highlight}
-              badge={p.badge ?? undefined}
-              active={activePlanId === p.id}
-              current={activePlanId === p.id}
+              id="free"
+              name="Free"
+              price="₹0"
+              cadence="forever"
+              description={`${freeQuestions} questions per exam, unlimited browsing.`}
+              features={FREE_FEATURES}
+              active={!me?.entitlements.allAccess && (me?.entitlements.examKeys.length ?? 0) === 0}
+              current={!me?.subscription}
               cta={
-                <button
-                  type="button"
-                  className={p.highlight ? 'btn-primary w-full' : 'btn-secondary w-full'}
-                  onClick={() => {
-                    setSelectedPlan(p.id);
-                    setSelectedExams([]);
-                    setExamQuery('');
-                    setQuote(null);
-                  }}
+                <Link
+                  href={user ? '/exams' : '/register'}
+                  className="btn-secondary w-full whitespace-normal text-center leading-tight"
                 >
-                  {activePlanId === p.id ? 'Renew or extend' : 'Choose ' + p.name.split('·')[0]!.trim()}
-                </button>
+                  {user ? 'Browse exams' : 'Start free'}
+                </Link>
               }
             />
-          ))}
-        </div>
+            {plans.map((p) => (
+              <PlanCard
+                key={p.id}
+                id={p.id}
+                name={p.name}
+                price={formatMoneyMinor(p.priceMinor, p.currency)}
+                cadence={p.durationDays >= 365 ? 'per year' : `per ${p.durationDays} days`}
+                description={p.description}
+                features={p.features}
+                highlight={p.highlight}
+                badge={p.badge ?? undefined}
+                active={activePlanId === p.id}
+                current={activePlanId === p.id}
+                cta={
+                  <button
+                    type="button"
+                    className={cn(
+                      p.highlight ? 'btn-primary' : 'btn-secondary',
+                      // Long API plan names overflow the card because `.btn`
+                      // is `whitespace-nowrap`. Let the label wrap and centre.
+                      'w-full whitespace-normal text-center leading-tight',
+                    )}
+                    onClick={() => {
+                      setSelectedPlan(p.id);
+                      setSelectedExams([]);
+                      setExamQuery('');
+                      setQuote(null);
+                    }}
+                  >
+                    {activePlanId === p.id ? 'Renew or extend' : 'Choose ' + p.name.split('·')[0]!.trim()}
+                  </button>
+                }
+              />
+            ))}
+          </div>
+          <p className="caption text-center">
+            All prices are shown in the plan currency. Taxes, where applicable, are included at checkout.
+          </p>
+        </section>
       )}
 
       {plan ? (
-        <section className="card-elevated animate-fade-in p-6">
+        <section className="panel-lg animate-fade-in p-5 sm:p-6" aria-labelledby="configure-heading">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h2 className="heading-2">Configure your {plan.name}</h2>
-              <p className="mt-1 text-sm text-content-secondary">
+            <div className="min-w-0">
+              <p className="eyebrow mb-1.5">Checkout</p>
+              <h2 id="configure-heading" className="heading-1">
+                Configure your {plan.name}
+              </h2>
+              <p className="body-text mt-1.5 max-w-xl text-pretty">
                 {plan.scope === 'all'
                   ? 'Every exam in the catalogue is unlocked for the whole period.'
                   : plan.scope === 'multi'
@@ -315,7 +380,7 @@ export default function PricingPage() {
                     : 'Pick the one exam this pass unlocks.'}
               </p>
             </div>
-            <button type="button" className="btn-ghost" onClick={() => setSelectedPlan(null)}>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => setSelectedPlan(null)}>
               <IconX className="h-4 w-4" /> Close
             </button>
           </div>
@@ -327,10 +392,14 @@ export default function PricingPage() {
               </label>
               <input
                 id="exam-search"
+                name="exam-search"
+                type="search"
                 className="input"
                 placeholder="e.g. AWS Solutions Architect, AZ-104, CCNA"
                 value={examQuery}
                 onChange={(e) => setExamQuery(e.target.value)}
+                aria-describedby="exam-search-help"
+                autoComplete="off"
               />
               {selectedExams.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
@@ -338,22 +407,29 @@ export default function PricingPage() {
                     <button
                       key={e.key}
                       type="button"
-                      className="badge border-brand-400/50 bg-brand-100/60 text-brand-800 hover:bg-brand-200/60 dark:bg-brand-500/15 dark:text-brand-200"
+                      className="chip gap-2 whitespace-normal border-brand-400/50 bg-brand-100/60 text-left text-brand-800 hover:bg-brand-200/60 dark:bg-brand-500/15 dark:text-brand-200"
                       onClick={() => toggleExam(e)}
-                      title="Remove"
+                      aria-label={`Remove ${e.code}`}
                     >
-                      {e.code} · {e.providerTitle}
-                      <IconX className="h-3 w-3" />
+                      <span className="min-w-0">
+                        {e.code} · {e.providerTitle}
+                      </span>
+                      <IconX className="h-3.5 w-3.5 shrink-0" />
                     </button>
                   ))}
                 </div>
-              ) : (
-                <p className="text-xs text-content-muted">
-                  {quota > 0 ? `0 of ${quota} selected` : 'No exams selected yet'}
-                </p>
-              )}
+              ) : null}
+              <p id="exam-search-help" className="caption" role="status" aria-live="polite">
+                {selectedExams.length > 0
+                  ? quota > 0
+                    ? `${selectedExams.length} of ${quota} selected`
+                    : `${selectedExams.length} selected`
+                  : quota > 0
+                    ? `0 of ${quota} selected`
+                    : 'No exams selected yet'}
+              </p>
               {examQuery.trim().length >= 2 ? (
-                <div className="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-surface-border p-2">
+                <div className="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-surface-border bg-surface-base p-2">
                   {examSearching && examResults.length === 0 ? (
                     <div className="flex justify-center py-6">
                       <Spinner />
@@ -368,18 +444,19 @@ export default function PricingPage() {
                           key={e.key}
                           type="button"
                           onClick={() => toggleExam(e)}
-                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
+                          aria-pressed={picked}
+                          className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
                             picked
                               ? 'bg-brand-100/70 text-brand-900 dark:bg-brand-500/15 dark:text-brand-100'
                               : 'hover:bg-surface-overlay'
                           }`}
                         >
-                          <span>
+                          <span className="min-w-0">
                             <strong className="font-semibold">{e.code}</strong>{' '}
                             <span className="text-content-secondary">{e.title}</span>
                             <span className="ml-2 text-xs text-content-muted">{e.providerTitle}</span>
                           </span>
-                          <span className="text-xs text-content-muted">{e.questionCount} q</span>
+                          <span className="shrink-0 text-xs text-content-muted">{e.questionCount} q</span>
                         </button>
                       );
                     })
@@ -389,31 +466,34 @@ export default function PricingPage() {
             </div>
           ) : null}
 
-          <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
-            <div>
+          <div className="mt-6 grid gap-5 border-t border-surface-border pt-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,15rem)] sm:items-start">
+            <div className="min-w-0">
               <label className="label" htmlFor="coupon">
                 Coupon code (optional)
               </label>
               <input
                 id="coupon"
+                name="coupon"
                 className="input uppercase"
                 placeholder="SAVE20"
                 value={coupon}
                 onChange={(e) => setCoupon(e.target.value.toUpperCase())}
+                autoComplete="off"
+                spellCheck={false}
               />
             </div>
-            <div className="text-right">
+            <div className="sm:text-right" aria-live="polite">
               {quoting ? (
                 <Spinner />
               ) : quote ? (
                 <>
-                  <p className="text-2xl font-bold">{formatMoneyMinor(quote.totalMinor, quote.currency)}</p>
+                  <p className="numeric text-2xl font-bold">{formatMoneyMinor(quote.totalMinor, quote.currency)}</p>
                   {quote.discountMinor > 0 ? (
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                    <p className="caption mt-1 text-positive">
                       {formatMoneyMinor(quote.discountMinor, quote.currency)} off with {quote.couponCode}
                     </p>
                   ) : (
-                    <p className="text-xs text-content-muted">Inclusive of all taxes</p>
+                    <p className="caption mt-1">Inclusive of all taxes</p>
                   )}
                 </>
               ) : (
@@ -422,7 +502,7 @@ export default function PricingPage() {
             </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center gap-3">
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
             {/*
               Only offer a button that can actually complete. With live payments
               off, `mock-activate` refuses to run on a production deployment, so
@@ -430,7 +510,7 @@ export default function PricingPage() {
             */}
             <button
               type="button"
-              className="btn-primary"
+              className="btn-primary w-full whitespace-normal text-center leading-tight sm:w-auto"
               disabled={!checkoutAvailable || busy || !quote || (needsExams && selectedExams.length === 0)}
               onClick={() => void startCheckout()}
             >
@@ -438,35 +518,41 @@ export default function PricingPage() {
               {paymentsEnabled || youpiAvailable ? 'Continue to payment' : mockPayments ? 'Activate (test mode)' : 'Checkout unavailable'}
             </button>
             {!checkoutAvailable ? (
-              <span className="text-xs text-content-muted">Payments are not enabled on this deployment.</span>
+              <span className="caption">Payments are not enabled on this deployment.</span>
             ) : youpiAvailable ? (
-              <span className="text-xs text-content-muted">
+              <span className="caption">
                 UPI via YouPI-PG. Access is granted only after independent bank-statement reconciliation.
               </span>
             ) : !paymentsEnabled ? (
-              <span className="text-xs text-content-muted">No charge is made in test mode.</span>
+              <span className="caption">No charge is made in test mode.</span>
             ) : (
-              <span className="text-xs text-content-muted">
-                Cards, UPI and netbanking via HyperSwitch.
-              </span>
+              <span className="caption">Cards, UPI and netbanking via HyperSwitch.</span>
             )}
           </div>
         </section>
       ) : null}
 
       {me ? (
-        <section className="space-y-4">
-          <h2 className="heading-2">Your access</h2>
+        <section className="section" aria-labelledby="access-heading">
+          <div className="section-head">
+            <div>
+              <p className="eyebrow mb-1.5">Account</p>
+              <h2 id="access-heading" className="heading-1">
+                Your access
+              </h2>
+            </div>
+          </div>
+
           {me.subscriptions.length === 0 ? (
             <EmptyState title="No active pass" description="Choose a pass above to unlock full exam access." />
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
               {me.subscriptions.map((s) => (
-                <div key={s.id} className="card p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
+                <div key={s.id} className="panel p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
                       <p className="font-semibold">{s.planId}</p>
-                      <p className="text-xs text-content-muted">
+                      <p className="caption mt-0.5 break-words">
                         {s.scope === 'all'
                           ? 'All exams'
                           : (s.examKeys && s.examKeys.length > 0
@@ -476,7 +562,7 @@ export default function PricingPage() {
                     </div>
                     {s.status === 'active' ? <PremiumBadge /> : <span className="badge">{s.status}</span>}
                   </div>
-                  <p className="mt-2 text-sm text-content-secondary">
+                  <p className="body-text mt-2.5">
                     {s.cancelAtPeriodEnd ? 'Access ends' : 'Renews'} on {formatDate(s.currentPeriodEnd)}
                   </p>
                 </div>
@@ -485,31 +571,36 @@ export default function PricingPage() {
           )}
 
           {me.payments.length > 0 ? (
-            <div className="card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-surface-overlay text-left text-xs uppercase tracking-wide text-content-muted">
-                  <tr>
-                    <th className="px-4 py-2">Date</th>
-                    <th className="px-4 py-2">Description</th>
-                    <th className="px-4 py-2">Status</th>
-                    <th className="px-4 py-2 text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {me.payments.slice(0, 10).map((p) => (
-                    <tr key={p.id} className="border-t border-surface-border">
-                      <td className="px-4 py-2 text-content-secondary">{formatDate(p.createdAt)}</td>
-                      <td className="px-4 py-2">{p.description || 'Subscription'}</td>
-                      <td className="px-4 py-2">
-                        <span className="badge">{p.status}</span>
-                      </td>
-                      <td className="px-4 py-2 text-right font-medium">
-                        {formatMoneyMinor(p.amountMinor, p.currency)}
-                      </td>
+            <div className="panel overflow-hidden p-0">
+              <TableScroll className="rounded-none border-0 shadow-none">
+                <table className="tbl min-w-[34rem]">
+                  <caption className="sr-only">Your recent payments</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Date</th>
+                      <th scope="col">Description</th>
+                      <th scope="col">Status</th>
+                      <th scope="col" className="text-right">
+                        Amount
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {me.payments.slice(0, 10).map((p) => (
+                      <tr key={p.id}>
+                        <td className="whitespace-nowrap text-content-secondary">{formatDate(p.createdAt)}</td>
+                        <td>{p.description || 'Subscription'}</td>
+                        <td>
+                          <span className="badge">{p.status}</span>
+                        </td>
+                        <td className="whitespace-nowrap text-right font-medium">
+                          {formatMoneyMinor(p.amountMinor, p.currency)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
               <div className="border-t border-surface-border px-4 py-3 text-right">
                 <Link href="/profile#invoices" className="link text-sm">
                   View invoices
@@ -520,33 +611,89 @@ export default function PricingPage() {
         </section>
       ) : null}
 
-      <section className="card p-6">
-        <h2 className="text-lg font-semibold">Common questions</h2>
-        <dl className="mt-4 grid gap-5 md:grid-cols-2">
-          {[
-            {
-              q: 'How do exam slots work on the Multi-Exam Pass?',
-              a: 'Pick up to three exams at checkout. You can move a slot to a different exam at any time from your profile without losing the remaining days.',
-            },
-            {
-              q: 'What happens when my pass ends?',
-              a: 'Your account falls back to the free tier: 5 questions per exam, one mock per day, and all your history, bookmarks and notes are kept.',
-            },
-            {
-              q: 'Can I upgrade mid-cycle?',
-              a: 'Yes. Buying a bigger pass immediately supersedes the overlapping access and starts a fresh period from the purchase date.',
-            },
-            {
-              q: 'Do you offer refunds?',
-              a: 'Refunds are handled by our team. Contact support with your payment reference from the profile page and we will review it.',
-            },
-          ].map((item) => (
-            <div key={item.q}>
-              <dt className="font-medium">{item.q}</dt>
-              <dd className="mt-1 text-sm text-content-secondary">{item.a}</dd>
-            </div>
+      {comparison ? (
+        <section className="section" aria-labelledby="compare-heading">
+          <div className="mx-auto max-w-xl text-center">
+            <p className="eyebrow mb-2">Compare</p>
+            <h2 id="compare-heading" className="display-2 text-balance">
+              What each pass includes
+            </h2>
+            <p className="body-text mt-2.5">On a phone, scroll the table sideways to see every plan.</p>
+          </div>
+
+          <TableScroll>
+            <table className="tbl min-w-[38rem]">
+              <caption className="sr-only">Feature comparison across every plan</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Feature</th>
+                  {comparison.columns.map((column) => (
+                    <th key={column.id} scope="col" className="text-center">
+                      {column.name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {comparison.rows.map((row) => (
+                  <tr key={row}>
+                    <th
+                      scope="row"
+                      className="border-t border-surface-border px-3 py-2.5 text-left text-sm font-medium text-content-secondary"
+                    >
+                      {row}
+                    </th>
+                    {comparison.columns.map((column) => {
+                      const included = column.features.has(row);
+                      return (
+                        <td key={column.id} className="text-center">
+                          {included ? (
+                            <>
+                              <IconCheck width={16} height={16} className="mx-auto text-positive" aria-hidden="true" />
+                              <span className="sr-only">Included</span>
+                            </>
+                          ) : (
+                            <>
+                              <span aria-hidden="true" className="text-content-muted">
+                                —
+                              </span>
+                              <span className="sr-only">Not included</span>
+                            </>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        </section>
+      ) : null}
+
+      <section className="section" aria-labelledby="faq-heading">
+        <div className="mx-auto max-w-xl text-center">
+          <p className="eyebrow mb-2">Questions</p>
+          <h2 id="faq-heading" className="display-2 text-balance">
+            Common questions
+          </h2>
+        </div>
+
+        <div className="mx-auto w-full max-w-3xl overflow-hidden rounded-2xl border border-surface-border bg-surface-raised shadow-xs">
+          {FAQ_ITEMS.map((item) => (
+            <details key={item.q} className="group border-t border-surface-border first:border-t-0">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 text-sm font-semibold text-content-primary transition-colors hover:bg-surface-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent sm:px-5 [&::-webkit-details-marker]:hidden">
+                {item.q}
+                <IconChevronDown
+                  width={18}
+                  height={18}
+                  className="shrink-0 text-content-muted transition-transform group-open:rotate-180"
+                />
+              </summary>
+              <p className="px-4 pb-4 text-sm leading-relaxed text-content-secondary sm:px-5">{item.a}</p>
+            </details>
           ))}
-        </dl>
+        </div>
       </section>
     </div>
   );
@@ -565,37 +712,48 @@ function PlanCard(props: {
   active?: boolean;
   current?: boolean;
 }) {
+  // `highlight` is the server's own recommendation signal; the label only
+  // restates it, and an explicit plan badge always wins.
+  const badge = props.badge ?? (props.highlight ? 'Recommended' : undefined);
+
   return (
     <div
-      className={`card relative flex flex-col p-5 ${
-        props.highlight ? 'border-brand-400/70 ring-2 ring-brand-400/30' : ''
-      }`}
+      className={cn(
+        'relative flex h-full flex-col rounded-2xl border bg-surface-raised p-5',
+        props.highlight ? 'border-accent/55 shadow-md ring-1 ring-accent/25' : 'border-surface-border shadow-xs',
+      )}
     >
-      {props.badge ? (
-        <span className="absolute -top-3 left-5 rounded-full bg-brand-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow">
-          {props.badge}
-        </span>
+      {props.highlight ? (
+        <span
+          aria-hidden="true"
+          className="absolute inset-x-0 top-0 h-0.5 rounded-t-2xl bg-gradient-to-r from-brand-600 to-sky-400"
+        />
       ) : null}
-      <p className="text-sm font-semibold uppercase tracking-wide text-content-muted">{props.name}</p>
-      <p className="mt-2 text-2xl font-bold">{props.price}</p>
-      <p className="text-xs text-content-muted">{props.cadence}</p>
-      <p className="mt-3 text-sm text-content-secondary">{props.description}</p>
-      <ul className="mt-4 flex-1 space-y-2 text-sm">
+
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="eyebrow min-w-0 break-words">{props.name}</h3>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {badge ? <Badge tone={props.highlight ? 'accent' : 'default'}>{badge}</Badge> : null}
+          {props.current ? <Badge tone="success">Current plan</Badge> : null}
+        </div>
+      </div>
+
+      <p className="numeric mt-3 text-3xl font-bold tracking-tight">{props.price}</p>
+      <p className="caption mt-1">{props.cadence}</p>
+      <p className="mt-3 min-h-[2.5rem] text-[0.8125rem] leading-relaxed text-content-secondary">
+        {props.description}
+      </p>
+
+      <ul className="mt-4 flex flex-1 flex-col gap-2">
         {props.features.map((f) => (
-          <li key={f} className="flex gap-2">
-            <IconCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
-            <span className="text-content-secondary">{f}</span>
+          <li key={f} className="flex items-start gap-2 text-[0.8125rem] leading-relaxed text-content-secondary">
+            <IconCheck width={15} height={15} className="mt-0.5 shrink-0 text-positive" />
+            <span>{f}</span>
           </li>
         ))}
       </ul>
-      <div className="mt-5">
-        {props.current ? (
-          <p className="mb-2 text-center text-xs font-medium text-brand-600 dark:text-brand-300">
-            Current plan
-          </p>
-        ) : null}
-        {props.cta}
-      </div>
+
+      <div className="mt-5">{props.cta}</div>
     </div>
   );
 }

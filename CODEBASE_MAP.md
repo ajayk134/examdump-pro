@@ -135,14 +135,15 @@ app/                 App Router pages
   reset-password/ verify-email/ unsubscribe/ privacy/ terms/ security/
   admin/             admin console
   sitemap.ts robots.ts
-components/          23 shared components (mostly client)
+components/          24 shared components (mostly client)
   markdown.tsx       the only Markdown renderer (no new deps allowed)
-  ui.tsx             shared primitives
+  ui.tsx             shared primitives, useOverlay, Drawer/Dialog
+  landing-*.tsx      landing page sections (live catalogue data)
   admin-*.tsx        admin consoles
 lib/                 client helpers, local-store
 ```
 
-46 of the 58 `.tsx` files under `app/` and `components/` are client components.
+47 of the 58 `.tsx` files under `app/` and `components/` are client components.
 
 Rendering strategy and performance: [docs/performance/FRONTEND.md](docs/performance/FRONTEND.md).
 

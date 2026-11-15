@@ -262,6 +262,88 @@ body::before {
 }
 
 /* --------------------------------------------------------------------------
+   Layout idioms
+   --------------------------------------------------------------------------
+   Three surfaces with distinct jobs, so pages stop being identical boxes:
+
+   .panel  a bordered content container — the default for grouped content.
+   .tile   a compact, borderless interactive block (quick actions, nav, metrics).
+   .section a page region: spacing + an optional hairline rule, no chrome.
+
+   `.surface`/`.card` remain as legacy aliases so untouched pages inherit the
+   refined look; new code should reach for `.panel`/`.tile`/`.section`.
+   -------------------------------------------------------------------------- */
+
+@layer components {
+  .panel {
+    @apply rounded-2xl border bg-surface-raised;
+    border-color: rgb(var(--surface-border));
+    box-shadow: var(--shadow-xs);
+  }
+
+  .panel-lg {
+    @apply panel rounded-3xl;
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* A panel that reads as part of the page rather than a floating card. */
+  .panel-sunken {
+    @apply rounded-2xl border-0;
+    background-color: rgb(var(--surface-sunken));
+  }
+
+  .tile {
+    @apply rounded-xl border-0 transition-colors;
+    background-color: rgb(var(--surface-overlay));
+  }
+
+  @media (hover: hover) {
+    .tile-interactive:hover {
+      background-color: rgb(var(--surface-inset));
+    }
+  }
+
+  .section {
+    @apply flex flex-col gap-4;
+  }
+
+  .section-head {
+    @apply flex items-end justify-between gap-3;
+  }
+
+  /* Hairline rule that starts a region without drawing a full box. */
+  .hairline {
+    height: 1px;
+    background-color: rgb(var(--surface-border));
+  }
+
+  /* Faint technical grid — used behind hero/feature art only. */
+  .grid-fade {
+    background-image:
+      linear-gradient(to right, rgb(var(--surface-border) / 0.5) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(var(--surface-border) / 0.5) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(80% 60% at 50% 0%, black, transparent 78%);
+    -webkit-mask-image: radial-gradient(80% 60% at 50% 0%, black, transparent 78%);
+  }
+
+  /* Horizontal snap rail for discovery carousels. */
+  .rail {
+    display: flex;
+    gap: 0.75rem;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.25rem;
+  }
+
+  .rail > * {
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+  }
+}
+
+/* --------------------------------------------------------------------------
    Controls — every tap target is at least 44px on touch.
    -------------------------------------------------------------------------- */
 
@@ -329,7 +411,7 @@ body::before {
 
   @media (pointer: coarse) {
     .btn-sm {
-      min-height: 2.5rem;
+      min-height: 2.75rem;
     }
   }
 
@@ -439,7 +521,7 @@ body::before {
 
   @media (pointer: coarse) {
     .chip {
-      min-height: 2.5rem;
+      min-height: 2.75rem;
     }
   }
 
@@ -508,9 +590,91 @@ body::before {
     }
   }
 
+  /*
+   * Quiet navigation links (footer columns, "view all" affordances). They keep
+   * the body colour, but get the same coarse-pointer hit-area expansion as
+   * `.link` so a fingertip can hit a 16px-tall text link.
+   */
+  .link-quiet {
+    @apply transition-colors;
+  }
+
+  @media (hover: hover) {
+    .link-quiet:hover {
+      color: rgb(var(--content-primary));
+    }
+  }
+
+  @media (pointer: coarse) {
+    .link-quiet {
+      display: inline-block;
+      padding-block: 0.75rem;
+      margin-block: -0.75rem;
+      vertical-align: middle;
+    }
+  }
+
   .divider {
     height: 1px;
     background-color: rgb(var(--surface-border));
+  }
+
+  /* Metric typography: one place to keep numbers aligned and legible. */
+  .metric-value {
+    font-variant-numeric: tabular-nums;
+    @apply text-2xl font-bold leading-none tracking-[-0.02em];
+  }
+
+  .metric-label {
+    @apply text-[0.6875rem] font-bold uppercase tracking-[0.09em] text-content-muted;
+  }
+
+  .delta-up {
+    color: rgb(var(--success));
+  }
+
+  .delta-down {
+    color: rgb(var(--danger));
+  }
+
+  /* Keyboard hint chip (shortcuts, mock-exam controls). */
+  .kbd {
+    @apply inline-grid min-w-[1.5rem] place-items-center rounded-md border px-1 text-[0.6875rem] font-semibold text-content-secondary;
+    border-color: rgb(var(--surface-border-strong));
+    background-color: rgb(var(--surface-overlay));
+    height: 1.5rem;
+  }
+
+  /* Native <select> that matches .input without the browser's default arrow. */
+  .select {
+    @apply input cursor-pointer appearance-none bg-no-repeat pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23768ca5' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.75rem center;
+  }
+
+  /* Dense data table used by admin, history and invoices. */
+  .tbl {
+    @apply w-full border-collapse text-sm;
+  }
+
+  .tbl thead th {
+    @apply sticky top-0 z-[1] whitespace-nowrap px-3 py-2.5 text-left text-[0.6875rem] font-bold uppercase tracking-[0.08em] text-content-muted;
+    background-color: rgb(var(--surface-overlay));
+  }
+
+  .tbl tbody td {
+    @apply px-3 py-2.5 align-middle;
+    border-top: 1px solid rgb(var(--surface-border));
+  }
+
+  .tbl tbody tr {
+    transition: background-color 0.12s ease;
+  }
+
+  @media (hover: hover) {
+    .tbl tbody tr:hover {
+      background-color: rgb(var(--surface-overlay) / 0.6);
+    }
   }
 }
 

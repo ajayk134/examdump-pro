@@ -17,7 +17,8 @@ is the standard new work is measured against.
 | Keyboard | every interactive element reachable by Tab, operable by Enter/Space |
 | Focus | visible focus ring; never `outline: none` without a replacement |
 | Contrast | 4.5:1 for body text, 3:1 for large text and UI edges |
-| Touch targets | ≥ 44 px |
+| Touch targets | ≥ 44 px on touch. The design-system controls (`.btn`, `.chip`, `.icon-btn`, `.input`) grow their hit area under `@media (pointer: coarse)`, so a 34 px mouse-sized `.btn-sm` becomes 44 px on a finger; standalone text links use `.link`/`.link-quiet` for the same effect. |
+| Overflow | No page-level horizontal scrolling at 360 px. Wide tables scroll inside `TableScroll`, never by widening the page. |
 | Images | meaningful `alt`; decorative images `alt=""` |
 | Headings | one `<h1>` per page, no skipped levels |
 | Errors | announced, associated with the field, not colour-only |
@@ -28,9 +29,12 @@ is the standard new work is measured against.
 
 - The question, options and timer must be readable in order by a screen reader.
 - Time remaining must be available as text, not only a visual bar.
-- Answer selection must work without a mouse.
+- Answer selection must work without a mouse. Options respond to the number keys
+  (1–9) while unanswered, and the session navigates with ←/→ or j/k.
 - After submitting, focus must move to the result heading so the change is
   announced.
+- Confirming submission uses the shared `Dialog`, so the trap, Escape and
+  scroll-lock behaviour is identical to every other confirmation.
 
 ## Verification
 
@@ -44,6 +48,8 @@ Manual checks before shipping UI work:
 2. Zoom to 200 % — no horizontal scrolling for content.
 3. View in dark mode — contrast holds.
 4. Screen-reader spot check on the page's main action.
+5. Load each route at 360 px and confirm `document.documentElement.scrollWidth`
+   does not exceed the viewport, and that dialogs trap focus and close on Escape.
 
 No automated a11y test exists in CI; that is a gap recorded in
 [TECH_DEBT.md](TECH_DEBT.md).
