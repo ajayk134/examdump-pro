@@ -208,7 +208,7 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
         currency: quote.currency,
         orderRef: ref,
         description: `${quote.plan.name} — YouPI UPI`,
-        returnUrl: `${safeOrigin}/checkout/return?payment={payment_id}`,
+        returnUrl: `${safeOrigin}/checkout/return?ref=${encodeURIComponent(ref)}`,
         metadata: {
           planId: quote.plan.id,
           examKeys: quote.examKeys.join(','),
@@ -604,6 +604,14 @@ export async function paymentRoutes(app: FastifyInstance, env: Env): Promise<voi
 
     if (payment.status === 'succeeded') {
       return reply.send({ status: 'succeeded', payment, invoice: await issueInvoice(payment.id) });
+    }
+    // YouPI is settled only by its signed webhook/reconciliation. The return
+    // page must not probe HyperSwitch with a YouPI session id.
+    if (payment.provider === 'upi') {
+      return reply.send({
+        status: payment.status === 'failed' ? 'failed' : 'pending',
+        payment,
+      });
     }
     if (!payment.providerPaymentId) {
       return reply.send({ status: payment.status, payment });

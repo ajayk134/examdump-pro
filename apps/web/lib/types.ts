@@ -281,6 +281,7 @@ export interface Payment {
   provider: string;
   providerRef: string;
   providerPaymentId?: string | null;
+  orderRef?: string | null;
   description: string;
   failureReason?: string | null;
   paidAt?: string | null;

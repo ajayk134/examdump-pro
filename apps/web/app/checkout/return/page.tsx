@@ -41,6 +41,7 @@ function CheckoutReturn() {
 
   const gatewayPaymentId = params.get('payment') ?? params.get('payment_id') ?? '';
   const localPaymentId = params.get('id') ?? '';
+  const orderRef = params.get('ref') ?? params.get('orderRef') ?? '';
 
   const [state, setState] = useState<'idle' | 'verifying' | 'succeeded' | 'failed' | 'pending' | 'error'>('idle');
   const [payment, setPayment] = useState<Payment | null>(null);
@@ -51,15 +52,22 @@ function CheckoutReturn() {
 
   const resolveLocalPayment = useCallback(async (): Promise<string | null> => {
     if (localPaymentId) return localPaymentId;
-    // Webhook/redirect may only carry the gateway reference: look it up.
+    // The gateway may return only our order reference; some older links carry a
+    // literal placeholder or the gateway id. Payments are newest-first, so the
+    // final fallback is the user's most recent payment.
     const list = await get<{ payments: Payment[] }>('/payments');
-    const match = list.payments.find(
-      (p) =>
-        (gatewayPaymentId && (p.providerPaymentId === gatewayPaymentId || p.providerRef === gatewayPaymentId)) ||
-        p.status === 'pending',
-    );
+    const match =
+      list.payments.find((p) => orderRef && p.orderRef === orderRef) ??
+      list.payments.find(
+        (p) =>
+          gatewayPaymentId &&
+          gatewayPaymentId !== '{payment_id}' &&
+          (p.providerPaymentId === gatewayPaymentId || p.providerRef === gatewayPaymentId),
+      ) ??
+      list.payments.find((p) => p.status === 'pending') ??
+      list.payments[0];
     return match?.id ?? null;
-  }, [gatewayPaymentId, localPaymentId]);
+  }, [gatewayPaymentId, localPaymentId, orderRef]);
 
   const verify = useCallback(async () => {
     if (!user) return;
