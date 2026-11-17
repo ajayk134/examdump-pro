@@ -39,6 +39,10 @@ All notable changes to ExamDump Pro.
   clamped to the 200-question page the API serves. Progress only claims a
   resumable session when answers exist, so a mock that was started but not
   answered reads as "start with this exam" rather than "0% accuracy".
+- **Pricing advances to the exam step on selection.** Choosing a pass scrolls
+  step 2 into view so the next action is never below the fold. The jump is
+  skipped when the step is already fully visible, clearing the pass never
+  scrolls, and reduced-motion users get an instant move instead of an animation.
 
 - **Frontend visual identity replaced — "Nova".** The interface no longer shares
   the previous "Aurora" look. The identity is now a deep indigo ink neutral, an

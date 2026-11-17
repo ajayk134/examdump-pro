@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth, useToast } from '@/components/providers';
 import { get, post } from '@/lib/api';
 import type {
@@ -26,6 +26,7 @@ import {
   IconX,
 } from '@/components/icons';
 import { cn, formatDate, formatMoneyMinor } from '@/lib/format';
+import { isFullyVisible, stepScrollBehavior } from '@/lib/scroll';
 
 interface PlansResponse {
   plans: Plan[];
@@ -111,6 +112,15 @@ export default function PricingPage() {
   const [examSearching, setExamSearching] = useState(false);
   const [selectedExams, setSelectedExams] = useState<Exam[]>([]);
 
+  /*
+   * Picking a pass reveals step 2 below the cards, which on a phone is well out
+   * of view. `selectTick` counts deliberate selections so the effect that
+   * brings step 2 into view runs for a click, not for the initial render or for
+   * clearing the selection.
+   */
+  const [selectTick, setSelectTick] = useState(0);
+  const examsStepRef = useRef<HTMLElement | null>(null);
+
   const plan = useMemo(() => plans?.find((p) => p.id === selectedPlan) ?? null, [plans, selectedPlan]);
   const quota = plan?.scope === 'all' ? 0 : plan?.scope === 'multi' ? plan.examQuota || 3 : 1;
   const needsExams = plan ? plan.scope !== 'all' : false;
@@ -192,6 +202,25 @@ export default function PricingPage() {
     };
   }, [examQuery, needsExams]);
 
+  /*
+   * Bring step 2 into view the moment a pass is picked. The section mounts in
+   * the same commit as the selection, so the frame delay only lets the browser
+   * settle layout before measuring it.
+   */
+  useEffect(() => {
+    if (selectTick === 0) return;
+    const frame = requestAnimationFrame(() => {
+      const node = examsStepRef.current;
+      if (!node) return;
+      if (isFullyVisible(node.getBoundingClientRect(), window.innerHeight)) return;
+      node.scrollIntoView({
+        behavior: stepScrollBehavior(window.matchMedia('(prefers-reduced-motion: reduce)').matches),
+        block: 'start',
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selectTick]);
+
   function toggleExam(exam: Exam) {
     setSelectedExams((current) => {
       if (current.some((e) => e.key === exam.key)) return current.filter((e) => e.key !== exam.key);
@@ -209,6 +238,7 @@ export default function PricingPage() {
     setSelectedExams([]);
     setExamQuery('');
     setQuote(null);
+    setSelectTick((tick) => tick + 1);
   }
 
   async function startCheckout() {
@@ -407,7 +437,12 @@ export default function PricingPage() {
               </p>
             </section>
             {plan ? (
-              <section id="exams" aria-labelledby="exams-heading" className="panel scroll-mt-24 p-4 sm:p-5">
+              <section
+                id="exams"
+                ref={examsStepRef}
+                aria-labelledby="exams-heading"
+                className="panel scroll-mt-24 p-4 sm:p-5"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="eyebrow mb-1">Step 2</p>

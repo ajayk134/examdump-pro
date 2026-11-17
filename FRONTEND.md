@@ -98,6 +98,11 @@ goes in `TableScroll` (it is `relative`, which is what keeps a table's
   `/payments/pay/youpi/checkout` only when both payment flags and YouPI
   credentials are live; otherwise it keeps the existing gateway/mock path.
   Never infer payment availability from a local flag.
+- **Choosing a pass advances the flow.** `apps/web/app/pricing/page.tsx` scrolls
+  step 2 (exams) into view on selection, using
+  `apps/web/lib/scroll.ts` to skip the jump when the step is already fully on
+  screen and to honour `prefers-reduced-motion`. Clearing the pass never
+  scrolls.
 
 ## Build
 

@@ -31,10 +31,10 @@ often studying on a phone between other commitments. Copy addresses them as "you
 | Journey | Path |
 | --- | --- |
 | Discover | landing / Discover → search or filter by certification body → exam workspace |
-| Practise | Practice hub → exam → focus (difficulty, type, count) → runner → progress |
+| Practise | Practice hub → exam → focus (your history, type, count) → runner → progress |
 | Sit a mock | Mock simulator → exam → count + timer → instructions → attempt → score report |
 | Evaluate | landing → Discover → exam workspace → free questions |
-| Convert | limit reached → pricing → choose pass + exams → checkout (or UPI QR) |
+| Convert | limit reached → pricing → choose pass (step 2 scrolls in) → exams → checkout (or UPI QR) |
 | Track | Progress → next best action → weak areas → practice or mock |
 | Repeat | recommendations, streak, leaderboard |
 
