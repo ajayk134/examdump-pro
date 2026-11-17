@@ -6,28 +6,30 @@ All notable changes to ExamDump Pro.
 
 ### Added
 
-- **Rearchitected question sessions.** Practice and mock now share
-  `components/question-stage.tsx` and a pager/palette from
-  `components/question-session-controls.tsx`. Learners see five complete cards by
-  default and can switch to 5, 10, 20, 50 or all questions per page, jump from a
-  numbered pager or a palette that marks current, answered, unanswered and
-  flagged items, clear an answer, mark for review, and move with `←`/`→`, `j`/`k`,
-  `1`–`9`, `F` and `G`. Cursor, page size, answers and flags are restored after a
-  refresh; practice still grades through `POST /api/analytics/practice`, and the
-  mock still submits once, with no answer key in the browser before submission.
-  The score report gains filtered review (all / incorrect / skipped / flagged)
-  with the verified answer and explanation. Mechanics live in
-  `apps/web/lib/question-session.ts` and are unit tested.
-- **Rebuilt AI tutor workspace.** `components/ai-chat.tsx` now has teaching
-  modes (step-by-step, Socratic, plain English, real-world, quiz), saved
-  conversation history with search, question-anchored threads that resume, a
-  reasoning summary, copy/regenerate/stop, auto-follow with a "latest" jump, a
-  suggested-prompt rail, usage-limit messaging and a responsive composer.
-  `components/ai-dock.tsx` keeps the tutor beside a question without leaving the
-  session, and the `/ask` workspace is viewport-anchored and portalled above the
-  footer. A tutor message may now carry an optional `mode`, which the server
-  applies to that turn's system prompt (`AI_TUTOR_MODES` in
-  `packages/shared`).
+- **New question workspace.** Practice and mock now share a single studio built
+  from `apps/web/components/workspace/`: a sticky session bar, a session-map rail,
+  an open editorial question sheet and a docked study companion. Questions are
+  five per page by default, with 5, 10, 20, 50 or all available from the map;
+  the map marks current, answered, flagged and answered-and-flagged items, filters
+  to open or flagged questions, jumps to the first unanswered item, and the
+  reader keeps their place when the page size changes. `←`/`→` or `j`/`k` move,
+  `1`–`9` answer, `F` flags, `H` opens hints, `E` opens the walkthrough and `G`
+  opens the map. Answers, flags, page size and the cursor survive a refresh, the
+  mock still grades only on submission, and no answer key reaches the browser
+  early. Paging and status mechanics stay in `apps/web/lib/question-session.ts`
+  and are unit tested.
+- **Integrated study companion.** Guide, Explain and Ask live in one panel —
+  sticky beside the question on desktop, a full-height sheet on phones, and
+  reachable from the floating utility bar. Hints are now progressive: the first
+  step is a free reading prompt, the second narrows the constraint and the third
+  describes the surviving answer, and none of them names an option
+  (`level` on `/api/ai/hint` and `/api/ai/hint/stream`). Explanations stay locked
+  until the learner commits to an answer, then show the verified answer, an
+  option-by-option breakdown and the source explanation before an optional AI
+  walkthrough. Reasoning-model planning text is trimmed at the first structured
+  heading. The tutor keeps its question-anchored thread, teaching modes,
+  copy/regenerate/stop and a follow-up strip that sits directly above the
+  composer. The separate `components/ai-dock.tsx` is folded into the companion.
 - **Mock exams resume after a reload.** A sitting now stores its attempt id,
   question set, answers, flags, page and cursor locally, then restores them only
   after `GET /api/attempts/:id` confirms the attempt is still `in_progress`. The
@@ -141,21 +143,16 @@ All notable changes to ExamDump Pro.
 
 ### Fixed
 
-- **Question sessions opened one card at a time and the page-size control was
-  incomplete.** Practice and mock now default to five complete cards, offer 5,
-  10, 20, 50 and All, render exactly the chosen number, paginate with numbered
-  page links, and restore the choice per surface after navigation and refresh.
-  Sizes above the paper collapse into All; oversized stored values and the old
-  one-per-page snapshots are normalised. Cards gained a compact density when
-  several share a page, clearer selected-option indicators, `of N` numbering,
-  monospace fenced/inline code in stems and explanations, and an outlined cursor
-  card.
 - **AI follow-up suggestions were detached from the composer.** They now live in
   their own strip directly above the composer, outside the transcript scroller.
   Chips wrap instead of being clipped, disappear while a reply streams, and stay
-  put when the conversation scrolls. The docked tutor is sticky on desktop, sized
-  to the viewport and scrolled into view on open so the strip and composer are
-  both reachable.
+  put when the conversation scrolls.
+- **Single-asterisk italics never rendered in tutor answers.** The emphasis
+  alternative in `components/markdown.tsx` used a lookbehind without a capturing
+  group, which shifted every later group: `*text*` stayed literal,
+  `~~strikethrough~~` rendered as emphasis and `[label](url)` links fell through
+  as plain text. The group is fixed and covered by
+  `apps/web/test/markdown.test.tsx`.
 - **Pricing comparison widened the whole document on phones.** The table's
   `sr-only` `<caption>` is `position: absolute`; because the scroll wrapper was
   `position: static`, the caption resolved against the viewport, escaped the

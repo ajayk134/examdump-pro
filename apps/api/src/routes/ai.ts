@@ -287,8 +287,8 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
             examTitle: exam.title,
             examCode: exam.code,
             providerTitle: provider.title,
-          }),
-          maxTokens: 220,
+          }, input.level ?? 1),
+          maxTokens: input.level === 3 ? 260 : 220,
           temperature: 0.4,
         })) {
           // Hints are a single short nudge; showing the model's planning text
@@ -354,8 +354,8 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
           examTitle: exam.title,
           examCode: exam.code,
           providerTitle: provider.title,
-        }),
-        maxTokens: 160,
+        }, input.level ?? 1),
+        maxTokens: input.level === 3 ? 200 : 160,
         temperature: 0.4,
       });
       await incrementUsage(user.id, 'aiExplanations', 1);

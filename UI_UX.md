@@ -69,22 +69,41 @@ their own colour or shape, so a single token change moves the whole product. See
 - The exam surface stays quiet: no decorative motion or celebration while a
   question is on screen, and the answer options are operable with 1–9 as well as
   a pointer.
-- **Question sessions.** Practice and mock expose the same paging model: 5, 10,
-  20, 50 or all questions per page, defaulting to five, with a numbered pager and
-  a palette that distinguishes current, answered, unanswered and flagged. Sizes
+- **Question workspace.** Practice and mock are one studio, not a form with
+  buttons beside it. A sticky session bar carries the exam, the visible range,
+  progress and the clock; the reading column is a single editorial sheet per
+  question with the number, stem, options and actions sharing one measure. On
+  desktop a session map sits to the left and the study companion to the right;
+  on phones the same three surfaces open as sheets from a floating utility bar
+  above the site navigation, so nothing is ever more than a thumb away.
+- **Session map.** Every question is one cell, coloured for current, answered,
+  flagged or answered-and-flagged, with filters for all / open / flagged, a
+  first-unanswered and first-flagged jump, a legend, and the page-size picker.
+  A jump lands on the true session position even while a filter is active. The
+  cursor's card carries an accent rule when several cards are on screen.
+- **Paging.** 5, 10, 20, 50 or all questions per page, defaulting to five. Sizes
   the paper cannot fill are omitted; `All` is always available and never exceeds
-  the server-side entitlement. The cursor's card is outlined when several are
-  visible, and `←`/`→` (or `j`/`k`) bring the next card into view. Practice
-  reveals correctness and the verified explanation as soon as an answer is
-  checked; the mock never shows an answer key or a per-question verdict before
-  submission. Answers, flags and the cursor survive a refresh.
-- **AI tutor.** The tutor opens beside the question (a sheet on phones) without
-  navigating away or resetting the session. It is anchored to the exam and the
-  current question, remembers the teaching mode, keeps its transcript across
-  reloads, and says plainly when the daily allowance is exhausted. Streaming can
-  be stopped without discarding the text already shown. Suggested follow-ups sit
-  directly above the composer — never inside the transcript — so they remain
-  attached to the input while messages scroll.
+  the server-side entitlement. The reader stays on the question they were on when
+  the size changes, and `←`/`→` (or `j`/`k`) bring the next card into view.
+  Answers, flags, page size and the cursor survive a refresh.
+- **Grading.** Practice reveals correctness, the verified answer, the source
+  explanation and an option-by-option breakdown as soon as an answer is checked;
+  the mock never shows an answer key or a per-question verdict before submission.
+- **Progressive hints.** Hint 1 is a reading prompt built from the question
+  shape and costs no model call. Hint 2 narrows the constraint, hint 3 says what
+  the surviving answer must contain — none of them names the option. The three
+  steps read as a numbered ladder, and the panel tells the learner when the
+  walkthrough is the better next move.
+- **Study companion.** Guide, Explain and Ask live in one panel and stay mounted
+  so streams and scroll positions survive tab switches. It docks beside the
+  question on desktop and takes the full height of a phone sheet. The mock
+  replaces it with a sealed exam-mode panel that explains why nothing can be
+  revealed mid-sitting.
+- **AI tutor.** Anchored to the exam and the current question, remembering the
+  teaching mode and resuming its thread across reloads. Streaming can be stopped
+  without discarding the text already shown. Suggested follow-ups sit directly
+  above the composer — never inside the transcript — so they remain attached to
+  the input while messages scroll.
 - Lists and tables that can exceed the column scroll inside `TableScroll`, never
   by widening the page.
 

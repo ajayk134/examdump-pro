@@ -156,6 +156,9 @@ export const IconPanelRight = (p: SVGProps<SVGSVGElement>) => (
 export const IconBookOpen = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M12 6.5C10.5 5.2 8.4 4.6 5 4.6v13.2c3.4 0 5.5.6 7 1.9 1.5-1.3 3.6-1.9 7-1.9V4.6c-3.4 0-5.5.6-7 1.9Z" /><path d="M12 6.5v13.2" /></svg>
 );
+export const IconLock = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+);
 export const IconLayers = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 13 9 5 9-5" /></svg>
 );

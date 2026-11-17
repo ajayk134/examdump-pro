@@ -56,7 +56,7 @@ function renderInline(text: string, { keyPrefix, links = true }: InlineOptions):
       '(\\$[^$\\n]+\\$)',                // 2 inline math
       '(`[^`\\n]+`)',                    // 3 inline code
       '(\\*\\*[^*]+\\*\\*)',             // 4 bold
-      '(?<!\\*)\\*[^*\\n]+\\*(?!\\*)',   // 5 italic  (single asterisk)
+      '(?<!\\*)(\\*[^*\\n]+\\*)(?!\\*)', // 5 italic  (single asterisk)
       '(_[^_\\n]+_)',                    // 6 italic via underscore
       '(~~[^~\\n]+~~)',                  // 7 strikethrough
       links ? '(\\[[^\\]]+\\]\\([^)\\s]+\\))' : '(\\0)', // 8 link

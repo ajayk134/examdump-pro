@@ -37,35 +37,48 @@ configures it and a runner that performs it:
 Shared entry points: `components/exam-select.tsx` (searchable exam picker),
 `components/practice-config.tsx`, `components/mock-config.tsx`.
 
-## Question sessions
+## Question workspace
 
-Practice and mock share one question surface and one set of session mechanics, so
-a learner does not have to relearn the interface between the two modes.
+Practice and mock share one workspace and one set of session mechanics, so a
+learner does not have to relearn the interface between the two modes.
 
-- **`components/question-stage.tsx`** renders one question: stem and options
-  (`question-content.tsx`), badges, header actions, optional footer, keyboard
-  hints, and an in-place image viewer. Correctness colours appear only when the
-  caller passes `revealed` plus an answer key; the mock runner never passes
-  either before submission.
-- **`components/practice-question.tsx`** adds practice-only behaviour: server
-  re-graded feedback, the verified answer, the source explanation, community
-  votes, hint streaming, notes and bookmarks. `components/mock-session.tsx`
-  uses `QuestionStage` directly so nothing can leak an answer key.
-- **`components/question-session-controls.tsx`** holds the questions-per-page
-  picker, the pager and the palette. The palette counts answered / flagged /
-  left and labels each cell for assistive tech.
+- **`components/workspace/question-workspace.tsx`** is the frame: a sticky
+  session bar (exam, visible range, progress, timer), a session-map rail from
+  `xl`, the open reading column, and the study companion from `lg`. Phones keep
+  one column and reach map / hint / explain / ask from a floating utility bar
+  above the site navigation; mock sessions show the clock and a single exam-info
+  action there instead of the AI actions.
+- **`components/workspace/question-sheet.tsx`** renders one question as an open
+  editorial sheet — number, stem, options and actions in one reading column with
+  hairline separation, not a stack of cards. Correctness colours and the verified
+  answer appear only when the caller passes `revealed` plus an answer key, and the
+  mock runner never does before submission. Images open in a `Dialog`; notes and
+  bookmarks are per question.
+- **`components/workspace/question-map.tsx`** is the session map: filters
+  (all / open / flagged), state colours for current, answered, flagged and
+  answered+flagged, a legend, first-unanswered and first-flagged jumps, and the
+  page-size picker. A jump always targets the true session index, even while a
+  filter is active.
+- **`components/workspace/study-companion.tsx`** keeps Guide (progressive
+  hints), Explain (verified answer, option-by-option reasoning, source
+  explanation, AI walkthrough) and Ask (tutor) mounted in one panel, so a
+  streaming hint, a half-written answer or a scroll position survives a tab
+  switch. It is a sticky third column on desktop and a full-height sheet on
+  phones. Mock sessions replace the tabs with a sealed exam-mode panel.
+- **`components/question-content.tsx`** renders stems and options, including
+  fenced and inline code and images.
 - **`lib/question-session.ts`** is pure and unit-tested
   (`test/question-session.test.ts`): supported page sizes (`5`, `10`, `20`, `50`,
   `all`), page bounds and clamping, jump-to-page mapping, pager links, selection
   rules, status derivation and the elapsed clock. Nothing here touches the DOM.
-- **Paging.** Five cards per page is the default. The pager offers only sizes the
-  session can fill (plus `All`), shows numbered page links, and the runner
-  remembers the cursor, not a raw page index, so changing the page size keeps the
-  current question on screen. The palette jumps across pages. With more than one
-  question visible, the cursor's card is outlined and brought into view.
+- **Paging.** Five cards per page is the default. The map offers only sizes the
+  session can fill (plus `All`), and the runner remembers the cursor, not a raw
+  page index, so changing the page size keeps the current question on screen.
+  With more than one question visible, the cursor's card carries an accent rule.
 - **Keys.** `←`/`→` or `k`/`j` move the cursor, `1`–`9` pick an option, `F`
-  flags, `G` opens the palette, and `Escape` closes overlays. Inputs are ignored
-  while a text field has focus. The same handler is installed in both runners.
+  flags, `H` opens hints, `E` opens the walkthrough, `G` opens the map, and
+  `Escape` closes overlays. Inputs are ignored while a text field has focus. The
+  same handler is installed in both runners.
 - **Persistence.** Flags, typed answers, revealed state and the cursor are saved
   per session in `localStorage` (`lib/local-store.ts`) so a refresh does not lose
   work. Practice still records graded answers through
@@ -86,36 +99,40 @@ a learner does not have to relearn the interface between the two modes.
 
 ## AI tutor workspace
 
-- **`components/ai-chat.tsx`** is the whole conversation surface, used in three
-  places: the `/ask` workspace (`variant="workspace"` adds the history rail), a
-  dock beside a question, and the mock review drawer.
-- **Teaching modes.** `TUTOR_MODES` in the component (ids mirrored by
+- **`components/workspace/tutor-chat.tsx`** is the in-session tutor. It resumes
+  the thread anchored to the current question (`GET /api/ai/chat/by-question`),
+  sends the learner's current selection so the answer can target the gap,
+  remembers the teaching mode, and renders Markdown through
+  `components/markdown.tsx`. Copy, regenerate and stop keep the text already
+  received; quota errors appear in the thread rather than replacing the panel.
+- **`components/workspace/hint-panel.tsx`** is the progressive hint ladder.
+  Level 1 is a deterministic reading prompt built from the question shape, so the
+  learner always gets somewhere to start without spending a model call. Levels 2
+  (narrow the constraint) and 3 (what the surviving answer must contain) request
+  `/api/ai/hint/stream` with `level`, and every level is instructed never to name
+  the answer. Re-opening the tab keeps the hints already received.
+- **`components/workspace/explain-panel.tsx`** stays locked until the learner
+  commits to an answer — the walkthrough cannot become an answer key. Once
+  revealed it shows the verified answer, the option-by-option breakdown from the
+  dataset, the source explanation, then an optional AI walkthrough. The streamed
+  walkthrough is anchored at its first `##` heading, so planning text from a
+  reasoning model never reaches the reader.
+- **Teaching modes.** `TUTOR_MODES` in `components/ai-chat.tsx` (ids mirrored by
   `AI_TUTOR_MODES` in `packages/shared`) offers step-by-step, Socratic, plain
   English, real-world and quiz. The chosen id is sent as `mode` on the message,
   applied to that turn's system prompt server-side, and remembered per device.
-- **Context.** A question-anchored chat sends `provider`, `exam` and
-  `questionId`; the API rebuilds the question from the private dataset, so the
-  client cannot inject an answer key. `GET /api/ai/chat/by-question` resumes the
-  most recent thread for that question instead of starting a duplicate.
-- **Transcript.** Markdown answers (custom renderer, no new dependencies),
-  a collapsible reasoning summary when the provider returns one, copy,
-  regenerate, stop (keeping streamed text), auto-follow that stops when the
-  reader scrolls up, and a "latest" jump.
-- **Composer and limits.** Auto-growing textarea, Enter to send, Shift+Enter for
-  a new line, mode chips, suggested prompts and a clear daily-limit banner with
-  a link to plans. Suggested follow-ups live in a dedicated strip immediately
-  above the composer, outside the transcript scroller: they wrap instead of
-  clipping, never overlap messages, and stay put while the transcript scrolls.
-  They are hidden while an answer streams. Quota and configuration errors surface
-  as messages in the thread rather than replacing the page.
-- **Docking.** `components/ai-dock.tsx` keeps the panel mounted while it is
-  hidden, so closing the tutor does not cancel a streaming answer. It is a
-  full-height sheet on phones and a sticky column beside the question from `lg`
-  up; the desktop column is sized to the remaining viewport and scrolled into
-  view on open, so the suggestion strip and composer stay reachable.
-- **Workspace layout.** `/ask` pins the conversation to the viewport so the
-  composer stays above the mobile bottom nav however long the transcript grows,
-  and portals the panel to `<body>` so it cannot be painted under the footer.
+- **Follow-ups.** Suggested prompts live in a dedicated strip immediately above
+  the composer, outside the transcript scroller: they wrap instead of clipping,
+  never overlap messages, and stay put while the transcript scrolls. They are
+  hidden while an answer streams, while a thread loads, and when the daily
+  allowance is spent.
+- **Full-page tutor.** `/ask` still uses `components/ai-chat.tsx` for the
+  history rail and the wider conversation surface; the in-session companion
+  reuses the same API contract.
+- **Markdown.** `components/markdown.tsx` is the only renderer (no new
+  dependency, no `dangerouslySetInnerHTML`). It covers headings, lists, tables,
+  emphasis, `~~strikethrough~~`, inline and fenced code, links and LaTeX, and is
+  covered by `apps/web/test/markdown.test.tsx`.
 
 ## Design system ("Nova")
 

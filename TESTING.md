@@ -28,7 +28,7 @@ CI supplies PostgreSQL 16 automatically (`.github/workflows/ci.yml`).
 
 ## Coverage
 
-**309 tests**, 15 API files + 2 package test files + 4 web files.
+**318 tests**, 15 API files + 2 package test files + 5 web files.
 
 | Area | Tests | File |
 | --- | --- | --- |
@@ -48,8 +48,10 @@ CI supplies PostgreSQL 16 automatically (`.github/workflows/ci.yml`).
 | Refund limit | 5 | `refund-limit.test.ts` |
 
 Packages: 16 parser/schema tests in `@examdump/shared` and 7 in
-`@examdump/data-client`. Web: 22 unit tests, including page-size fitting, paging
-and pager-link mechanics in `apps/web/test/question-session.test.ts`.
+`@examdump/data-client`. Web: 31 unit tests, including page-size fitting, paging
+and pager-link mechanics in `apps/web/test/question-session.test.ts`, plus the
+Markdown renderer in `apps/web/test/markdown.test.tsx` (headings, emphasis,
+code, strikethrough, links and HTML stripping).
 
 ## Principles
 

@@ -4,36 +4,14 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { get, post } from '@/lib/api';
 import type { Question } from '@/lib/types';
-import { QuestionStage, selectionRulesFor } from './question-stage';
 import { QuestionContent } from './question-content';
 import { AiChat } from './ai-chat';
-import {
-  PageSizePicker,
-  QuestionPalette,
-  QuestionPager,
-  type PaletteItem,
-} from './question-session-controls';
-import {
-  Alert,
-  Dialog,
-  Drawer,
-  EmptyIcon,
-  EmptyState,
-  ProgressBar,
-  ProgressRing,
-  Skeleton,
-  StatStrip,
-} from './ui';
-import {
-  IconArrowLeft,
-  IconCheck,
-  IconClock,
-  IconFlag,
-  IconGrid,
-  IconMessage,
-  IconRefresh,
-  IconX,
-} from './icons';
+import { Dialog, Drawer, EmptyIcon, EmptyState, ProgressRing, Skeleton, StatStrip, Alert } from './ui';
+import { IconArrowRight, IconCheck, IconFlag, IconMessage, IconRefresh, IconX } from './icons';
+import { QuestionWorkspace } from './workspace/question-workspace';
+import { QuestionSheet } from './workspace/question-sheet';
+import { QuestionMap, type MapItem } from './workspace/question-map';
+import { StudyCompanion, type CompanionTab } from './workspace/study-companion';
 import { cn, formatDuration } from '@/lib/format';
 import { clearAutosave, loadAutosave, saveAutosave, getPageSizePreference, setPageSizePreference } from '@/lib/local-store';
 import {
@@ -44,6 +22,7 @@ import {
   pageOfQuestion,
   parsePageSize,
   rangeLabel,
+  selectionRulesFor,
   statusOf,
   toggleSelection,
   type PageSize,
@@ -156,7 +135,9 @@ export function MockSession({
   const [result, setResult] = useState<CompleteResponse | null>(null);
   const [chatQuestionId, setChatQuestionId] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [companionOpen, setCompanionOpen] = useState(false);
+  const [companionTab, setCompanionTab] = useState<CompanionTab>('guide');
   const [resumed, setResumed] = useState(false);
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
   const startedAt = useRef<number>(Date.now());
@@ -407,7 +388,7 @@ export function MockSession({
         setActiveId(question.id);
         pendingScrollId.current = question.id;
       }
-      setPaletteOpen(false);
+      setMapOpen(false);
     },
     [questions, total, pageSize],
   );
@@ -438,14 +419,14 @@ export function MockSession({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (paletteOpen || confirmOpen) return;
+      if (mapOpen || confirmOpen) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
 
       if (event.key === 'g') {
         event.preventDefault();
-        setPaletteOpen(true);
+        setMapOpen(true);
         return;
       }
       if (event.key === 'ArrowRight' || event.key === 'j') {
@@ -473,12 +454,13 @@ export function MockSession({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [paletteOpen, confirmOpen, activeIndex, goTo, currentQuestion, toggleFlag, toggle]);
+  }, [mapOpen, confirmOpen, activeIndex, goTo, currentQuestion, toggleFlag, toggle]);
 
-  const paletteItems: PaletteItem[] = useMemo(
+  const paletteItems: MapItem[] = useMemo(
     () =>
       questions.map((question, index) => ({
         id: question.id,
+        index,
         label: String(index + 1),
         status: statusOf({
           answered: (answers[question.id]?.length ?? 0) > 0,
@@ -825,249 +807,185 @@ export function MockSession({
 
   if (!currentQuestion) return <Alert tone="warning">This mock exam has no questions.</Alert>;
 
-  const answeredNow = (answers[currentQuestion.id]?.length ?? 0) > 0;
+  const pages = pageCount(total, pageSize);
   const timeLow = timeLeft !== null && timeLeft < 300;
+  const clockLabel =
+    timeLeft === null
+      ? 'Untimed'
+      : timeLeft >= 3600
+        ? `${Math.floor(timeLeft / 3600)}:${String(Math.floor((timeLeft % 3600) / 60)).padStart(2, '0')}:${String(
+            timeLeft % 60,
+          ).padStart(2, '0')}`
+        : `${Math.floor(timeLeft / 60)}:${String(timeLeft % 60).padStart(2, '0')}`;
+
+  const map = (variant: 'rail' | 'sheet', close?: () => void) => (
+    <QuestionMap
+      items={paletteItems}
+      answered={answeredCount}
+      flagged={flagged.size}
+      pageSize={pageSize}
+      onPageSize={changePageSize}
+      onJump={goTo}
+      variant={variant}
+      onClose={close}
+    />
+  );
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
-      {resumed ? <Alert tone="info">Your previous answers were restored. Submission is unchanged.</Alert> : null}
+    <>
+      <QuestionWorkspace
+        mode="mock"
+        examCode={session.exam.code}
+        backHref={`/mock?provider=${encodeURIComponent(providerId)}&exam=${encodeURIComponent(examKey)}`}
+        backLabel="Leave the mock and return to the simulator"
+        total={total}
+        answered={answeredCount}
+        flagged={flagged.size}
+        progress={total ? (answeredCount / total) * 100 : 0}
+        range={rangeLabel(bounds.start, bounds.end, total)}
+        timer={{ label: clockLabel, low: timeLow }}
+        onOpenMap={() => {
+          setMapOpen(true);
+          setCompanionOpen(false);
+        }}
+        onOpenGuide={() => {
+          setCompanionTab('guide');
+          setCompanionOpen(true);
+          setMapOpen(false);
+        }}
+        rail={map('rail')}
+        companion={
+          <StudyCompanion
+            question={currentQuestion}
+            questionIndex={activeIndex}
+            mode="mock"
+            selected={answers[currentQuestion.id] ?? []}
+            revealed={false}
+            correct={null}
+            providerId={providerId}
+            examKey={examKey}
+            examLabel={session.exam.code}
+            aiEnabled={false}
+            remaining={null}
+            tab={companionTab}
+            onTab={setCompanionTab}
+            onConsumed={() => undefined}
+            open={companionOpen}
+            onClose={() => setCompanionOpen(false)}
+          />
+        }
+      >
+        <div className="min-w-0">
+          {resumed ? (
+            <p className="mb-3 rounded-xl bg-accent/[0.06] px-3 py-2 text-[0.75rem] text-content-secondary">
+              Your previous answers were restored. The timer continued from the server record.
+            </p>
+          ) : null}
 
-      {/* Sticky exam header: state, clock, navigator */}
-      <header className="sticky top-14 z-30 -mx-3.5 px-3.5 py-2 sm:top-16 sm:mx-0 sm:px-0">
-        <div className="glass flex items-center gap-2 rounded-[1.25rem] border border-surface-border/70 px-2 py-1.5 shadow-sm sm:gap-2.5 sm:px-2.5">
-          <Link
-            href={`/mock?provider=${encodeURIComponent(providerId)}&exam=${encodeURIComponent(examKey)}`}
-            className="icon-btn shrink-0"
-            aria-label="Leave the mock and return to the simulator"
-          >
-            <IconArrowLeft />
-          </Link>
-
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <span className="truncate font-mono text-[0.6875rem] font-bold uppercase tracking-[0.1em] text-accent">
-                {session.exam.code}
-              </span>
-              <span className="truncate text-[0.8125rem] font-semibold">
-                {visible.length > 1 ? `${bounds.start + 1}–${bounds.end}` : `Q${activeIndex + 1}`}
-                <span className="text-content-muted"> / {total}</span>
-              </span>
-            </div>
-            <div className="mt-1 flex items-center gap-2">
-              <ProgressBar
-                value={total ? (answeredCount / total) * 100 : 0}
-                className="h-1"
-                label="Exam progress"
-              />
-              <span className="numeric shrink-0 text-[0.6875rem] font-semibold text-content-muted">
-                {answeredCount}/{total}
-              </span>
-            </div>
+          <div className="flex flex-col">
+            {visible.map((question) => {
+              const index = indexById.get(question.id) ?? 0;
+              const chosen = answers[question.id] ?? [];
+              const isFlagged = flagged.has(question.id);
+              return (
+                <QuestionSheet
+                  key={question.id}
+                  question={question}
+                  index={index}
+                  total={total}
+                  mode="mock"
+                  selected={chosen}
+                  revealed={false}
+                  correct={null}
+                  flagged={isFlagged}
+                  providerId={providerId}
+                  examKey={examKey}
+                  compact={visible.length > 1}
+                  active={visible.length > 1 && question.id === currentQuestion.id}
+                  showShortcuts={visible.length === 1}
+                  aiEnabled={false}
+                  onToggle={(choice) => toggle(question, choice)}
+                  onCheck={() => undefined}
+                  onClear={() => clearAnswer(question)}
+                  onRetry={() => undefined}
+                  onToggleFlag={() => toggleFlag(question)}
+                  onOpenGuide={() => {
+                    setCompanionTab('guide');
+                    setCompanionOpen(true);
+                  }}
+                />
+              );
+            })}
           </div>
 
-          {timeLeft !== null ? (
-            <div
-              role="timer"
-              aria-live={timeLeft <= 60 ? 'assertive' : 'off'}
-              aria-label={`Time remaining ${Math.floor(timeLeft / 60)} minutes`}
-              className={cn(
-                'numeric flex shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-[0.8125rem] font-bold tabular-nums',
-                timeLow
-                  ? 'animate-pulse border-negative/50 bg-negative/10 text-negative'
-                  : 'border-surface-border text-content-secondary',
-              )}
+          <div className="mt-8 flex items-center justify-between gap-3 border-t border-surface-border/70 pt-4">
+            <button
+              type="button"
+              onClick={() => goTo(pageBounds(bounds.page - 1, total, pageSize).start)}
+              disabled={bounds.page <= 0}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-[0.8125rem] font-semibold text-content-secondary transition-colors hover:bg-surface-overlay hover:text-content-primary disabled:opacity-35"
             >
-              <IconClock width={14} height={14} />
-              {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+              ← Previous
+            </button>
+            <div className="text-center">
+              <p className="numeric text-[0.75rem] font-semibold text-content-primary">
+                {rangeLabel(bounds.start, bounds.end, total)}
+              </p>
+              <p className="text-[0.6875rem] text-content-muted">
+                {pages <= 1 ? 'All on one page' : `Page ${bounds.page + 1} of ${pages}`}
+              </p>
             </div>
-          ) : (
-            <span className="badge shrink-0">Untimed</span>
-          )}
+            <button
+              type="button"
+              onClick={() => goTo(pageBounds(bounds.page + 1, total, pageSize).start)}
+              disabled={bounds.page >= pages - 1}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-[0.8125rem] font-semibold text-content-secondary transition-colors hover:bg-surface-overlay hover:text-content-primary disabled:opacity-35"
+            >
+              Next <IconArrowRight width={15} height={15} />
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setPaletteOpen(true)}
-            className="icon-btn relative shrink-0"
-            aria-label="Open question navigator"
-          >
-            <IconGrid />
-            {flagged.size > 0 ? (
-              <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-caution px-1 text-[0.5625rem] font-bold text-[rgb(var(--accent-contrast))]">
-                {flagged.size}
-              </span>
-            ) : null}
-          </button>
-        </div>
-      </header>
-
-      <p className="caption -mb-1 flex items-center gap-1.5">
-        <IconCheck width={13} height={13} className="text-positive" />
-        Exam conditions: nothing is graded until you submit. Your answers survive a reload.
-      </p>
-
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-[1.1rem] border border-surface-border bg-surface-raised/70 px-2.5 py-2">
-        <div className="min-w-0">
-          <p className="text-[0.75rem] font-semibold text-content-primary">
-            Showing {visible.length} of {total}
-          </p>
-          <p className="caption truncate text-[0.6875rem]">{rangeLabel(bounds.start, bounds.end, total)}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="caption hidden shrink-0 sm:inline">Per page</span>
-          <PageSizePicker value={pageSize} total={total} onChange={changePageSize} />
-        </div>
-      </div>
-
-      {/* Questions on this page */}
-      <div className="flex flex-col gap-3.5">
-        {visible.map((question) => {
-          const index = indexById.get(question.id) ?? 0;
-          const chosen = answers[question.id] ?? [];
-          const isFlagged = flagged.has(question.id);
-          return (
-            <QuestionStage
-              key={question.id}
-              question={question}
-              label={`Q${index + 1}`}
-              of={total}
-              mode="mock"
-              selected={chosen}
-              onToggle={(choice) => toggle(question, choice)}
-              showShortcuts={visible.length === 1}
-              active={visible.length > 1 && question.id === currentQuestion?.id}
-              compact={visible.length > 1}
-              badges={
-                <>
-                  {chosen.length > 0 ? <span className="badge badge-success">Answered</span> : null}
-                  {isFlagged ? (
-                    <span className="badge badge-warning">
-                      <IconFlag width={11} height={11} /> Review
-                    </span>
-                  ) : null}
-                </>
-              }
-              actions={
-                <button
-                  type="button"
-                  onClick={() => toggleFlag(question)}
-                  className={cn('icon-btn', isFlagged && 'text-caution')}
-                  aria-label={isFlagged ? 'Remove review flag' : 'Mark for review'}
-                  aria-pressed={isFlagged}
-                  title={isFlagged ? 'Remove review flag' : 'Mark for review'}
-                >
-                  <IconFlag className={isFlagged ? 'fill-current' : undefined} />
-                </button>
-              }
-              footer={
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => clearAnswer(question)}
-                    disabled={chosen.length === 0}
-                    className="btn-ghost btn-sm"
-                  >
-                    Clear answer
-                  </button>
-                  <span className="caption">
-                    {chosen.length === 0
-                      ? 'Not answered yet'
-                      : `${chosen.length} option${chosen.length === 1 ? '' : 's'} selected`}
-                  </span>
-                </div>
-              }
-            />
-          );
-        })}
-      </div>
-
-      <QuestionPager
-        page={bounds.page}
-        pages={pageCount(total, pageSize)}
-        start={bounds.start}
-        end={bounds.end}
-        total={total}
-        onPage={(next) => goTo(pageBounds(next, total, pageSize).start)}
-      />
-
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          className="btn-primary flex-1"
-          onClick={() => setConfirmOpen(true)}
-          disabled={submitting}
-        >
-          {submitting ? 'Grading...' : 'Submit exam'}
-        </button>
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => setPaletteOpen(true)}
-        >
-          <IconGrid className="h-4 w-4" /> Navigator
-        </button>
-      </div>
-
-      <p className="caption text-center">
-        {answeredCount} of {total} answered
-        {answeredNow ? '' : ' · this question is still blank'}
-      </p>
-
-      {/* Navigator */}
-      <Drawer open={paletteOpen} onClose={() => setPaletteOpen(false)} title="Question navigator" side="bottom">
-        <div className="flex items-center justify-between border-b border-surface-border px-4 py-3">
-          <div>
-            <p className="heading-3">Question navigator</p>
-            <p className="caption mt-0.5">
-              {answeredCount} answered · {flagged.size} flagged · {total - answeredCount} left
+          <div className="mt-6 flex flex-col gap-2 rounded-2xl bg-surface-overlay/40 p-3 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              className="btn-primary sm:flex-1"
+              onClick={() => setConfirmOpen(true)}
+              disabled={submitting}
+            >
+              {submitting ? 'Grading...' : 'Submit exam'}
+            </button>
+            <button type="button" className="btn-secondary" onClick={() => setMapOpen(true)}>
+              Review flagged ({flagged.size})
+            </button>
+            <p className="text-center text-[0.75rem] text-content-muted sm:ml-auto sm:text-right">
+              {answeredCount} of {total} answered
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setPaletteOpen(false)}
-            className="icon-btn"
-            aria-label="Close navigator"
-          >
-            <IconX />
-          </button>
-        </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-surface-border px-4 py-2.5">
-          <p className="text-[0.75rem] font-semibold text-content-secondary">Questions per page</p>
-          <PageSizePicker value={pageSize} total={total} onChange={changePageSize} />
+          <p className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-[0.6875rem] text-content-muted">
+            <span>
+              <span className="kbd">←</span> <span className="kbd">→</span> move
+            </span>
+            <span>
+              <span className="kbd">1</span>–<span className="kbd">9</span> pick
+            </span>
+            <span>
+              <span className="kbd">F</span> flag
+            </span>
+            <span>
+              <span className="kbd">G</span> map
+            </span>
+            <span className="w-full text-content-muted/80">
+              Nothing is graded until you submit. Answers save automatically.
+            </span>
+          </p>
         </div>
+      </QuestionWorkspace>
 
-        <div className="flex min-h-0 flex-1 flex-col p-4">
-          <QuestionPalette items={paletteItems} onJump={goTo} columns="fixed" className="min-h-0 flex-1" />
-        </div>
-
-        <div className="flex items-center gap-2 border-t border-surface-border p-3">
-          <button
-            type="button"
-            onClick={() => {
-              const nextFlagged = questions.findIndex(
-                (question, index) => flagged.has(question.id) && index > activeIndex,
-              );
-              goTo(nextFlagged >= 0 ? nextFlagged : questions.findIndex((question) => flagged.has(question.id)));
-            }}
-            disabled={flagged.size === 0}
-            className="btn-secondary flex-1"
-          >
-            <IconFlag className="h-4 w-4" /> Next flagged
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPaletteOpen(false);
-              setConfirmOpen(true);
-            }}
-            className="btn-primary flex-1"
-          >
-            Submit exam
-          </button>
-        </div>
+      <Drawer open={mapOpen} onClose={() => setMapOpen(false)} title="Session map" side="bottom">
+        <div className="flex min-h-0 flex-1 flex-col">{map('sheet', () => setMapOpen(false))}</div>
       </Drawer>
 
-      {/* Confirm-before-submit dialog */}
       <Dialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
@@ -1075,9 +993,7 @@ export function MockSession({
         description={
           <>
             You answered {answeredCount} of {total} questions.
-            {answeredCount < total
-              ? ` ${total - answeredCount} will be marked incorrect.`
-              : ' All questions answered.'}
+            {answeredCount < total ? ` ${total - answeredCount} will be marked incorrect.` : ' All questions answered.'}
             {flagged.size > 0 ? ` ${flagged.size} still marked for review.` : ''}
           </>
         }
@@ -1099,6 +1015,6 @@ export function MockSession({
           </>
         }
       />
-    </div>
+    </>
   );
 }

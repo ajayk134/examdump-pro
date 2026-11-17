@@ -135,7 +135,9 @@ exam's mock `attempts` counter or best score.
   `/assist` — question-grounded help. Premium only where the route says so, with
   a daily quota (`AI_DAILY_LIMIT_PREMIUM`). Streaming routes emit SSE `delta`
   frames and terminate with `done` or `error`; the explanation text always comes
-  from the private dataset, never from the request body.
+  from the private dataset, never from the request body. The hint routes accept
+  an optional `level` of `1`, `2` or `3` for the progressive ladder (orientation,
+  narrowing, final nudge); every level is prompted never to name the answer.
 - `GET|POST /api/ai/chat/conversations`, `GET /api/ai/chat/by-question`,
   `GET|PATCH|DELETE /api/ai/chat/conversations/:id` and
   `POST /api/ai/chat/conversations/:id/messages` manage saved tutor threads.

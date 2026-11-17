@@ -104,6 +104,22 @@ export interface SelectionRules {
 }
 
 /**
+ * How many options a question expects.
+ *
+ * The answer key is the authority when it is present; otherwise the item type
+ * decides. A "choose two" stem without a key still allows two selections, which
+ * is more forgiving than locking the learner to one.
+ */
+export function selectionRulesFor(question: {
+  answer?: string | null;
+  type: 'single' | 'multiple' | 'dragdrop' | 'unknown';
+}): SelectionRules {
+  const correct = question.answer ?? '';
+  const required = correct.length > 0 ? correct.length : question.type === 'multiple' ? 2 : 1;
+  return { multi: question.type === 'multiple' || required > 1, limit: required };
+}
+
+/**
  * Selection toggle used by both runners.
  *
  * A full multi-select replaces the oldest pick when the answer key only allows

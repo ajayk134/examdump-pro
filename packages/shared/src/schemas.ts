@@ -337,6 +337,8 @@ export const aiExplainSchema = z.object({
   questionId: z.string().min(1).max(200),
   /** Options already chosen by the learner (helps the tutor target the gap). */
   choice: z.array(z.string().trim().max(8)).max(8).optional(),
+  /** Progressive hint depth: 1 orientation, 2 narrowing, 3 final nudge. */
+  level: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

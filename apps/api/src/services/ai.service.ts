@@ -195,8 +195,8 @@ export function buildExplanationMessages(
       role: 'system',
       content:
         'You are a certified exam tutor for IT, cloud and security certifications. ' +
-        'Explain answers precisely and accurately. Use plain conversational English. ' +
-        'Never invent facts about the exam. Keep answers focused and under 250 words.',
+        'Explain answers precisely and accurately. Use plain, encouraging English. ' +
+        'Never invent facts about the exam. Use Markdown only for structure.',
     },
     {
       role: 'user',
@@ -209,14 +209,20 @@ export function buildExplanationMessages(
         `Correct answer: ${question.answerText || question.answer || 'not provided'}`,
         question.explanation ? `Reference explanation: ${question.explanation}` : '',
         context.learnerChoice?.length
-          ? `The learner picked: ${context.learnerChoice.join(', ')}. Address that choice directly.`
+          ? `The learner picked: ${context.learnerChoice.join(', ')}. Address that choice directly and kindly.`
           : '',
         '',
-        'Write the explanation in exactly three short paragraphs:',
-        '1. Why the correct answer is right.',
-        '2. Why the most tempting wrong answers are wrong (when applicable).',
-        '3. A one-line memory hook or real-world example.',
-        'Return plain text only, no markdown headings or bullet symbols.',
+        'Write the final walkthrough only, using exactly these Markdown level-2 headings:',
+        '## Short answer',
+        'One or two sentences naming the correct answer and the core reason.',
+        '## Why it is correct',
+        'The decisive evidence from the stem and the mechanism that makes the answer work.',
+        '## Why the others fail',
+        'A bullet per remaining option, in letter order, saying what it gets wrong or when it would apply.',
+        '## Remember this',
+        'One memorable rule, contrast or real-world example. Use a fenced code block only when command output, configuration or syntax makes it clearer.',
+        'Keep the whole answer under 320 words. Do not repeat the raw question.',
+        'Begin your reply directly with "## Short answer". No preamble, no planning, no notes to yourself.',
       ]
         .filter(Boolean)
         .join('\n'),
@@ -227,13 +233,21 @@ export function buildExplanationMessages(
 export function buildHintMessages(
   question: NormalizedQuestion,
   context: { examTitle: string; examCode: string; providerTitle: string },
+  level: 1 | 2 | 3 = 1,
 ): AiMessage[] {
+  const guidance = {
+    1: 'Level 1 - Orientation. Name the concept or property the question is really testing and one general elimination principle. Do not mention any option letter, option wording, or the correct answer.',
+    2: 'Level 2 - Narrowing. Point to the exact constraint or evidence in the stem that matters, and explain what kind of answer satisfies it. Do not name the correct option.',
+    3: 'Level 3 - Final nudge. Explain which kinds of options can be ruled out and what the surviving answer must contain. You may reason about option properties, but never state the answer letter or quote the correct option verbatim.',
+  }[level];
+
   return [
     {
       role: 'system',
       content:
-        'You are an exam coach. Give a nudge without revealing the answer. ' +
-        'Maximum 60 words, plain text only.',
+        'You are a patient exam coach. Give a progressive nudge without revealing the answer. ' +
+        (level === 3 ? 'Maximum 85 words. ' : 'Maximum 55 words. ') +
+        'Plain text only, no headings or bullet symbols.',
     },
     {
       role: 'user',
@@ -244,7 +258,7 @@ export function buildHintMessages(
           ? `Choices:\n${question.choices.map((c) => `${c.key}. ${c.text}`).join('\n')}`
           : 'No choice list for this item.',
         '',
-        'Give one hint that points to the concepts to consider. Do not name the correct option.',
+        guidance,
       ].join('\n'),
     },
   ];

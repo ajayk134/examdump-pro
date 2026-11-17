@@ -12,6 +12,7 @@ import {
   parsePageSize,
   perPage,
   rangeLabel,
+  selectionRulesFor,
   statusLabel,
   statusOf,
   toggleSelection,
@@ -129,5 +130,17 @@ describe('elapsed clock', () => {
     expect(elapsedLabel(59 * 60_000 + 59_000)).toBe('59:59');
     expect(elapsedLabel(3_600_000 + 61_000)).toBe('1:01:01');
     expect(elapsedLabel(-500)).toBe('0:00');
+  });
+});
+
+describe('selection rules', () => {
+  it('uses the answer key when it is present', () => {
+    expect(selectionRulesFor({ answer: 'AC', type: 'multiple' })).toEqual({ multi: true, limit: 2 });
+    expect(selectionRulesFor({ answer: 'B', type: 'single' })).toEqual({ multi: false, limit: 1 });
+  });
+
+  it('lets a multi-select question take more than one pick without a key', () => {
+    expect(selectionRulesFor({ answer: null, type: 'multiple' })).toEqual({ multi: true, limit: 2 });
+    expect(selectionRulesFor({ answer: '', type: 'unknown' })).toEqual({ multi: false, limit: 1 });
   });
 });

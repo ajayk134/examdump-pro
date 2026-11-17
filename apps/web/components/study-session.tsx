@@ -5,27 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { del, get, post } from '@/lib/api';
 import type { Question, QuestionsResponse } from '@/lib/types';
-import { PracticeQuestion } from './practice-question';
-import { AiChat } from './ai-chat';
-import { AiDock } from './ai-dock';
-import {
-  PageSizePicker,
-  QuestionPalette,
-  QuestionPager,
-  type PaletteItem,
-} from './question-session-controls';
-import { selectionRulesFor } from './question-stage';
-import { Drawer, EmptyIcon, EmptyState, ErrorState, ProgressBar, ProgressRing, Skeleton } from './ui';
-import {
-  IconArrowLeft,
-  IconChart,
-  IconCheck,
-  IconClock,
-  IconFlag,
-  IconGrid,
-  IconRefresh,
-  IconX,
-} from './icons';
+import { Drawer, EmptyIcon, EmptyState, ErrorState, Skeleton } from './ui';
+import { IconArrowLeft, IconArrowRight, IconCheck } from './icons';
+import { QuestionWorkspace } from './workspace/question-workspace';
+import { QuestionSheet } from './workspace/question-sheet';
+import { QuestionMap, type MapItem } from './workspace/question-map';
+import { StudyCompanion, type CompanionTab } from './workspace/study-companion';
 import { cn } from '@/lib/format';
 import {
   clearAutosave,
@@ -43,6 +28,7 @@ import {
   pageOfQuestion,
   parsePageSize,
   rangeLabel,
+  selectionRulesFor,
   statusOf,
   toggleSelection,
   type AnsweredResult,
@@ -110,15 +96,13 @@ export function StudySession({
   const [flagged, setFlagged] = useState<Set<string>>(new Set());
   const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [companionOpen, setCompanionOpen] = useState(false);
+  const [companionTab, setCompanionTab] = useState<CompanionTab>('guide');
   const [restored, setRestored] = useState(false);
 
   const [aiEnabled, setAiEnabled] = useState(false);
   const [aiRemaining, setAiRemaining] = useState<number | null>(null);
-
-  const [chatQuestionId, setChatQuestionId] = useState<string | null>(null);
-  const [chatMounted, setChatMounted] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
 
   const [elapsedMs, setElapsedMs] = useState(0);
   const startedAt = useRef(Date.now());
@@ -370,7 +354,7 @@ export function StudySession({
         setActiveId(question.id);
         pendingScrollId.current = question.id;
       }
-      setPaletteOpen(false);
+      setMapOpen(false);
     },
     [questions, total, pageSize],
   );
@@ -492,31 +476,32 @@ export function StudySession({
     [user, bookmarked, examKey, providerId, toast],
   );
 
-  const openChat = useCallback(
-    (question: Question) => {
-      if (!user) {
-        toast('Sign in to use the AI tutor.', 'info');
-        return;
-      }
-      setChatQuestionId(question.id);
-      setChatMounted(true);
-      setChatOpen(true);
+  const openGuide = useCallback(
+    (tab: CompanionTab, questionId?: string) => {
+      if (questionId) setActiveId(questionId);
+      setCompanionTab(tab);
+      setCompanionOpen(true);
+      setMapOpen(false);
     },
-    [user, toast],
+    [],
   );
+
+  const consumeAi = useCallback(() => {
+    setAiRemaining((current) => (current === null ? null : Math.max(0, current - 1)));
+  }, []);
 
   /* ---------------- keyboard + swipe ---------------- */
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (paletteOpen || chatOpen) return;
+      if (mapOpen) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
 
       if (event.key === 'g') {
         event.preventDefault();
-        setPaletteOpen(true);
+        setMapOpen(true);
         return;
       }
       if (event.key === 'ArrowRight' || event.key === 'j') {
@@ -534,6 +519,16 @@ export function StudySession({
         toggleFlag(currentQuestion);
         return;
       }
+      if ((event.key === 'h' || event.key === 'H') && currentQuestion) {
+        event.preventDefault();
+        openGuide('guide', currentQuestion.id);
+        return;
+      }
+      if ((event.key === 'e' || event.key === 'E') && currentQuestion) {
+        event.preventDefault();
+        openGuide('explain', currentQuestion.id);
+        return;
+      }
       if (currentQuestion && !revealed[currentQuestion.id]) {
         const numeric = Number(event.key);
         if (!Number.isInteger(numeric) || numeric < 1 || numeric > currentQuestion.choices.length) return;
@@ -545,7 +540,7 @@ export function StudySession({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [paletteOpen, chatOpen, activeIndex, goTo, currentQuestion, revealed, toggleFlag, toggle]);
+  }, [mapOpen, activeIndex, goTo, currentQuestion, revealed, toggleFlag, toggle, openGuide]);
 
   function onTouchStart(event: React.TouchEvent) {
     if (visible.length !== 1) return;
@@ -567,12 +562,13 @@ export function StudySession({
     goTo(activeIndex + (dx < 0 ? 1 : -1));
   }
 
-  /* ---------------- palette items ---------------- */
+  /* ---------------- session map ---------------- */
 
-  const paletteItems: PaletteItem[] = useMemo(
+  const paletteItems: MapItem[] = useMemo(
     () =>
       questions.map((question, index) => ({
         id: question.id,
+        index,
         label: String(index + 1),
         status: statusOf({ answered: Boolean(revealed[question.id]), flagged: flagged.has(question.id) }),
         current: question.id === currentQuestion?.id,
@@ -635,98 +631,72 @@ export function StudySession({
     );
   }
 
+  const pages = pageCount(total, pageSize);
+  const complete = total > 0 && answeredCount === total;
+  const activeCorrect =
+    currentQuestion && revealed[currentQuestion.id] && currentQuestion.answer
+      ? [...(answers[currentQuestion.id] ?? [])].map((value) => value.toUpperCase()).sort().join('') ===
+        currentQuestion.answer.split('').sort().join('')
+      : null;
+
+  const map = (variant: 'rail' | 'sheet', close?: () => void) => (
+    <QuestionMap
+      items={paletteItems}
+      answered={answeredCount}
+      flagged={flagged.size}
+      pageSize={pageSize}
+      onPageSize={changePageSize}
+      onJump={goTo}
+      variant={variant}
+      onClose={close}
+    />
+  );
+
   return (
-    <div className={cn('mx-auto w-full', chatOpen ? 'max-w-6xl' : 'max-w-3xl')}>
-      {/* ---------- Session bar ---------- */}
-      <header className="sticky top-14 z-30 -mx-3.5 mb-3 px-3.5 py-2 sm:top-16 sm:mx-0 sm:px-0">
-        <div className="glass flex items-center gap-2 rounded-[1.25rem] border border-surface-border/70 px-2 py-1.5 shadow-sm sm:gap-2.5 sm:px-2.5">
-          <Link
-            href={`/exams/${encodeURIComponent(providerId)}/${encodeURIComponent(examKey)}`}
-            className="icon-btn shrink-0"
-            aria-label="Back to exam"
-          >
-            <IconArrowLeft />
-          </Link>
-
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <span className="truncate font-mono text-[0.6875rem] font-bold uppercase tracking-[0.1em] text-accent">
-                {examKey}
-              </span>
-              <span className="truncate text-[0.8125rem] font-semibold">
-                {visible.length > 1 ? `${bounds.start + 1}–${bounds.end}` : `Q${activeIndex + 1}`}
-                <span className="text-content-muted"> / {total}</span>
-              </span>
-              {restored ? (
-                <span className="badge badge-accent hidden md:inline-flex">Resumed</span>
-              ) : null}
-            </div>
-            <div className="mt-1 flex items-center gap-2">
-              <ProgressBar value={progress} className="h-1" label="Session progress" />
-              <span className="numeric shrink-0 text-[0.6875rem] font-semibold text-content-muted sm:hidden">
-                {elapsedLabel(elapsedMs)}
-              </span>
-              <span className="numeric hidden shrink-0 text-[0.6875rem] font-semibold text-content-muted sm:inline">
-                {answeredCount}/{total}
-              </span>
-            </div>
-          </div>
-
-          <div
-            role="timer"
-            aria-label="Time in this session"
-            className="numeric hidden shrink-0 items-center gap-1 rounded-lg border border-surface-border px-2 py-1 text-[0.75rem] font-bold text-content-secondary sm:flex"
-          >
-            <IconClock width={13} height={13} />
-            {elapsedLabel(elapsedMs)}
-          </div>
-
-          <div className="flex shrink-0 items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => setPaletteOpen(true)}
-              className="icon-btn relative"
-              aria-label="Open question navigator"
-            >
-              <IconGrid />
-              {flagged.size > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-caution px-1 text-[0.5625rem] font-bold text-[rgb(var(--accent-contrast))]">
-                  {flagged.size}
-                </span>
-              ) : null}
-            </button>
-            <Link
-              href={restartHref}
-              onClick={() => clearAutosave(autosaveKey)}
-              className="icon-btn hidden sm:inline-flex"
-              aria-label="Restart session"
-            >
-              <IconRefresh />
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[1.1rem] border border-surface-border bg-surface-raised/70 px-2.5 py-2">
+    <>
+      <QuestionWorkspace
+        mode="practice"
+        examCode={examKey}
+        backHref={`/exams/${encodeURIComponent(providerId)}/${encodeURIComponent(examKey)}`}
+        backLabel="Back to exam"
+        total={total}
+        answered={answeredCount}
+        flagged={flagged.size}
+        progress={progress}
+        range={rangeLabel(bounds.start, bounds.end, total)}
+        timer={{ label: elapsedLabel(elapsedMs) }}
+        onOpenMap={() => {
+          setMapOpen(true);
+          setCompanionOpen(false);
+        }}
+        onOpenGuide={(tab) => openGuide(tab, currentQuestion?.id)}
+        rail={map('rail')}
+        companion={
+          <StudyCompanion
+            question={currentQuestion}
+            questionIndex={activeIndex}
+            mode="practice"
+            selected={currentQuestion ? answers[currentQuestion.id] ?? [] : []}
+            revealed={currentQuestion ? Boolean(revealed[currentQuestion.id]) : false}
+            correct={activeCorrect}
+            providerId={providerId}
+            examKey={examKey}
+            examLabel={examKey}
+            aiEnabled={aiEnabled}
+            remaining={aiRemaining}
+            tab={companionTab}
+            onTab={setCompanionTab}
+            onConsumed={consumeAi}
+            open={companionOpen}
+            onClose={() => setCompanionOpen(false)}
+          />
+        }
+      >
         <div className="min-w-0">
-          <p className="text-[0.75rem] font-semibold text-content-primary">
-            Showing {visible.length} of {total}
-          </p>
-          <p className="caption truncate text-[0.6875rem]">{rangeLabel(bounds.start, bounds.end, total)}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="caption hidden shrink-0 sm:inline">Per page</span>
-          <PageSizePicker value={pageSize} total={total} onChange={changePageSize} />
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <div className="min-w-0 flex-1">
-          {/* ---------- Questions on this page ---------- */}
           <div
             onTouchStart={onTouchStart}
             onTouchEnd={onTouchEnd}
-            className={cn('flex flex-col gap-4', visible.length === 1 && 'touch-pan-y')}
+            className={cn(visible.length === 1 && 'touch-pan-y')}
           >
             {visible.map((question) => {
               const index = indexById.get(question.id) ?? 0;
@@ -739,153 +709,111 @@ export function StudySession({
                     key.split('').sort().join('')
                   : null;
               return (
-                <PracticeQuestion
+                <QuestionSheet
                   key={question.id}
                   question={question}
                   index={index}
                   total={total}
-                  compact={visible.length > 1}
-                  providerId={providerId}
-                  examKey={examKey}
+                  mode="practice"
                   selected={chosen}
                   revealed={isRevealed}
                   correct={isCorrect}
                   flagged={flagged.has(question.id)}
                   bookmarked={bookmarked.has(question.id)}
-                  aiEnabled={aiEnabled}
-                  aiRemaining={aiRemaining}
-                  showShortcuts={visible.length === 1}
+                  providerId={providerId}
+                  examKey={examKey}
+                  compact={visible.length > 1}
                   active={visible.length > 1 && question.id === currentQuestion?.id}
+                  showShortcuts={visible.length === 1}
+                  aiEnabled={aiEnabled}
                   onToggle={(choice) => toggle(question, choice)}
                   onCheck={() => check(question)}
                   onClear={() => clearAnswer(question)}
                   onRetry={() => retry(question)}
                   onToggleFlag={() => toggleFlag(question)}
                   onToggleBookmark={() => void toggleBookmark(question)}
-                  onAskAi={() => openChat(question)}
-                  onNext={
-                    index < total - 1 && visible.length === 1 ? () => goTo(index + 1) : undefined
-                  }
-                  onAiUsage={setAiRemaining}
+                  onOpenGuide={(tab) => openGuide(tab, question.id)}
+                  onNext={index < total - 1 && visible.length === 1 ? () => goTo(index + 1) : undefined}
                 />
               );
             })}
           </div>
 
-          <QuestionPager
-            className="mt-3"
-            page={bounds.page}
-            pages={pageCount(total, pageSize)}
-            start={bounds.start}
-            end={bounds.end}
-            total={total}
-            onPage={(next) => goTo(pageBounds(next, total, pageSize).start)}
-          />
+          <div className="mt-8 flex items-center justify-between gap-3 border-t border-surface-border/70 pt-4">
+            <button
+              type="button"
+              onClick={() => goTo(pageBounds(bounds.page - 1, total, pageSize).start)}
+              disabled={bounds.page <= 0}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-[0.8125rem] font-semibold text-content-secondary transition-colors hover:bg-surface-overlay hover:text-content-primary disabled:opacity-35"
+            >
+              <IconArrowLeft width={15} height={15} /> Previous
+            </button>
+            <div className="text-center">
+              <p className="numeric text-[0.75rem] font-semibold text-content-primary">
+                {rangeLabel(bounds.start, bounds.end, total)}
+              </p>
+              <p className="text-[0.6875rem] text-content-muted">
+                {pages <= 1 ? 'All on one page' : `Page ${bounds.page + 1} of ${pages}`}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => goTo(pageBounds(bounds.page + 1, total, pageSize).start)}
+              disabled={bounds.page >= pages - 1}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-[0.8125rem] font-semibold text-content-secondary transition-colors hover:bg-surface-overlay hover:text-content-primary disabled:opacity-35"
+            >
+              Next <IconArrowRight width={15} height={15} />
+            </button>
+          </div>
 
-          <p className="caption mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center">
+          <p className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[0.6875rem] text-content-muted">
             {visible.length > 1 ? (
-              <span className="w-full text-[0.6875rem] text-content-muted">
-                Shortcuts act on the outlined question.
-              </span>
+              <span className="w-full text-center">Shortcuts act on the focused question.</span>
             ) : null}
-            <span className="inline-flex items-center gap-1">
-              <span className="kbd">←</span>
-              <span className="kbd">→</span> move
+            <span>
+              <span className="kbd">←</span> <span className="kbd">→</span> move
             </span>
-            <span className="inline-flex items-center gap-1">
+            <span>
               <span className="kbd">1</span>–<span className="kbd">9</span> pick
             </span>
-            <span className="inline-flex items-center gap-1">
+            <span>
               <span className="kbd">F</span> flag
             </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="kbd">G</span> navigator
+            <span>
+              <span className="kbd">H</span> hint
+            </span>
+            <span>
+              <span className="kbd">E</span> explain
+            </span>
+            <span>
+              <span className="kbd">G</span> map
             </span>
           </p>
 
-          {answeredCount > 0 && answeredCount === total ? (
-            <div className="panel mt-4 flex items-center gap-3 p-4">
-              <ProgressRing value={100} size={52} tone="success">
-                <IconCheck className="h-5 w-5 text-positive" />
-              </ProgressRing>
+          {complete ? (
+            <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl bg-accent/[0.06] px-4 py-3.5">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-positive/15 text-positive">
+                <IconCheck width={18} height={18} />
+              </span>
               <div className="min-w-0 flex-1">
-                <p className="heading-3">Session complete</p>
-                <p className="caption">
+                <p className="text-sm font-semibold text-content-primary">Session complete</p>
+                <p className="text-[0.75rem] text-content-muted">
                   You worked through all {total} questions in {elapsedLabel(elapsedMs)}.
                 </p>
               </div>
-              <button type="button" onClick={() => router.push('/dashboard')} className="btn-primary btn-sm shrink-0">
-                <IconChart className="h-4 w-4" />
-                Progress
+              <button type="button" onClick={() => router.push('/dashboard')} className="btn-secondary btn-sm">
+                View progress
               </button>
             </div>
           ) : null}
         </div>
+      </QuestionWorkspace>
 
-        {/* ---------- AI tutor beside the question ---------- */}
-        {chatMounted ? (
-          <AiDock open={chatOpen} onClose={() => setChatOpen(false)} title="Ask AI about this question">
-            <AiChat
-              key={chatQuestionId ?? 'practice'}
-              variant="panel"
-              providerId={providerId}
-              examKey={examKey}
-              questionId={chatQuestionId ?? undefined}
-              examLabel={examKey}
-              learnerChoice={chatQuestionId ? answers[chatQuestionId] ?? [] : []}
-              onClose={() => setChatOpen(false)}
-            />
-          </AiDock>
-        ) : null}
-      </div>
-
-      {/* ---------- Navigator ---------- */}
-      <Drawer open={paletteOpen} onClose={() => setPaletteOpen(false)} title="Question navigator" side="bottom">
-        <div className="flex items-center justify-between border-b border-surface-border px-4 py-3">
-          <div>
-            <p className="heading-3">Question navigator</p>
-            <p className="caption mt-0.5">
-              {answeredCount} answered · {flagged.size} flagged · {total - answeredCount} left
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setPaletteOpen(false)}
-            className="icon-btn"
-            aria-label="Close navigator"
-          >
-            <IconX />
-          </button>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-surface-border px-4 py-2.5">
-          <p className="text-[0.75rem] font-semibold text-content-secondary">Questions per page</p>
-          <PageSizePicker value={pageSize} total={total} onChange={changePageSize} />
-        </div>
-
-        <div className="flex min-h-0 flex-1 flex-col p-4">
-          <QuestionPalette items={paletteItems} onJump={goTo} columns="fixed" className="min-h-0 flex-1" />
-        </div>
-
-        <div className="flex items-center gap-2 border-t border-surface-border p-3">
-          <button
-            type="button"
-            onClick={() => {
-              const nextFlagged = questions.findIndex(
-                (question, index) => flagged.has(question.id) && index > activeIndex,
-              );
-              goTo(nextFlagged >= 0 ? nextFlagged : questions.findIndex((q) => flagged.has(q.id)));
-            }}
-            disabled={flagged.size === 0}
-            className="btn-secondary flex-1"
-          >
-            <IconFlag className="h-4 w-4" /> Next flagged
-          </button>
-          <button type="button" onClick={() => setPaletteOpen(false)} className="btn-primary flex-1">
-            Back to question
-          </button>
+      <Drawer open={mapOpen} onClose={() => setMapOpen(false)} title="Session map" side="bottom">
+        <div className="flex min-h-0 flex-1 flex-col">
+          {map('sheet', () => setMapOpen(false))}
         </div>
       </Drawer>
-    </div>
+    </>
   );
 }
