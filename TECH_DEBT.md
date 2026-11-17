@@ -79,20 +79,6 @@ Accessibility relies on manual review.
 
 **Fix:** axe-core checks on the main pages, in CI.
 
-### TD-13 — A mock exam cannot be resumed
-
-`POST /api/attempts` always creates a new attempt, and
-`apps/web/components/mock-session.tsx` keys its local autosave by that new attempt
-id. Reopening `/mock/session` therefore starts a fresh attempt, the saved answers
-never load, and the "previous answers were restored" banner is unreachable. A
-reload mid-mock loses the answers while the abandoned attempt stays `in_progress`
-and keeps appearing in history. Mock instructions avoid promising a resume, but
-the code still contains the dead autosave path.
-
-**Fix:** persist the attempt id and restore its question set and answers from the
-API, reloading the clock from `startedAt` + `timeLimitSeconds`; or delete the
-autosave path and state plainly that leaving the runner abandons the attempt.
-
 ## Low
 
 ### TD-10 — Two Podman stores on one host

@@ -161,3 +161,49 @@ export function clearAutosave(key: string): void {
     /* ignore */
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Device preferences                                                  */
+/* ------------------------------------------------------------------ */
+
+const PREF_PREFIX = 'examdump:pref:';
+
+function readPref(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(PREF_PREFIX + key);
+  } catch {
+    return null;
+  }
+}
+
+function writePref(key: string, value: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (value === null) window.localStorage.removeItem(PREF_PREFIX + key);
+    else window.localStorage.setItem(PREF_PREFIX + key, value);
+  } catch {
+    /* private mode or quota exceeded — non-critical */
+  }
+}
+
+/**
+ * Questions-per-page choice. Kept per surface ("practice", "mock") so a
+ * one-question drill does not force the simulator into the same layout.
+ */
+export function getPageSizePreference(scope: string): string | null {
+  return readPref(`page-size:${scope}`);
+}
+
+export function setPageSizePreference(scope: string, size: string): void {
+  writePref(`page-size:${scope}`, size);
+}
+
+/** Last AI tutor teaching mode the learner picked. */
+export function getAiModePreference(): string | null {
+  return readPref('ai-mode');
+}
+
+export function setAiModePreference(mode: string): void {
+  writePref('ai-mode', mode);
+}

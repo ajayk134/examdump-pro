@@ -6,6 +6,7 @@ import { aiConversations, aiMessages, plans, subscriptions, users } from '../src
 import { eq } from 'drizzle-orm';
 import { curatedHint } from '../src/services/ai.service.js';
 import type { NormalizedQuestion } from '@examdump/shared';
+import { aiChatMessageSchema } from '@examdump/shared';
 import {
   buildTutorSystemPrompt,
   suggestedPrompts,
@@ -367,5 +368,32 @@ describe('curated hint fallback', () => {
   it('warns about multi-answer items', () => {
     const hint = curatedHint({ ...base, title: null, answer: 'AC' } as NormalizedQuestion);
     expect(hint.toLowerCase()).toContain('more than one correct option');
+  });
+});
+
+describe('tutor teaching modes', () => {
+  it('adds the requested mode instruction to the system prompt', () => {
+    const step = buildTutorSystemPrompt({ examCode: '200-301', mode: 'step' });
+    expect(step).toContain('Teaching mode requested by the learner:');
+    expect(step).toContain('numbered steps');
+
+    const socratic = buildTutorSystemPrompt({ examCode: '200-301', mode: 'socratic' });
+    expect(socratic).toContain('Socratic method');
+    expect(socratic).toContain('wait for their reply');
+
+    const quiz = buildTutorSystemPrompt({ examCode: '200-301', mode: 'quiz' });
+    expect(quiz).toContain('check questions');
+    expect(quiz).toContain('Do not include their answers');
+  });
+
+  it('leaves the mode section out when no mode is requested', () => {
+    const prompt = buildTutorSystemPrompt({ examCode: '200-301' });
+    expect(prompt).not.toContain('Teaching mode requested');
+  });
+
+  it('accepts only the supported modes on a tutor message', () => {
+    expect(aiChatMessageSchema.safeParse({ message: 'hi', mode: 'simple' }).success).toBe(true);
+    expect(aiChatMessageSchema.safeParse({ message: 'hi' }).success).toBe(true);
+    expect(aiChatMessageSchema.safeParse({ message: 'hi', mode: 'lecture' }).success).toBe(false);
   });
 });

@@ -10,7 +10,7 @@
  *   - degraded gracefully: a deterministic, offline explanation is returned
  *     when the provider is unreachable so the study flow never breaks.
  */
-import type { NormalizedQuestion } from '@examdump/shared';
+import type { AiTutorMode, NormalizedQuestion } from '@examdump/shared';
 import type { Env } from '../config/env.js';
 
 export interface AiMessage {
@@ -499,6 +499,22 @@ const TUTOR_SYSTEM_PROMPT = [
   '- Keep answers focused; do not pad with flattery or filler.',
 ].join('\n');
 
+/**
+ * How the learner asked to be taught. Each mode maps to one instruction added
+ * to the system prompt, so the persisted transcript does not have to carry it.
+ */
+const MODE_INSTRUCTIONS: Record<AiTutorMode, string> = {
+  step: 'Teach in clear numbered steps: state the principle, apply it to the scenario, then conclude. Keep each step to one idea.',
+  socratic:
+    'Use the Socratic method. Ask one focused question that moves the learner forward, then wait for their reply instead of delivering the full answer.',
+  simple:
+    'Explain in plain English with short sentences. Define any jargon the first time you use it and avoid unnecessary acronyms.',
+  example:
+    'Anchor the explanation in one concrete, realistic scenario or worked example, then generalise the rule behind it.',
+  quiz:
+    'Finish with two or three short check questions that test understanding. Do not include their answers; invite the learner to reply.',
+};
+
 export interface TutorContext {
   examCode?: string | null;
   examTitle?: string | null;
@@ -508,6 +524,8 @@ export interface TutorContext {
   correctAnswer?: string | null;
   referenceExplanation?: string | null;
   learnerChoice?: string[] | null;
+  /** Teaching mode requested for this turn. */
+  mode?: AiTutorMode | null;
 }
 
 /** Build the system message describing the question under discussion. */
@@ -520,6 +538,10 @@ export function buildTutorSystemPrompt(context: TutorContext): string {
   if (context.providerTitle) header.push(`Vendor: ${context.providerTitle}`);
 
   if (header.length) lines.push('', 'Current exam context:', ...header);
+
+  if (context.mode) {
+    lines.push('', 'Teaching mode requested by the learner:', MODE_INSTRUCTIONS[context.mode]);
+  }
 
   if (context.questionStem) {
     lines.push('', 'Question under discussion:', context.questionStem);

@@ -459,10 +459,19 @@ export const aiChatStartSchema = z.object({
   message: z.string().trim().min(1).max(4000).optional(),
 });
 
+/**
+ * Teaching modes the tutor can adopt for a turn. The server turns these into a
+ * system-prompt instruction, so the stored transcript stays clean.
+ */
+export const AI_TUTOR_MODES = ['step', 'socratic', 'simple', 'example', 'quiz'] as const;
+export type AiTutorMode = (typeof AI_TUTOR_MODES)[number];
+
 export const aiChatMessageSchema = z.object({
   message: z.string().trim().min(1).max(4000),
   /** Options the learner currently has selected for the anchored question. */
   learnerChoice: z.array(z.string().trim().max(8)).max(8).optional(),
+  /** How the learner wants this answer taught. */
+  mode: z.enum(AI_TUTOR_MODES).optional(),
 });
 
 export const aiConversationRenameSchema = z.object({

@@ -9,6 +9,7 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { aiConversations, aiMessages, users } from '../db/schema/index.js';
+import type { AiTutorMode } from '@examdump/shared';
 import type { Env } from '../config/env.js';
 import type { User } from '../db/schema/index.js';
 import { notFound } from '../lib/errors.js';
@@ -230,7 +231,7 @@ export async function* sendMessage(
   env: Env,
   user: User,
   conversationId: string,
-  input: { message: string; learnerChoice?: string[] },
+  input: { message: string; learnerChoice?: string[]; mode?: AiTutorMode },
 ): AsyncGenerator<StreamChunk> {
   const db = getDb();
   const [conversation] = await db
@@ -293,6 +294,7 @@ export async function* sendMessage(
       content: buildTutorSystemPrompt({
         ...context,
         learnerChoice: input.learnerChoice ?? null,
+        mode: input.mode ?? null,
       }),
     },
     ...history,

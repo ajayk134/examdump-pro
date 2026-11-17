@@ -6,6 +6,33 @@ All notable changes to ExamDump Pro.
 
 ### Added
 
+- **Rearchitected question sessions.** Practice and mock now share
+  `components/question-stage.tsx` and a pager/palette from
+  `components/question-session-controls.tsx`. Learners choose 1, 5, 10, 20 or
+  all questions per page, jump from a palette that marks current, answered,
+  unanswered and flagged items, clear an answer, mark for review, and move with
+  `←`/`→`, `j`/`k`, `1`–`9`, `F` and `G`. Cursor, page size, answers and flags
+  are restored after a refresh; practice still grades through
+  `POST /api/analytics/practice`, and the mock still submits once, with no answer
+  key in the browser before submission. The score report gains filtered review
+  (all / incorrect / skipped / flagged) with the verified answer and explanation.
+  Mechanics live in `apps/web/lib/question-session.ts` and are unit tested.
+- **Rebuilt AI tutor workspace.** `components/ai-chat.tsx` now has teaching
+  modes (step-by-step, Socratic, plain English, real-world, quiz), saved
+  conversation history with search, question-anchored threads that resume, a
+  reasoning summary, copy/regenerate/stop, auto-follow with a "latest" jump, a
+  suggested-prompt rail, usage-limit messaging and a responsive composer.
+  `components/ai-dock.tsx` keeps the tutor beside a question without leaving the
+  session, and the `/ask` workspace is viewport-anchored and portalled above the
+  footer. A tutor message may now carry an optional `mode`, which the server
+  applies to that turn's system prompt (`AI_TUTOR_MODES` in
+  `packages/shared`).
+- **Mock exams resume after a reload.** A sitting now stores its attempt id,
+  question set, answers, flags, page and cursor locally, then restores them only
+  after `GET /api/attempts/:id` confirms the attempt is still `in_progress`. The
+  clock is recomputed from the server's `startedAt` and `timeLimitSeconds`
+  instead of restarting, and the snapshot is cleared when the attempt is graded.
+  This closes TD-13.
 - **Practice targeting and practice progress recording.** The practice hub can
   now target a session by question type, by topic (only where the dataset has
   more than one) and by the learner's own history — unseen, previously missed,

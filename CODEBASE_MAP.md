@@ -140,7 +140,7 @@ app/                 App Router pages
   privacy/ terms/ security/
   admin/             admin console
   sitemap.ts robots.ts
-components/          28 shared components (mostly client)
+components/          31 shared components (mostly client)
   markdown.tsx       the only Markdown renderer (no new deps allowed)
   ui.tsx             shared primitives, useOverlay, Drawer/Dialog
   brand.tsx          BrandMark prism + Wordmark (the visual identity's logo)
@@ -148,12 +148,17 @@ components/          28 shared components (mostly client)
   exam-select.tsx    searchable exam picker used by every hub and the workspace
   practice-config.tsx practice hub: exam, focus, type, count, start
   mock-config.tsx    simulator: count, timer, instructions, attempt history
+  question-stage.tsx one question: stem, options, image viewer, graded states
+  practice-question.tsx practice-only feedback, hints, notes, bookmarks
+  question-session-controls.tsx page-size picker, pager, question palette
+  ai-chat.tsx        tutor conversation, modes, history, composer
+  ai-dock.tsx        tutor panel beside a question
   landing-*.tsx      landing page sections (live catalogue data)
   admin-*.tsx        admin consoles
 lib/                 client helpers, local-store
 ```
 
-48 of the 60 `.tsx` files under `app/` and `components/` are client components.
+55 of the 67 `.tsx` files under `app/` and `components/` are client components.
 
 Rendering strategy and performance: [docs/performance/FRONTEND.md](docs/performance/FRONTEND.md).
 

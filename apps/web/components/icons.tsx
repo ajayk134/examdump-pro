@@ -147,3 +147,24 @@ export const IconPause = (p: SVGProps<SVGSVGElement>) => (
 export const IconLightning = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M13.5 3 5 13.5h5.5L10 21l8.5-10.5H13z" /></svg>
 );
+export const IconFlag = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M5 21V4" /><path d="M5 4h9.5l1.5 3h4v9h-9.5L9 13H5" /></svg>
+);
+export const IconPanelRight = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M14 4v16" /></svg>
+);
+export const IconBookOpen = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M12 6.5C10.5 5.2 8.4 4.6 5 4.6v13.2c3.4 0 5.5.6 7 1.9 1.5-1.3 3.6-1.9 7-1.9V4.6c-3.4 0-5.5.6-7 1.9Z" /><path d="M12 6.5v13.2" /></svg>
+);
+export const IconLayers = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 13 9 5 9-5" /></svg>
+);
+export const IconChevronUp = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="m6 15 6-6 6 6" /></svg>
+);
+export const IconExpand = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M8 3H3v5M16 3h5v5M16 21h5v-5M8 21H3v-5" /></svg>
+);
+export const IconList = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01" /></svg>
+);

@@ -3,49 +3,33 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { get } from '@/lib/api';
-import type { Exam } from '@/lib/types';
-import { AiChat } from '@/components/ai-chat';
+import type { AiConversation, Exam } from '@/lib/types';
+import { AiChat, TUTOR_MODES } from '@/components/ai-chat';
 import { Alert, PageShell, Spinner } from '@/components/ui';
 import { Reveal } from '@/components/reveal';
-import {
-  IconBook,
-  IconChart,
-  IconChevronRight,
-  IconMessage,
-  IconSearch,
-  IconSparkles,
-} from '@/components/icons';
+import { IconBook, IconChevronRight, IconClock, IconMessage, IconSearch, IconSparkles } from '@/components/icons';
+import { relativeTime } from '@/lib/format';
 
 const POPULAR = ['cisco', 'aws', 'microsoft', 'comptia', 'google', 'pmi'];
-
-const CAPABILITIES = [
-  {
-    icon: IconBook,
-    title: 'Grounded in your exam',
-    body: 'Open a conversation from any exam and the tutor stays on that syllabus.',
-  },
-  {
-    icon: IconChart,
-    title: 'Step-by-step reasoning',
-    body: 'See how an answer is reached, why the distractors fail, and a memory hook.',
-  },
-  {
-    icon: IconMessage,
-    title: 'Ask about a question',
-    body: 'Every practice question has an Ask AI button that carries its context along.',
-  },
-];
 
 function AskInner() {
   const params = useSearchParams();
   const provider = params.get('provider');
   const exam = params.get('exam');
   const questionId = params.get('question') ?? undefined;
+  const conversationId = params.get('conversation') ?? undefined;
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Exam[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [recent, setRecent] = useState<AiConversation[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -55,9 +39,7 @@ function AskInner() {
     const handle = setTimeout(async () => {
       setSearching(true);
       try {
-        const data = await get<{ items: Exam[] }>(
-          `/exams/search?q=${encodeURIComponent(query.trim())}&pageSize=8`,
-        );
+        const data = await get<{ items: Exam[] }>(`/exams/search?q=${encodeURIComponent(query.trim())}&pageSize=8`);
         setResults(data.items ?? []);
       } catch {
         setResults([]);
@@ -68,41 +50,51 @@ function AskInner() {
     return () => clearTimeout(handle);
   }, [query]);
 
+  useEffect(() => {
+    let cancelled = false;
+    get<{ conversations: AiConversation[] }>('/ai/chat/conversations')
+      .then((data) => {
+        if (!cancelled) setRecent((data.conversations ?? []).slice(0, 5));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   if (provider && exam) {
-    return (
-      // Anchor the chat to the viewport instead of the document flow: this is
-      // the only reliable way to keep the composer pinned above the mobile
-      // bottom nav regardless of how tall the transcript grows.
+    const workspace = (
+      // Anchor the workspace to the viewport so the composer stays above the
+      // mobile bottom nav however tall the transcript grows.
       <div
-        className="fixed inset-x-0 bottom-0 flex flex-col overflow-hidden"
+        className="fixed inset-x-0 bottom-0 z-30 flex flex-col overflow-hidden"
         style={{
           top: 'calc(var(--header-h) + env(safe-area-inset-top, 0px))',
           paddingBottom: 'calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px))',
         }}
       >
-        <div className="mx-auto w-full max-w-3xl shrink-0 px-3 pt-1.5 pb-1 sm:px-0 [@media(max-height:480px)]:hidden">
-          <Link
-            href="/ask"
-            className="inline-flex min-h-10 items-center gap-1 text-xs text-content-muted transition-colors hover:text-content-primary touch:min-h-11"
-          >
-            ← All conversations
-          </Link>
-        </div>
-        <div className="panel mx-auto flex w-full max-w-3xl min-h-0 flex-1 flex-col overflow-hidden rounded-none pt-0 md:mb-4 md:rounded-[2rem] md:shadow-lg">
-          <AiChat
-            key={`${provider}:${exam}:${questionId ?? ''}`}
-            providerId={provider}
-            examKey={exam}
-            questionId={questionId}
-            examLabel={exam}
-          />
+        <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 px-0 sm:px-5 md:pb-4">
+          <div className="panel flex min-h-0 w-full flex-col overflow-hidden rounded-none bg-surface-raised pt-0 md:rounded-[2rem] md:shadow-lg">
+            <AiChat
+              key={`${provider}:${exam}:${questionId ?? ''}:${conversationId ?? ''}`}
+              variant="workspace"
+              conversationId={conversationId}
+              providerId={provider}
+              examKey={exam}
+              questionId={questionId}
+              examLabel={exam}
+            />
+          </div>
         </div>
       </div>
     );
+    // Portalled to <body>: the page content lives in a stacking context, so an
+    // in-flow fixed panel would be painted under the site footer.
+    return mounted ? createPortal(workspace, document.body) : workspace;
   }
 
   return (
-    <PageShell className="max-w-3xl">
+    <PageShell className="max-w-4xl">
       <header className="relative isolate overflow-hidden pt-2 text-center sm:pt-6">
         <div aria-hidden="true" className="mesh pointer-events-none absolute inset-x-0 -top-10 h-56 opacity-[0.16]" />
         <div aria-hidden="true" className="grid-fade pointer-events-none absolute inset-x-0 -top-8 h-56 opacity-70" />
@@ -116,17 +108,20 @@ function AskInner() {
         <h1 className="display-1 relative mt-3 text-balance">
           Ask the <span className="gradient-text animate-gradient">AI tutor</span>
         </h1>
-        <p className="relative mx-auto mt-4 max-w-md text-pretty text-sm leading-relaxed text-content-secondary sm:text-base">
-          Understand any concept, unpack a tricky question, or get a study plan. Grounded in the exam you
-          choose.
+        <p className="relative mx-auto mt-4 max-w-lg text-pretty text-sm leading-relaxed text-content-secondary sm:text-base">
+          A workspace built for doubts: keep the conversation beside your questions, switch how the tutor
+          teaches, and come back to any thread later.
         </p>
       </header>
 
       <section className="panel mt-8 p-4 sm:p-5" aria-labelledby="ask-search-heading">
-        <label htmlFor="ask-search" className="label" id="ask-search-heading">
-          Which exam are you studying for?
-        </label>
-        <div className="relative">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label htmlFor="ask-search" className="label" id="ask-search-heading">
+            Which exam are you studying for?
+          </label>
+          <span className="caption">Grounds every answer in that syllabus</span>
+        </div>
+        <div className="relative mt-1.5">
           <IconSearch
             width={18}
             height={18}
@@ -137,7 +132,7 @@ function AskInner() {
             className="input pl-10"
             placeholder="Search by exam code, name or vendor..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(event) => setQuery(event.target.value)}
             autoComplete="off"
           />
         </div>
@@ -154,15 +149,13 @@ function AskInner() {
                     className="tile tile-interactive group flex min-h-14 items-center justify-between gap-3 px-3.5 py-2.5"
                   >
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold text-content-primary">
-                        {item.code}
-                      </span>
+                      <span className="block truncate text-sm font-semibold text-content-primary">{item.code}</span>
                       <span className="block truncate text-xs text-content-muted">
                         {item.title} · {item.providerTitle}
                       </span>
                     </span>
                     <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-accent">
-                      Chat
+                      Open tutor
                       <IconChevronRight
                         width={14}
                         height={14}
@@ -191,28 +184,95 @@ function AskInner() {
       </section>
 
       <Reveal delay={80}>
-        <section className="mt-5 grid gap-3 sm:grid-cols-3" aria-label="How the tutor helps">
-          {CAPABILITIES.map((item) => {
-            const Icon = item.icon;
-            return (
-              <div key={item.title} className="tile flex items-start gap-3 p-4">
-                <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-[0.9rem] bg-accent/10 text-accent">
-                  <Icon width={17} height={17} aria-hidden="true" />
-                </span>
-                <div>
-                  <p className="text-sm font-semibold text-content-primary">{item.title}</p>
-                  <p className="mt-0.5 text-xs leading-relaxed text-content-muted">{item.body}</p>
-                </div>
+        <section className="mt-5 grid gap-3 sm:grid-cols-2" aria-label="Teaching modes">
+          <div className="panel p-4 sm:col-span-2">
+            <div className="flex items-center gap-2">
+              <span className="grid h-9 w-9 place-items-center rounded-[0.9rem] bg-accent/10 text-accent">
+                <IconBook width={17} height={17} aria-hidden="true" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold">Five ways to be taught</p>
+                <p className="caption">Switch modes mid-conversation without losing the thread.</p>
               </div>
-            );
-          })}
+            </div>
+            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+              {TUTOR_MODES.map((mode) => (
+                <li key={mode.id} className="rounded-[0.9rem] border border-surface-border bg-surface-inset/50 px-3 py-2">
+                  <p className="text-xs font-semibold text-content-primary">{mode.label}</p>
+                  <p className="text-[0.6875rem] leading-snug text-content-muted">{mode.hint}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="tile flex items-start gap-3 p-4">
+            <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-[0.9rem] bg-accent/10 text-accent">
+              <IconMessage width={17} height={17} aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold">Beside every question</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-content-muted">
+                Open the tutor from a practice question and it keeps that question, your selected options and
+                the exam in context — without ending the session.
+              </p>
+            </div>
+          </div>
+
+          <div className="tile flex items-start gap-3 p-4">
+            <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-[0.9rem] bg-accent/10 text-accent">
+              <IconClock width={17} height={17} aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold">Threads that persist</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-content-muted">
+                Conversations are saved per account, so a doubt you had last week is one tap away — with its
+                full history.
+              </p>
+            </div>
+          </div>
         </section>
       </Reveal>
 
-      <p className="mt-6 text-center text-xs text-content-muted">
-        Every question also has an <strong className="font-semibold text-content-secondary">Ask AI</strong>{' '}
-        button, so the tutor already knows what you are looking at.
-      </p>
+      {recent.length > 0 ? (
+        <section className="section" aria-labelledby="recent-chats-heading">
+          <div className="section-head">
+            <div>
+              <p className="eyebrow mb-1">Continue</p>
+              <h2 id="recent-chats-heading" className="heading-1">
+                Recent conversations
+              </h2>
+            </div>
+          </div>
+          <ul className="panel divide-y divide-surface-border">
+            {recent.map((conversation) => (
+              <li key={conversation.id}>
+                <Link
+                  href={
+                    conversation.providerId && conversation.examKey
+                      ? `/ask?provider=${encodeURIComponent(conversation.providerId)}&exam=${encodeURIComponent(
+                          conversation.examKey,
+                        )}&conversation=${encodeURIComponent(conversation.id)}`
+                      : '/ask'
+                  }
+                  className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-overlay/60"
+                >
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent/10 text-accent">
+                    <IconSparkles width={15} height={15} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">{conversation.title}</span>
+                    <span className="block truncate text-[0.6875rem] text-content-muted">
+                      {conversation.examTitle ?? conversation.examKey ?? 'General'} ·{' '}
+                      {relativeTime(conversation.updatedAt)}
+                    </span>
+                  </span>
+                  <IconChevronRight width={15} height={15} className="shrink-0 text-content-muted" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </PageShell>
   );
 }

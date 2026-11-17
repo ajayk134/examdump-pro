@@ -69,6 +69,20 @@ their own colour or shape, so a single token change moves the whole product. See
 - The exam surface stays quiet: no decorative motion or celebration while a
   question is on screen, and the answer options are operable with 1–9 as well as
   a pointer.
+- **Question sessions.** Practice and mock expose the same paging model: 1, 5,
+  10, 20 or all questions per page, a pager, and a palette that distinguishes
+  current, answered, unanswered and flagged. Sixteen-question reviews do not
+  appear; the page-size control only offers sizes the session can use. The
+  cursor's card is outlined when several are visible, and `←`/`→` (or `j`/`k`)
+  bring the next card into view. Practice reveals correctness and the verified
+  explanation as soon as an answer is checked; the mock never shows an answer
+  key or a per-question verdict before submission. Answers, flags and the
+  cursor survive a refresh.
+- **AI tutor.** The tutor opens beside the question (a sheet on phones) without
+  navigating away or resetting the session. It is anchored to the exam and the
+  current question, remembers the teaching mode, keeps its transcript across
+  reloads, and says plainly when the daily allowance is exhausted. Streaming can
+  be stopped without discarding the text already shown.
 - Lists and tables that can exceed the column scroll inside `TableScroll`, never
   by widening the page.
 

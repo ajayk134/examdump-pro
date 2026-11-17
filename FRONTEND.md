@@ -9,11 +9,11 @@ Next.js 15 App Router, React 19, TypeScript strict, Tailwind CSS.
 
 ```
 apps/web/app/          App Router pages (30+ routes)
-apps/web/components/   28 shared components
-apps/web/lib/          client helpers, local-store
+apps/web/components/   31 shared components
+apps/web/lib/          client helpers, local-store, session mechanics
 ```
 
-60 `.tsx` files; 48 are client components (exam practice, timers, admin consoles
+67 `.tsx` files; 55 are client components (exam practice, timers, admin consoles
 are inherently interactive).
 
 ### Information architecture
@@ -27,15 +27,87 @@ configures it and a runner that performs it:
 | `/exams/:providerId` | every exam from one provider |
 | `/exams/:providerId/:examKey` | exam workspace with Overview / Practice / Mock exam / Attempts tabs |
 | `/practice` | practice hub: exam, focus ("difficulty for you"), question type, count |
-| `/practice/session` | practice runner (instant explanations, server-recorded answers) |
+| `/practice/session` | practice runner: paging, palette, immediate feedback, AI tutor dock |
 | `/mock` | simulator: exam, question count, time limit (suggested from the paper length until changed), instructions, attempt history |
-| `/mock/session` | mock runner (timer, palette, submit confirmation, score report) |
+| `/mock/session` | mock runner: timer, paging, palette, submit confirmation, score report and filtered review |
 | `/dashboard` | Progress: next best action, metrics, weak areas, attempts |
 | `/pricing` | Plans: comparable cards, exam picker for scoped passes, sticky checkout |
 | `/study` | compatibility redirect into the practice/mock runner |
 
 Shared entry points: `components/exam-select.tsx` (searchable exam picker),
 `components/practice-config.tsx`, `components/mock-config.tsx`.
+
+## Question sessions
+
+Practice and mock share one question surface and one set of session mechanics, so
+a learner does not have to relearn the interface between the two modes.
+
+- **`components/question-stage.tsx`** renders one question: stem and options
+  (`question-content.tsx`), badges, header actions, optional footer, keyboard
+  hints, and an in-place image viewer. Correctness colours appear only when the
+  caller passes `revealed` plus an answer key; the mock runner never passes
+  either before submission.
+- **`components/practice-question.tsx`** adds practice-only behaviour: server
+  re-graded feedback, the verified answer, the source explanation, community
+  votes, hint streaming, notes and bookmarks. `components/mock-session.tsx`
+  uses `QuestionStage` directly so nothing can leak an answer key.
+- **`components/question-session-controls.tsx`** holds the questions-per-page
+  picker, the pager and the palette. The palette counts answered / flagged /
+  left and labels each cell for assistive tech.
+- **`lib/question-session.ts`** is pure and unit-tested
+  (`test/question-session.test.ts`): supported page sizes (`1`, `5`, `10`, `20`,
+  `all`), page bounds and clamping, jump-to-page mapping, selection rules,
+  status derivation and the elapsed clock. Nothing here touches the DOM.
+- **Paging.** The runner remembers the cursor, not a raw page index, so changing
+  the page size keeps the current question on screen. The palette jumps across
+  pages. With more than one question visible, the cursor's card is outlined and
+  brought into view.
+- **Keys.** `←`/`→` or `k`/`j` move the cursor, `1`–`9` pick an option, `F`
+  flags, `G` opens the palette, and `Escape` closes overlays. Inputs are ignored
+  while a text field has focus. The same handler is installed in both runners.
+- **Persistence.** Flags, typed answers, revealed state and the cursor are saved
+  per session in `localStorage` (`lib/local-store.ts`) so a refresh does not lose
+  work. Practice still records graded answers through
+  `POST /api/analytics/practice`. A mock stores its attempt id, question set and
+  timer anchor once, then the mutable answers as they change; a reload re-reads
+  the attempt from `GET /api/attempts/:id`, refuses to resume anything that is no
+  longer `in_progress`, and computes the remaining clock from the server's
+  `startedAt` + `timeLimitSeconds`. Submission is still the only grading step.
+  The device cache is convenience state, never the grading authority.
+- **Page-size preference.** Stored per surface (`practice` / `mock`) so a
+  one-question drill does not force the simulator into the same layout.
+- **Mock conditions.** Paging and flags are presentation only. No answer key is
+  sent to the browser, no per-question grading happens, and the submitted
+  payload is unchanged. Review only becomes available after the attempt is
+  graded, and filters by all / incorrect / skipped / flagged.
+
+## AI tutor workspace
+
+- **`components/ai-chat.tsx`** is the whole conversation surface, used in three
+  places: the `/ask` workspace (`variant="workspace"` adds the history rail), a
+  dock beside a question, and the mock review drawer.
+- **Teaching modes.** `TUTOR_MODES` in the component (ids mirrored by
+  `AI_TUTOR_MODES` in `packages/shared`) offers step-by-step, Socratic, plain
+  English, real-world and quiz. The chosen id is sent as `mode` on the message,
+  applied to that turn's system prompt server-side, and remembered per device.
+- **Context.** A question-anchored chat sends `provider`, `exam` and
+  `questionId`; the API rebuilds the question from the private dataset, so the
+  client cannot inject an answer key. `GET /api/ai/chat/by-question` resumes the
+  most recent thread for that question instead of starting a duplicate.
+- **Transcript.** Markdown answers (custom renderer, no new dependencies),
+  a collapsible reasoning summary when the provider returns one, copy,
+  regenerate, stop (keeping streamed text), auto-follow that stops when the
+  reader scrolls up, and a "latest" jump.
+- **Composer and limits.** Auto-growing textarea, Enter to send, Shift+Enter for
+  a new line, mode chips, suggested prompts and a clear daily-limit banner with
+  a link to plans. Quota and configuration errors surface as messages in the
+  thread rather than replacing the page.
+- **Docking.** `components/ai-dock.tsx` keeps the panel mounted while it is
+  hidden, so closing the tutor does not cancel a streaming answer. It is a
+  full-height sheet on phones and a column beside the question from `lg` up.
+- **Workspace layout.** `/ask` pins the conversation to the viewport so the
+  composer stays above the mobile bottom nav however long the transcript grows,
+  and portals the panel to `<body>` so it cannot be painted under the footer.
 
 ## Design system ("Nova")
 

@@ -129,8 +129,23 @@ exam's mock `attempts` counter or best score.
 
 ### AI — `ai.ts`
 
-`POST /api/ai/explain`, chat endpoints under `/api/ai/chat/*`. Premium only,
-quota via `AI_DAILY_LIMIT_PREMIUM`. The provider key never leaves the server.
+- `GET /api/ai/status` — whether AI is configured and enabled, the model, and
+  the caller's daily allowance (`dailyLimit`, `usedToday`, `remaining`).
+- `POST /api/ai/explain` and `/explain/stream`, `/hint` and `/hint/stream`,
+  `/assist` — question-grounded help. Premium only where the route says so, with
+  a daily quota (`AI_DAILY_LIMIT_PREMIUM`). Streaming routes emit SSE `delta`
+  frames and terminate with `done` or `error`; the explanation text always comes
+  from the private dataset, never from the request body.
+- `GET|POST /api/ai/chat/conversations`, `GET /api/ai/chat/by-question`,
+  `GET|PATCH|DELETE /api/ai/chat/conversations/:id` and
+  `POST /api/ai/chat/conversations/:id/messages` manage saved tutor threads.
+  The message route streams `delta`, `reasoning`, `done` and `error` frames.
+- A tutor message accepts an optional `mode`: one of `step`, `socratic`,
+  `simple`, `example`, `quiz` (`AI_TUTOR_MODES` in `packages/shared`). The server
+  adds the matching instruction to that turn's system prompt; the stored
+  transcript keeps only the learner's text.
+
+The provider key never leaves the server.
 
 ### Subscriptions and coupons — `subscriptions.ts`, `coupons.ts`, `referrals.ts`
 

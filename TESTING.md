@@ -28,23 +28,28 @@ CI supplies PostgreSQL 16 automatically (`.github/workflows/ci.yml`).
 
 ## Coverage
 
-**280 tests**, 13 API files + 2 package test files.
+**307 tests**, 15 API files + 2 package test files + 4 web files.
 
 | Area | Tests | File |
 | --- | --- | --- |
-| UPI | 60 + 23 | `upi.test.ts`, `upi-api.test.ts` |
 | Email centre | 66 + 21 | `email-center.test.ts`, `email-center-api.test.ts` |
-| Payments | 26 | `payments.test.ts` |
-| AI chat | 19 | `ai-chat.test.ts` |
+| YouPI / UPI | 34 | `youpi-integration.test.ts` |
+| Payments | 31 | `payments.test.ts` |
+| AI chat | 22 | `ai-chat.test.ts` |
 | Mail | 18 | `mail.test.ts` |
 | Auth | 12 | `auth.test.ts` |
+| Practice targeting | 10 | `practice-targeting.test.ts` |
 | Billing | 10 | `billing.test.ts` |
+| Secret box | 10 | `secretbox.test.ts` |
 | Exams | 9 | `exams.test.ts` |
 | Subscriptions | 6 | `subscriptions.test.ts` |
 | Admin | 5 | `admin.test.ts` |
 | Attempts | 5 | `attempts.test.ts` |
+| Refund limit | 5 | `refund-limit.test.ts` |
 
-Plus parser and data-client unit tests in `packages/`.
+Packages: 16 parser/schema tests in `@examdump/shared` and 7 in
+`@examdump/data-client`. Web: 20 unit tests, including paging/palette mechanics
+in `apps/web/test/question-session.test.ts`.
 
 ## Principles
 
