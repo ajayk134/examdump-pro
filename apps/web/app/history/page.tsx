@@ -121,7 +121,7 @@ export default function HistoryPage() {
                     <td>
                       <div className="flex justify-end gap-1">
                         <Link
-                          href={`/study?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}&mode=practice`}
+                          href={`/practice?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}&mode=practice`}
                           className="btn-ghost btn-sm"
                         >
                           Retake
@@ -158,7 +158,7 @@ export default function HistoryPage() {
                 </p>
                 <div className="mt-3 flex gap-2">
                   <Link
-                    href={`/study?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}&mode=practice`}
+                    href={`/practice?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}&mode=practice`}
                     className="btn-secondary btn-sm flex-1"
                   >
                     Retake

@@ -18,16 +18,10 @@ import { createNotification } from '../services/notification.service.js';
 import { getDb } from '../db/client.js';
 import { attempts, type AttemptAnswer } from '../db/schema/index.js';
 import { parsePage, paginate } from '../lib/pagination.js';
+import { filterQuestions, loadQuestionSets, topicForQuestion } from '../lib/question-scope.js';
 
 const MAX_MOCK_QUESTIONS = 60;
-
-function topicFor(title: string | null, code: string): string {
-  if (title) {
-    const match = title.match(/topic\s+(\d+)/i);
-    if (match?.[1]) return `Topic ${match[1]}`;
-  }
-  return code ? `${code} General` : 'General';
-}
+const MAX_PRACTICE_QUESTIONS = 200;
 
 const attemptSummaryColumns = {
   id: attempts.id,
@@ -80,12 +74,31 @@ export async function attemptRoutes(app: FastifyInstance, env: Env): Promise<voi
       }
       selectedIds = [...new Set(input.questionIds)];
     } else {
-      const pool = [...accessible];
-      if (input.mode === 'random' || input.mode === 'mock' || input.mode === 'timed') {
-        pool.sort(() => Math.random() - 0.5);
+      // Targeting is applied to what the plan unlocks, never to the full bank,
+      // so a filter cannot be used to reach a locked question.
+      let pool = accessible;
+      const focus = input.focus ?? 'all';
+      if (input.topic || (input.types && input.types.length > 0) || focus !== 'all') {
+        pool = filterQuestions(
+          pool,
+          exam.code,
+          { topic: input.topic, types: input.types, focus },
+          await loadQuestionSets(user.id, exam.key),
+        );
       }
-      const count = input.mode === 'mock' || input.mode === 'timed' ? Math.min(pool.length, MAX_MOCK_QUESTIONS) : pool.length;
-      selectedIds = pool.slice(0, count).map((q) => q.id);
+      if (pool.length === 0) {
+        throw badRequest('No questions match those filters. Try widening them.');
+      }
+
+      const shuffled = [...pool];
+      if (input.mode === 'random' || input.mode === 'mock' || input.mode === 'timed') {
+        shuffled.sort(() => Math.random() - 0.5);
+      }
+      const cap =
+        input.mode === 'mock' || input.mode === 'timed' ? MAX_MOCK_QUESTIONS : MAX_PRACTICE_QUESTIONS;
+      const requested = input.count ?? cap;
+      const count = Math.min(shuffled.length, Math.max(1, Math.min(requested, cap)));
+      selectedIds = shuffled.slice(0, count).map((q) => q.id);
     }
 
     if (selectedIds.length === 0) throw badRequest('No questions selected.');
@@ -236,7 +249,7 @@ export async function attemptRoutes(app: FastifyInstance, env: Env): Promise<voi
         correctAnswer,
         correct: isCorrect,
         explanation: question?.explanation ?? '',
-        topic: topicFor(question?.title ?? null, attempt.examCode),
+        topic: question ? topicForQuestion(question, attempt.examCode) : 'General',
       });
     }
 

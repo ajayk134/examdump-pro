@@ -140,17 +140,47 @@ export const draftAnswerSchema = z.object({
   timeSpentMs: z.number().int().min(0).max(86_400_000).optional(),
 });
 
+/**
+ * Practice targeting.
+ *
+ * The upstream dataset has no subject/difficulty taxonomy, so the only honest
+ * targeting dimensions are ones we can compute: the question's answer shape
+ * (`kind`), and the learner's own history with it (`focus`). `topic` is wired
+ * through end-to-end but only surfaces when an exam genuinely has several
+ * topics; today most exams are a single "Topic 1".
+ */
+export const PRACTICE_FOCUS = ['all', 'unseen', 'missed', 'mastered', 'bookmarked'] as const;
+export type PracticeFocus = (typeof PRACTICE_FOCUS)[number];
+
+export const QUESTION_KINDS = ['single', 'multiple', 'dragdrop'] as const;
+export type QuestionKind = (typeof QUESTION_KINDS)[number];
+
 export const startAttemptSchema = z.object({
   provider: z.string().min(1).max(160),
   exam: z.string().min(1).max(240),
   mode: z.enum(QUESTION_MODES).default('practice'),
   questionIds: z.array(z.string().max(200)).max(500).optional(),
   timeLimitSeconds: z.number().int().min(30).max(21_600).optional(),
+  /** Number of questions to draw after filtering. Omit for "all". */
+  count: z.number().int().min(1).max(200).optional(),
+  topic: z.string().trim().max(200).optional(),
+  types: z.array(z.enum(QUESTION_KINDS)).max(3).optional(),
+  focus: z.enum(PRACTICE_FOCUS).optional(),
 });
 
 export const completeAttemptSchema = z.object({
   answers: z.array(draftAnswerSchema).max(1000).default([]),
   timeSpentMs: z.number().int().min(0).max(86_400_000).optional(),
+});
+
+/**
+ * Practice answers are graded on the server before they are recorded, so the
+ * client can never inflate its own accuracy or streak.
+ */
+export const practiceAnswersSchema = z.object({
+  provider: z.string().min(1).max(160),
+  exam: z.string().min(1).max(240),
+  answers: z.array(draftAnswerSchema).min(1).max(50),
 });
 
 export const bookmarkSchema = z.object({
@@ -173,6 +203,10 @@ export const listQuestionsQuerySchema = z.object({
   random: z.coerce.boolean().optional(),
   seed: z.coerce.number().int().optional(),
   includeAnswer: z.coerce.boolean().optional(),
+  /** Practice targeting: see PRACTICE_FOCUS / QUESTION_KINDS. */
+  topic: z.string().trim().max(200).optional(),
+  types: z.string().trim().max(60).optional(),
+  focus: z.enum(PRACTICE_FOCUS).default('all'),
 });
 
 export const examSearchQuerySchema = z.object({
@@ -311,6 +345,7 @@ export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type StartAttemptInput = z.infer<typeof startAttemptSchema>;
 export type CompleteAttemptInput = z.infer<typeof completeAttemptSchema>;
 export type ListQuestionsQuery = z.infer<typeof listQuestionsQuerySchema>;
+export type PracticeAnswersInput = z.infer<typeof practiceAnswersSchema>;
 export type CreateSubscriptionInput = z.infer<typeof createSubscriptionSchema>;
 
 /* ------------------------------------------------------------------ */

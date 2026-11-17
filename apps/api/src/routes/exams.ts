@@ -18,6 +18,13 @@ import {
 } from '../services/entitlement.service.js';
 import { getSettings } from '../services/settings.service.js';
 import { incrementUsage } from '../services/usage.service.js';
+import {
+  EMPTY_SETS,
+  buildFacets,
+  filterQuestions,
+  loadQuestionSets,
+  parseTypes,
+} from '../lib/question-scope.js';
 
 interface Context {
   entitlements: Entitlements;
@@ -205,6 +212,43 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
     }
   });
 
+  app.get('/:providerId/:examKey/practice-options', async (request, reply) => {
+    const { providerId, examKey } = request.params as { providerId: string; examKey: string };
+    const ctx = await resolveContext(request, env);
+    const access = examAccess(ctx.entitlements, examKey, providerId);
+    const { provider, exam, questions } = await getDatasetClient(env).getExamQuestions(providerId, examKey);
+
+    const accessible = access.unlimited
+      ? questions
+      : questions.slice(0, access.questionsPerExam ?? 0);
+    const sets = ctx.userId ? await loadQuestionSets(ctx.userId, examKey) : EMPTY_SETS;
+
+    return reply.send({
+      provider: { id: provider.id, title: provider.title, slug: provider.slug },
+      exam: {
+        key: exam.key,
+        code: exam.code,
+        title: exam.title,
+        questionCount: questions.length,
+        providerId: provider.id,
+        providerTitle: provider.title,
+      },
+      facets: buildFacets(accessible, exam.code, sets),
+      totalQuestions: questions.length,
+      accessibleQuestions: accessible.length,
+      /** Practice sessions stream questions; mocks are capped server-side. */
+      limits: { maxPractice: env.DATASET_MAX_QUESTIONS_PER_REQUEST, maxMock: 60 },
+      signedIn: Boolean(ctx.userId),
+      entitlement: {
+        plan: access.plan,
+        scope: ctx.entitlements.scope,
+        earlyAccess: ctx.entitlements.earlyAccess,
+        questionsPerExam: access.questionsPerExam,
+        isLimited: !access.unlimited,
+      },
+    });
+  });
+
   app.get('/:providerId/:examKey/questions', async (request, reply) => {
     const { providerId, examKey } = request.params as { providerId: string; examKey: string };
     const query = parseOrThrow(listQuestionsQuerySchema, request.query);
@@ -221,10 +265,25 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
     if (!access.unlimited) {
       const limit = access.questionsPerExam ?? 0;
       // Free users only ever see the first N questions; offset/random ignored.
+      // The cap is applied before targeting so a filter can never reach past it.
       accessible = questions.slice(0, limit);
       locked = Math.max(0, questions.length - accessible.length);
-    } else if (query.random) {
-      accessible = [...questions].sort(() => Math.random() - 0.5);
+    }
+
+    const focus = query.focus ?? 'all';
+    const types = parseTypes(query.types);
+    if (query.topic || types || focus !== 'all') {
+      const sets = ctx.userId ? await loadQuestionSets(ctx.userId, examKey) : EMPTY_SETS;
+      accessible = filterQuestions(
+        accessible,
+        exam.code,
+        { topic: query.topic, types, focus },
+        sets,
+      );
+    }
+
+    if (access.unlimited && query.random) {
+      accessible = [...accessible].sort(() => Math.random() - 0.5);
     }
 
     const maxPerRequest = env.DATASET_MAX_QUESTIONS_PER_REQUEST;

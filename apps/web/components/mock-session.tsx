@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { post } from '@/lib/api';
 import type { Question } from '@/lib/types';
 import { QuestionContent } from './question-content';
-import { Alert, Dialog, Drawer, ProgressBar, ProgressRing, Skeleton, StatStrip } from './ui';
+import { Alert, Dialog, Drawer, EmptyIcon, EmptyState, ProgressBar, ProgressRing, Skeleton, StatStrip } from './ui';
 import { AiChat } from './ai-chat';
 import { IconArrowRight, IconCheck, IconClock, IconMessage, IconRefresh, IconX, IconGrid } from './icons';
 import { cn, formatDuration } from '@/lib/format';
@@ -53,13 +53,18 @@ export function MockSession({
   providerId,
   examKey,
   mode,
+  count,
+  durationSeconds,
 }: {
   providerId: string;
   examKey: string;
   mode: 'mock' | 'timed';
+  count?: number;
+  durationSeconds?: number | null;
 }) {
   const [session, setSession] = useState<StartResponse | null>(null);
   const [error, setError] = useState('');
+  const [needsAuth, setNeedsAuth] = useState(false);
   const [upgrade, setUpgrade] = useState(false);
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [index, setIndex] = useState(0);
@@ -80,7 +85,8 @@ export function MockSession({
       provider: providerId,
       exam: examKey,
       mode,
-      ...(mode === 'timed' ? { timeLimitSeconds: 3600 } : {}),
+      ...(count ? { count } : {}),
+      ...(mode === 'timed' ? { timeLimitSeconds: durationSeconds ?? 3600 } : {}),
     })
       .then((data) => {
         if (cancelled) return;
@@ -89,13 +95,15 @@ export function MockSession({
       })
       .catch((err) => {
         if (cancelled) return;
-        if ((err as { status?: number }).status === 403) setUpgrade(true);
+        const status = (err as { status?: number }).status;
+        if (status === 403) setUpgrade(true);
+        if (status === 401) setNeedsAuth(true);
         setError((err as Error).message);
       });
     return () => {
       cancelled = true;
     };
-  }, [providerId, examKey, mode]);
+  }, [providerId, examKey, mode, count, durationSeconds]);
 
   const submit = useCallback(
     async (currentSession: StartResponse, currentAnswers: Record<string, string[]>, auto = false) => {
@@ -179,12 +187,51 @@ export function MockSession({
   );
 
   if (error && !session) {
+    const backToMock = `/mock/session?${new URLSearchParams({
+      provider: providerId,
+      exam: examKey,
+      mode,
+      ...(count ? { count: String(count) } : {}),
+      ...(durationSeconds ? { duration: String(durationSeconds) } : {}),
+    }).toString()}`;
+
+    if (needsAuth) {
+      return (
+        <div className="mx-auto max-w-lg py-6">
+          <EmptyState
+            icon={<EmptyIcon name="book" />}
+            title="Sign in to sit this mock"
+            description="Mock exams are timed and scored, so they are tied to your account. Sign in and you will come straight back to this exam."
+            action={
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Link href={`/login?next=${encodeURIComponent(backToMock)}`} className="btn-primary">
+                  Sign in
+                </Link>
+                <Link
+                  href={`/practice?provider=${encodeURIComponent(providerId)}&exam=${encodeURIComponent(examKey)}`}
+                  className="btn-secondary"
+                >
+                  Practise instead
+                </Link>
+              </div>
+            }
+          />
+        </div>
+      );
+    }
+
     return (
-      <div className="mx-auto max-w-lg">
+      <div className="mx-auto max-w-lg py-6">
         <Alert tone="error">{error}</Alert>
-        <div className="mt-4 flex gap-2">
-          {upgrade ? <Link href="/pricing" className="btn-primary">Upgrade to Premium</Link> : null}
-          <Link href={`/exams/${encodeURIComponent(providerId)}`} className="btn-secondary">Back</Link>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {upgrade ? (
+            <Link href="/pricing" className="btn-primary">
+              See plans
+            </Link>
+          ) : null}
+          <Link href={`/mock?provider=${encodeURIComponent(providerId)}&exam=${encodeURIComponent(examKey)}`} className="btn-secondary">
+            Back to the simulator
+          </Link>
         </div>
       </div>
     );

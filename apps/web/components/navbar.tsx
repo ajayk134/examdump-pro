@@ -20,13 +20,18 @@ import {
   IconSettings,
   IconStar,
   IconSun,
+  IconTrophy,
   IconUser,
   IconX,
 } from '@/components/icons';
 import { cn } from '@/lib/format';
 import { api } from '@/lib/api';
 
-type NavItem = { href: string; label: string; icon: 'home' | 'search' | 'book' | 'spark' | 'chart' | 'star' };
+type NavItem = {
+  href: string;
+  label: string;
+  icon: 'home' | 'search' | 'book' | 'spark' | 'chart' | 'star' | 'trophy';
+};
 type IconComp = (p: React.SVGProps<SVGSVGElement>) => React.ReactElement;
 
 const ICONS: Record<NavItem['icon'], IconComp> = {
@@ -36,26 +41,31 @@ const ICONS: Record<NavItem['icon'], IconComp> = {
   spark: IconMessage,
   chart: IconChart,
   star: IconStar,
+  trophy: IconTrophy,
 };
 
-/** Primary destinations shared by the desktop bar and the mobile tab bar. */
+/**
+ * Primary navigation follows what people actually do: find an exam, practise,
+ * sit a mock, check progress, manage the plan. Home lives on the wordmark and
+ * the AI tutor moved into the menu + in-question entry points.
+ */
 const PRIMARY: NavItem[] = [
-  { href: '/', label: 'Home', icon: 'home' },
-  { href: '/exams', label: 'Exams', icon: 'search' },
+  { href: '/exams', label: 'Discover', icon: 'search' },
   { href: '/practice', label: 'Practice', icon: 'book' },
-  { href: '/ask', label: 'Ask AI', icon: 'spark' },
-  { href: '/dashboard', label: 'Dashboard', icon: 'chart' },
+  { href: '/mock', label: 'Mock', icon: 'trophy' },
+  { href: '/dashboard', label: 'Progress', icon: 'chart' },
+  { href: '/pricing', label: 'Plans', icon: 'star' },
 ];
 
-/** Only four tabs fit comfortably on a phone; Dashboard lives in the sheet there. */
-const MOBILE_TABS: NavItem[] = PRIMARY.filter((i) => i.href !== '/dashboard');
+/** Four tabs fit a phone comfortably; Plans and Home live in the sheet. */
+const MOBILE_TABS: NavItem[] = PRIMARY.filter((item) => item.href !== '/pricing');
 
 const SECONDARY = [
-  { href: '/mock', label: 'Mock tests' },
+  { href: '/ask', label: 'Ask AI' },
   { href: '/bookmarks', label: 'Bookmarks' },
   { href: '/history', label: 'History' },
   { href: '/leaderboard', label: 'Leaderboard' },
-  { href: '/pricing', label: 'Pricing' },
+  { href: '/pricing', label: 'Plans & pricing' },
   { href: '/support', label: 'Support' },
 ];
 
@@ -196,7 +206,7 @@ export function Navbar() {
 
         <div className="flex-1 overflow-y-auto">
           <div className="grid grid-cols-2 gap-2 p-3">
-            {[...PRIMARY, { href: '/mock', label: 'Mock tests', icon: 'book' as const }].map((item) => {
+            {[{ href: '/', label: 'Home', icon: 'home' as const }, ...PRIMARY].map((item) => {
               const Icon = ICONS[item.icon];
               const active = isActive(item.href);
               return (
@@ -313,7 +323,7 @@ function AccountMenu({
   }, [open]);
 
   const items = [
-    { href: '/dashboard', label: 'Dashboard', icon: IconChart },
+    { href: '/dashboard', label: 'Progress', icon: IconChart },
     { href: '/bookmarks', label: 'Bookmarks', icon: IconBookmark },
     { href: '/history', label: 'History', icon: IconHistory },
     { href: '/referrals', label: 'Refer a friend', icon: IconStar },

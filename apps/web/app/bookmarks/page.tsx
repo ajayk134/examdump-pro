@@ -94,7 +94,7 @@ export default function BookmarksPage() {
 
               <div className="flex shrink-0 gap-2">
                 <Link
-                  href={`/study?provider=${encodeURIComponent(bookmark.providerId)}&exam=${encodeURIComponent(bookmark.examKey)}&mode=practice`}
+                  href={`/practice?provider=${encodeURIComponent(bookmark.providerId)}&exam=${encodeURIComponent(bookmark.examKey)}&mode=practice`}
                   className="btn-secondary btn-sm flex-1 sm:flex-none"
                 >
                   Open

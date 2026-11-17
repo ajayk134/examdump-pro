@@ -30,10 +30,18 @@ often studying on a phone between other commitments. Copy addresses them as "you
 
 | Journey | Path |
 | --- | --- |
-| Evaluate | landing → browse exams → provider → exam → practice questions (free) |
-| Convert | wall → pricing → checkout (or UPI QR) |
-| Study | dashboard → exam → practice / mock / timed → results → weak topics |
+| Discover | landing / Discover → search or filter by certification body → exam workspace |
+| Practise | Practice hub → exam → focus (difficulty, type, count) → runner → progress |
+| Sit a mock | Mock simulator → exam → count + timer → instructions → attempt → score report |
+| Evaluate | landing → Discover → exam workspace → free questions |
+| Convert | limit reached → pricing → choose pass + exams → checkout (or UPI QR) |
+| Track | Progress → next best action → weak areas → practice or mock |
 | Repeat | recommendations, streak, leaderboard |
+
+The product is organised around five destinations: **Discover** (`/exams`),
+**Practice** (`/practice`), **Mock** (`/mock`), **Progress** (`/dashboard`) and
+**Plans** (`/pricing`). Each has a hub that configures the action and a runner
+that performs it; `/study` is a compatibility redirect into the runners.
 
 ## Visual identity
 

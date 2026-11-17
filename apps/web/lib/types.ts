@@ -422,3 +422,41 @@ export interface ExamDetail {
     isLimited: boolean;
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* Practice / mock targeting                                           */
+/* ------------------------------------------------------------------ */
+
+export type PracticeFocus = 'all' | 'unseen' | 'missed' | 'mastered' | 'bookmarked';
+export type QuestionKind = 'single' | 'multiple' | 'dragdrop';
+
+export interface PracticeFacets {
+  topics: Array<{ id: string; label: string; count: number }>;
+  kinds: Array<{ id: QuestionKind; count: number }>;
+  focus: Array<{ id: PracticeFocus; count: number }>;
+}
+
+/** Response shape of GET /api/exams/:providerId/:examKey/practice-options */
+export interface PracticeOptions {
+  provider: { id: string; title: string; slug: string };
+  exam: {
+    key: string;
+    code: string;
+    title: string;
+    questionCount: number;
+    providerId: string;
+    providerTitle: string;
+  };
+  facets: PracticeFacets;
+  totalQuestions: number;
+  accessibleQuestions: number;
+  limits: { maxPractice: number; maxMock: number };
+  signedIn: boolean;
+  entitlement: {
+    plan: string;
+    scope: string;
+    earlyAccess: boolean;
+    questionsPerExam: number | null;
+    isLimited: boolean;
+  };
+}

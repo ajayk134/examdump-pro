@@ -129,17 +129,25 @@ scripts/
 ```
 app/                 App Router pages
   layout.tsx page.tsx globals.css
-  exams/ browse/ practice/ study/ mock/ history/ dashboard/
-  pricing/ checkout/ invoices/ ask/ bookmarks/ notes/ leaderboard/
-  referrals/ support/ profile/ login/ register/ forgot-password/
-  reset-password/ verify-email/ unsubscribe/ privacy/ terms/ security/
+  exams/             discover + provider + exam workspace
+  practice/          hub (page.tsx) + runner (session/)
+  mock/              simulator hub (page.tsx) + runner (session/)
+  study/             compatibility redirect into the runners
+  browse/            legacy redirect to /exams
+  history/ dashboard/ pricing/ checkout/ invoices/ ask/ bookmarks/
+  notes/ leaderboard/ referrals/ support/ profile/ login/ register/
+  forgot-password/ reset-password/ verify-email/ unsubscribe/
+  privacy/ terms/ security/
   admin/             admin console
   sitemap.ts robots.ts
-components/          26 shared components (mostly client)
+components/          28 shared components (mostly client)
   markdown.tsx       the only Markdown renderer (no new deps allowed)
   ui.tsx             shared primitives, useOverlay, Drawer/Dialog
   brand.tsx          BrandMark prism + Wordmark (the visual identity's logo)
   reveal.tsx         scroll-reveal wrapper (IntersectionObserver, degrades to visible)
+  exam-select.tsx    searchable exam picker used by every hub and the workspace
+  practice-config.tsx practice hub: exam, focus, type, count, start
+  mock-config.tsx    simulator: count, timer, instructions, attempt history
   landing-*.tsx      landing page sections (live catalogue data)
   admin-*.tsx        admin consoles
 lib/                 client helpers, local-store

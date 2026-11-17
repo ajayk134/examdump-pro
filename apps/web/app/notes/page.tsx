@@ -90,7 +90,7 @@ export default function NotesPage() {
 
                 <div className="flex shrink-0 gap-2">
                   <Link
-                    href={`/study?provider=${encodeURIComponent(note.providerId)}&exam=${encodeURIComponent(note.examKey)}&mode=practice`}
+                    href={`/practice?provider=${encodeURIComponent(note.providerId)}&exam=${encodeURIComponent(note.examKey)}&mode=practice`}
                     className="btn-secondary btn-sm"
                   >
                     Open

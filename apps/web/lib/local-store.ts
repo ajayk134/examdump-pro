@@ -5,6 +5,7 @@
  */
 
 const RECENTS_KEY = 'examdump:recent-exams';
+const RECENT_DETAIL_KEY = 'examdump:recent-exam-detail';
 const BOOKMARK_KEY = 'examdump:exam-bookmarks';
 const MAX_RECENTS = 8;
 
@@ -42,6 +43,57 @@ export function pushRecent(providerId: string, examKey: string): void {
   const id = examId(providerId, examKey);
   const next = [id, ...readList(RECENTS_KEY).filter((v) => v !== id)].slice(0, MAX_RECENTS);
   writeList(RECENTS_KEY, next);
+}
+
+/**
+ * Recent exams with enough metadata to render them without a round trip.
+ *
+ * The selector and the dashboard show "continue" shortcuts before any network
+ * request resolves, so the id list alone is not enough.
+ */
+export interface RecentExam {
+  providerId: string;
+  examKey: string;
+  code: string;
+  title: string;
+  providerTitle: string;
+  questionCount: number;
+}
+
+export function getRecentExams(): RecentExam[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(RECENT_DETAIL_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as RecentExam[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is RecentExam =>
+          Boolean(item) &&
+          typeof item.providerId === 'string' &&
+          typeof item.examKey === 'string' &&
+          typeof item.code === 'string',
+      )
+      .slice(0, MAX_RECENTS);
+  } catch {
+    return [];
+  }
+}
+
+export function pushRecentExam(exam: RecentExam): void {
+  pushRecent(exam.providerId, exam.examKey);
+  if (typeof window === 'undefined') return;
+  try {
+    const id = examId(exam.providerId, exam.examKey);
+    const next = [exam, ...getRecentExams().filter((item) => examId(item.providerId, item.examKey) !== id)].slice(
+      0,
+      MAX_RECENTS,
+    );
+    window.localStorage.setItem(RECENT_DETAIL_KEY, JSON.stringify(next));
+  } catch {
+    /* non-critical */
+  }
 }
 
 export function clearRecents(): void {

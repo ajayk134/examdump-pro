@@ -3,9 +3,9 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { get } from '@/lib/api';
+import { get, post } from '@/lib/api';
 import type { QuestionsResponse } from '@/lib/types';
-import { QuestionCard } from './question-card';
+import { QuestionCard, type AnsweredResult } from './question-card';
 import {
   Badge,
   EmptyIcon,
@@ -27,6 +27,7 @@ import {
 } from './icons';
 import { cn } from '@/lib/format';
 import { clearAutosave, loadAutosave, saveAutosave } from '@/lib/local-store';
+import { useAuth, useToast } from './providers';
 
 type Mode = 'practice' | 'random';
 
@@ -35,9 +36,29 @@ interface AutosaveState {
   answered: string[];
 }
 
-export function StudySession({ providerId, examKey, mode }: { providerId: string; examKey: string; mode: Mode }) {
+export function StudySession({
+  providerId,
+  examKey,
+  mode,
+  focus = 'all',
+  types,
+  topic,
+  count,
+  random = false,
+}: {
+  providerId: string;
+  examKey: string;
+  mode: Mode;
+  focus?: string;
+  types?: string;
+  topic?: string;
+  count?: number;
+  random?: boolean;
+}) {
   const router = useRouter();
-  const autosaveKey = `${providerId}/${examKey}/${mode}`;
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const autosaveKey = `${providerId}/${examKey}/${mode}/${focus}/${types ?? 'any'}/${topic ?? 'all'}/${count ?? 'all'}`;
 
   const [data, setData] = useState<QuestionsResponse | null>(null);
   const [error, setError] = useState('');
@@ -57,8 +78,17 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
     let cancelled = false;
     setData(null);
     setError('');
+    const params = new URLSearchParams({
+      limit: String(Math.min(count ?? 200, 200)),
+      mode,
+      includeAnswer: 'true',
+      focus,
+    });
+    if (types) params.set('types', types);
+    if (topic) params.set('topic', topic);
+    if (random || mode === 'random') params.set('random', 'true');
     get<QuestionsResponse>(
-      `/exams/${encodeURIComponent(providerId)}/${encodeURIComponent(examKey)}/questions?limit=200&mode=${mode}&includeAnswer=true&random=${mode === 'random'}`,
+      `/exams/${encodeURIComponent(providerId)}/${encodeURIComponent(examKey)}/questions?${params.toString()}`,
     )
       .then((res) => {
         if (!cancelled) setData(res);
@@ -69,7 +99,49 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
     return () => {
       cancelled = true;
     };
-  }, [providerId, examKey, mode, reloadKey]);
+  }, [providerId, examKey, mode, focus, types, topic, count, random, reloadKey]);
+
+  /* ---------------- progress recording ----------------
+   * Answers are graded again on the server before they count, so offline or
+   * tampered payloads can never inflate a learner's accuracy. Batched to keep
+   * one request per few questions rather than one per answer.
+   */
+  const queue = useRef<Array<{ questionId: string; selected: string[]; timeSpentMs: number }>>([]);
+  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flush = useCallback(() => {
+    if (!user || queue.current.length === 0) return;
+    const answers = queue.current.splice(0, 50);
+    post('/analytics/practice', { provider: providerId, exam: examKey, answers }).catch(() => {
+      toast('Could not save this answer to your progress.', 'info');
+    });
+  }, [user, providerId, examKey, toast]);
+
+  const recordAnswer = useCallback(
+    (result: AnsweredResult) => {
+      if (!user) return;
+      queue.current.push({
+        questionId: result.questionId,
+        selected: result.selected,
+        timeSpentMs: result.timeSpentMs,
+      });
+      if (flushTimer.current) clearTimeout(flushTimer.current);
+      if (queue.current.length >= 25) {
+        flush();
+        return;
+      }
+      flushTimer.current = setTimeout(flush, 1500);
+    },
+    [user, flush],
+  );
+
+  useEffect(
+    () => () => {
+      if (flushTimer.current) clearTimeout(flushTimer.current);
+      flush();
+    },
+    [flush],
+  );
 
   /* ---------------- autosave restore ---------------- */
 
@@ -97,6 +169,20 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
   const current = questions[index];
   const doneCount = answered.size;
   const progress = total ? (doneCount / total) * 100 : 0;
+
+  const restartHref = useMemo(() => {
+    const params = new URLSearchParams({
+      provider: providerId,
+      exam: examKey,
+      mode: random ? 'random' : 'practice',
+      focus,
+    });
+    if (types) params.set('types', types);
+    if (topic) params.set('topic', topic);
+    if (count) params.set('count', String(count));
+    if (random) params.set('random', '1');
+    return `/practice/session?${params.toString()}`;
+  }, [providerId, examKey, random, focus, types, topic, count]);
 
   const go = useCallback(
     (next: number, dir: 'next' | 'prev') => {
@@ -260,7 +346,7 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
               <IconGrid />
             </button>
             <Link
-              href={`/study?provider=${encodeURIComponent(providerId)}&exam=${encodeURIComponent(examKey)}&mode=practice&reload=1`}
+              href={restartHref}
               onClick={() => clearAutosave(autosaveKey)}
               className="icon-btn"
               aria-label="Restart session"
@@ -286,7 +372,10 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
               providerId={providerId}
               examKey={examKey}
               answered={answered.has(current.id)}
-              onAnswered={() => setAnswered((prev) => new Set(prev).add(current.id))}
+              onAnswered={(result) => {
+                setAnswered((prev) => new Set(prev).add(current.id));
+                recordAnswer(result);
+              }}
             />
           ) : null}
         </div>
@@ -311,7 +400,7 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
         {index === total - 1 ? (
           <button
             type="button"
-            onClick={() => router.push(`/history`)}
+            onClick={() => router.push(`/dashboard`)}
             className="btn-primary flex-1 sm:flex-none"
           >
             Finish

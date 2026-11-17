@@ -78,7 +78,8 @@ Route files are in `apps/api/src/routes/`. Registration order and prefixes are i
 | GET | `/api/exams/providers` | provider list |
 | GET | `/api/exams/:providerId` | exams for a provider |
 | GET | `/api/exams/:providerId/:examKey` | metadata + entitlement |
-| GET | `/api/exams/:providerId/:examKey/questions` | free-tier sliced |
+| GET | `/api/exams/:providerId/:examKey/practice-options` | facets for the practice/mock configurators |
+| GET | `/api/exams/:providerId/:examKey/questions` | free-tier sliced; supports targeting |
 | GET | `/api/exams/:providerId/:examKey/questions/:questionId` | single question |
 | GET | `/api/exams/random` | random subset |
 | GET | `/api/exams/search` | `q`, `provider`, `sort` |
@@ -86,15 +87,45 @@ Route files are in `apps/api/src/routes/`. Registration order and prefixes are i
 Question responses omit `answer` and `explanation` when the mode is an assessment
 (`toClientQuestion(q, includeAnswer)`).
 
+**Targeting (`questions` and `practice-options`).** The dataset has no subject or
+difficulty taxonomy — every exam is currently `Topic 1` — so targeting uses only
+dimensions that can be computed honestly:
+
+- `topic` — derived from the dataset question title (`Exam <code> topic N …`);
+  the UI only shows a topic picker when an exam has more than one.
+- `types` — comma list of `single`, `multiple`, `dragdrop` (the question's
+  answer shape).
+- `focus` — `all`, `unseen`, `missed`, `mastered`, `bookmarked`, from the
+  learner's own `question_results` / `bookmarks` rows.
+
+Targeting is applied *after* the entitlement slice, so a filter can never reach a
+locked question. `practice-options` returns facet counts over the reachable set
+plus `limits.maxPractice` / `limits.maxMock`.
+
 ### Attempts — `attempts.ts`
 
-`POST /api/attempts`, `POST /api/attempts/:id/submit`, `GET /api/attempts/history`.
-Grading is server-side against the dataset.
+| Method | Path | Notes |
+| --- | --- | --- |
+| POST | `/api/attempts` | start; accepts `count`, `topic`, `types`, `focus`, `timeLimitSeconds` |
+| POST | `/api/attempts/:id/complete` | grade and record; server-side against the dataset |
+| POST | `/api/attempts/:id/abandon` | release an in-progress attempt |
+| GET | `/api/attempts` | history; `examKey`, `status`, paging |
+| GET | `/api/attempts/:id` | one attempt |
+
+Practice targeting on `POST /api/attempts` is resolved against the unlocked bank
+and capped at 60 questions for mocks. Grading is server-side against the dataset.
 
 ### Study data
 
 `bookmarks.ts`, `notes.ts`, `analytics.ts` (`/dashboard`, `/progress`,
 `/weak-topics`, `/recommendations`), `leaderboard.ts`, `notifications.ts`.
+
+Practice answers are recorded with `POST /api/analytics/practice`
+(`{ provider, exam, answers: [{ questionId, selected, timeSpentMs? }] }`, max 50
+per call). The server re-grades every answer against the dataset before it can
+affect `question_results`, `exam_progress` or `user_stats`; answers outside the
+unlocked bank are ignored. Practice updates progress but does not increment the
+exam's mock `attempts` counter or best score.
 
 ### AI — `ai.ts`
 

@@ -157,6 +157,60 @@ export async function recordExamProgress(
     });
 }
 
+/**
+ * Record practice answers.
+ *
+ * Practice is a stream of individually-graded questions rather than a timed
+ * attempt, so this updates the same question history mocks use but leaves the
+ * exam's `attempts` counter and best mock score untouched.
+ */
+export async function recordPracticeProgress(input: {
+  userId: string;
+  providerId: string;
+  examKey: string;
+  examCode: string;
+  answered: number;
+  correct: number;
+  studyMs: number;
+}) {
+  const db = getDb();
+  const wrong = Math.max(0, input.answered - input.correct);
+  const now = new Date();
+  await db
+    .insert(examProgress)
+    .values({
+      userId: input.userId,
+      providerId: input.providerId,
+      examKey: input.examKey,
+      examCode: input.examCode,
+      questionsSeen: input.answered,
+      questionsCorrect: input.correct,
+      questionsWrong: wrong,
+      attempts: 0,
+      bestScore: 0,
+      lastStudiedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [examProgress.userId, examProgress.examKey],
+      set: {
+        questionsSeen: sql`${examProgress.questionsSeen} + excluded.questions_seen`,
+        questionsCorrect: sql`${examProgress.questionsCorrect} + excluded.questions_correct`,
+        questionsWrong: sql`${examProgress.questionsWrong} + excluded.questions_wrong`,
+        examCode: sql`excluded.exam_code`,
+        lastStudiedAt: sql`excluded.last_studied_at`,
+        updatedAt: now,
+      },
+    });
+
+  return recordUserStats({
+    userId: input.userId,
+    answered: input.answered,
+    correct: input.correct,
+    studyMs: input.studyMs,
+    isMock: false,
+  });
+}
+
 export async function getWeakTopics(userId: string, limit = 8) {
   const db = getDb();
   const rows = await db

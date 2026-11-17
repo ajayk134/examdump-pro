@@ -12,13 +12,20 @@ import { AiChat } from './ai-chat';
 import { IconBookmark, IconMessage, IconNote, IconSparkles, IconCheck, IconX, IconStop } from './icons';
 import { Markdown } from './markdown';
 
+export interface AnsweredResult {
+  questionId: string;
+  selected: string[];
+  correct: boolean;
+  timeSpentMs: number;
+}
+
 interface Props {
   question: Question;
   index?: number;
   providerId: string;
   examKey: string;
   /** Called once when the learner first checks an answer. */
-  onAnswered?: () => void;
+  onAnswered?: (result: AnsweredResult) => void;
   /** Renders a subtle "done" marker in the header. */
   answered?: boolean;
 }
@@ -44,6 +51,11 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
   const [aiRemaining, setAiRemaining] = useState<number | null>(null);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const startedAt = useRef(Date.now());
+
+  useEffect(() => {
+    startedAt.current = Date.now();
+  }, [question.id]);
 
   useEffect(
     () => () => {
@@ -99,7 +111,14 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
 
   const check = () => {
     setRevealed(true);
-    onAnswered?.();
+    const sortedSelected = [...selected].map((value) => value.toUpperCase()).sort().join('');
+    const sortedCorrect = correct.split('').sort().join('');
+    onAnswered?.({
+      questionId: question.id,
+      selected,
+      correct: sortedCorrect.length > 0 && sortedSelected === sortedCorrect,
+      timeSpentMs: Math.max(0, Date.now() - startedAt.current),
+    });
   };
 
   const reset = () => {

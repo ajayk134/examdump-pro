@@ -9,12 +9,33 @@ Next.js 15 App Router, React 19, TypeScript strict, Tailwind CSS.
 
 ```
 apps/web/app/          App Router pages (30+ routes)
-apps/web/components/   26 shared components
+apps/web/components/   28 shared components
 apps/web/lib/          client helpers, local-store
 ```
 
 60 `.tsx` files; 48 are client components (exam practice, timers, admin consoles
 are inherently interactive).
+
+### Information architecture
+
+Discovery is search-first, not a long scroll. Each action has a hub that
+configures it and a runner that performs it:
+
+| Route | Role |
+| --- | --- |
+| `/exams` | Discover: search, certification-body filter, compact result rows, recents |
+| `/exams/:providerId` | every exam from one provider |
+| `/exams/:providerId/:examKey` | exam workspace with Overview / Practice / Mock exam / Attempts tabs |
+| `/practice` | practice hub: exam, focus ("difficulty for you"), question type, count |
+| `/practice/session` | practice runner (instant explanations, server-recorded answers) |
+| `/mock` | simulator: exam, question count, time limit (suggested from the paper length until changed), instructions, attempt history |
+| `/mock/session` | mock runner (timer, palette, submit confirmation, score report) |
+| `/dashboard` | Progress: next best action, metrics, weak areas, attempts |
+| `/pricing` | Plans: comparable cards, exam picker for scoped passes, sticky checkout |
+| `/study` | compatibility redirect into the practice/mock runner |
+
+Shared entry points: `components/exam-select.tsx` (searchable exam picker),
+`components/practice-config.tsx`, `components/mock-config.tsx`.
 
 ## Design system ("Nova")
 

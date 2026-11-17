@@ -4,7 +4,41 @@ All notable changes to ExamDump Pro.
 
 ## [Unreleased]
 
+### Added
+
+- **Practice targeting and practice progress recording.** The practice hub can
+  now target a session by question type, by topic (only where the dataset has
+  more than one) and by the learner's own history — unseen, previously missed,
+  mastered or bookmarked. `GET /api/exams/:provider/:exam/practice-options`
+  returns facet counts over the questions the plan actually unlocks, and
+  `POST /api/analytics/practice` records answers after re-grading them on the
+  server. Practice now feeds accuracy, weak topics and streaks; it deliberately
+  does not increment the exam's mock attempt count or best score.
+- **Mock simulator settings.** `POST /api/attempts` accepts `count`, `topic`,
+  `types`, `focus` and `timeLimitSeconds`, so a mock can be a short simulation
+  or a full-length timed run. Selection is resolved against the unlocked bank and
+  capped at 60 questions.
+
 ### Changed
+
+- **Product-level rearchitecture of the main journeys.** Navigation is now
+  Discover, Practice, Mock, Progress and Plans instead of a flat mix of pages.
+  Each action has a hub that configures it and a runner that performs it:
+  `/practice` and `/practice/session`, `/mock` and `/mock/session`. `/study`
+  remains as a compatibility redirect. Discovery became search-first with a
+  certification-body filter, compact result rows and recents rather than a long
+  paginated grid. The exam page became a workspace with Overview, Practice, Mock
+  exam and Attempts tabs. Pricing is now a compact step flow with comparable
+  plan cards, an inline comparison and a sticky order summary. Progress leads
+  with the next best action, then metrics, weak areas, recommendations and
+  attempts. No API contract, entitlement rule, grading algorithm, timer or
+  payment/UPI flow changed beyond the additive targeting fields above.
+- **Simulator and progress defaults.** The mock simulator suggests a time limit
+  that matches the paper length (30 minutes for up to 20 questions, 60 for up to
+  45, 90 beyond) until the learner picks one themselves. The practice count is
+  clamped to the 200-question page the API serves. Progress only claims a
+  resumable session when answers exist, so a mock that was started but not
+  answered reads as "start with this exam" rather than "0% accuracy".
 
 - **Frontend visual identity replaced — "Nova".** The interface no longer shares
   the previous "Aurora" look. The identity is now a deep indigo ink neutral, an

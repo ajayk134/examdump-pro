@@ -39,7 +39,7 @@ export function RecommendationCard({
   className?: string;
 }) {
   const tint = providerTint(rec.exam.providerId);
-  const href = `/study?provider=${encodeURIComponent(rec.exam.providerId)}&exam=${encodeURIComponent(
+  const href = `/practice?provider=${encodeURIComponent(rec.exam.providerId)}&exam=${encodeURIComponent(
     rec.exam.key,
   )}&mode=practice`;
 
