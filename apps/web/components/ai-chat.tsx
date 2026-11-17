@@ -445,8 +445,11 @@ export function AiChat({
   }, [initialConversationId, providerId, examKey, questionId, loadConversation]);
 
   useEffect(() => {
+    // A restored conversation already carries server-authored follow-ups; do not
+    // clobber them with the generic openers when the component mounts.
+    if (initialConversationId) return;
     setSuggestions(questionAnchored ? QUESTION_PROMPTS : anchored ? STARTER_PROMPTS : []);
-  }, [anchored, questionAnchored]);
+  }, [anchored, questionAnchored, initialConversationId]);
 
   /* ---------------------------------------------------------------- */
   /* Scrolling                                                         */
@@ -716,7 +719,8 @@ export function AiChat({
 
   const hasMessages = messages.length > 0;
   const lastMessage = messages[messages.length - 1];
-  const showSuggestions = suggestions.length > 0 && (!hasMessages || (!streaming && !lastMessage?.pending));
+  const showSuggestions =
+    suggestions.length > 0 && !loading && !streaming && !lastMessage?.pending && !limitReached;
   const activeMode = TUTOR_MODES.find((option) => option.id === mode) ?? TUTOR_MODES[0]!;
   const remaining = typeof status?.remaining === 'number' ? status.remaining : null;
 
@@ -876,21 +880,6 @@ export function AiChat({
                     {activeMode.hint}. Ask a follow-up at any time — the conversation keeps its context.
                   </p>
                 </div>
-                {showSuggestions ? (
-                  <div className="mt-1 grid w-full max-w-lg gap-2 sm:grid-cols-2">
-                    {suggestions.slice(0, 4).map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        type="button"
-                        disabled={streaming}
-                        onClick={() => void send(suggestion)}
-                        className="tile tile-interactive min-h-11 px-3 py-2.5 text-left text-xs font-medium leading-snug text-content-secondary"
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
               </div>
             ) : (
               <ol className="flex flex-col gap-5 sm:gap-6" aria-label="Conversation">
@@ -1004,6 +993,43 @@ export function AiChat({
           </div>
         ) : null}
 
+        {/*
+          Follow-up suggestions live in their own strip immediately above the
+          composer. They are a normal flex child, so they shrink the transcript
+          instead of overlapping it, and they wrap instead of being clipped.
+        */}
+        {showSuggestions ? (
+          <section
+            aria-label="Suggested follow-ups"
+            className="relative z-10 shrink-0 bg-surface-raised/85 px-2.5 pt-2 backdrop-blur-md sm:px-4"
+          >
+            <div className="mx-auto w-full max-w-3xl">
+              <div className="rounded-[1.1rem] border border-surface-border bg-surface-overlay/45 p-2">
+                <p className="mb-1.5 flex items-center gap-1.5 px-1 text-[0.625rem] font-bold uppercase tracking-[0.09em] text-content-muted">
+                  <IconSparkles width={11} height={11} className="text-accent" aria-hidden="true" />
+                  Suggested follow-ups
+                </p>
+                <div className="scroll-thin flex max-h-[30dvh] flex-col gap-1.5 overflow-y-auto pr-0.5 sm:max-h-none sm:flex-row sm:flex-wrap sm:overflow-visible">
+                  {suggestions.slice(0, 4).map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      disabled={streaming || limitReached}
+                      onClick={() => void send(suggestion)}
+                      className="flex min-h-10 w-full items-start gap-2 rounded-[0.75rem] border border-surface-border bg-surface-raised px-3 py-2 text-left text-xs font-medium leading-snug text-content-secondary transition-colors hover:border-accent/45 hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:max-w-[17rem]"
+                    >
+                      <span className="mt-0.5 shrink-0 text-accent" aria-hidden="true">
+                        <IconPlus width={11} height={11} />
+                      </span>
+                      <span className="min-w-0 break-words">{suggestion}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         {/* Composer */}
         <div className="shrink-0 border-t border-surface-border bg-surface-raised/85 px-2.5 py-2 backdrop-blur-md sm:px-4 sm:py-3">
           <div className="mx-auto w-full max-w-3xl">
@@ -1013,20 +1039,6 @@ export function AiChat({
                 <Link href="/pricing" className="btn-secondary btn-sm shrink-0">
                   See plans
                 </Link>
-              </div>
-            ) : hasMessages && showSuggestions ? (
-              <div className="no-scrollbar -mx-1 mb-2 flex snap-x gap-1.5 overflow-x-auto px-1 pb-1">
-                {suggestions.slice(0, 3).map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    disabled={streaming}
-                    onClick={() => void send(suggestion)}
-                    className="chip max-w-[15rem] shrink-0 snap-start !items-start whitespace-normal text-left text-xs leading-snug"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
               </div>
             ) : null}
 

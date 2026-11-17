@@ -38,10 +38,12 @@ import { cn, formatDuration } from '@/lib/format';
 import { clearAutosave, loadAutosave, saveAutosave, getPageSizePreference, setPageSizePreference } from '@/lib/local-store';
 import {
   DEFAULT_PAGE_SIZE,
+  fitPageSize,
   pageBounds,
   pageCount,
   pageOfQuestion,
   parsePageSize,
+  rangeLabel,
   statusOf,
   toggleSelection,
   type PageSize,
@@ -208,7 +210,10 @@ export function MockSession({
         entitlement: savedPlan.entitlement,
       });
       if (storedSize) setPageSize(storedSize);
-      else if (savedState?.pageSize) setPageSize(savedState.pageSize);
+      else {
+        const savedSize = parsePageSize(savedState?.pageSize);
+        if (savedSize) setPageSize(savedSize);
+      }
       if (savedState) {
         setAnswers(savedState.answers ?? {});
         setPage(savedState.page ?? 0);
@@ -340,6 +345,10 @@ export function MockSession({
   }, [questions, activeId, bounds.start, total]);
 
   const currentQuestion = questions[activeIndex] ?? null;
+  const indexById = useMemo(
+    () => new Map(questions.map((question, index) => [question.id, index])),
+    [questions],
+  );
 
   useEffect(() => {
     if (!session) return;
@@ -348,9 +357,15 @@ export function MockSession({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
-  // Keep a restored page inside range once the paper is known.
+  // Keep a restored page inside range once the paper is known, and fold a size
+  // the paper cannot fill into "All".
   useEffect(() => {
     if (!session) return;
+    const fitted = fitPageSize(pageSize, total);
+    if (fitted !== pageSize) {
+      setPageSize(fitted);
+      return;
+    }
     setPage((current) => pageBounds(current, total, pageSize).page);
     setActiveId((current) => current ?? session.questions[0]?.id ?? null);
   }, [session, total, pageSize]);
@@ -411,11 +426,14 @@ export function MockSession({
 
   const changePageSize = useCallback(
     (size: PageSize) => {
-      setPageSizePreference('mock', String(size));
-      setPageSize(size);
-      setPage(pageOfQuestion(activeIndex, total, size));
+      const next = fitPageSize(size, total);
+      setPageSizePreference('mock', String(next));
+      setPageSize(next);
+      setPage(pageOfQuestion(activeIndex, total, next));
+      const question = questions[activeIndex];
+      if (question) pendingScrollId.current = question.id;
     },
-    [activeIndex, total],
+    [activeIndex, total, questions],
   );
 
   useEffect(() => {
@@ -831,7 +849,7 @@ export function MockSession({
                 {session.exam.code}
               </span>
               <span className="truncate text-[0.8125rem] font-semibold">
-                Q{activeIndex + 1}
+                {visible.length > 1 ? `${bounds.start + 1}–${bounds.end}` : `Q${activeIndex + 1}`}
                 <span className="text-content-muted"> / {total}</span>
               </span>
             </div>
@@ -866,10 +884,6 @@ export function MockSession({
             <span className="badge shrink-0">Untimed</span>
           )}
 
-          <div className="hidden shrink-0 lg:block">
-            <PageSizePicker value={pageSize} total={total} onChange={changePageSize} />
-          </div>
-
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
@@ -891,10 +905,23 @@ export function MockSession({
         Exam conditions: nothing is graded until you submit. Your answers survive a reload.
       </p>
 
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-[1.1rem] border border-surface-border bg-surface-raised/70 px-2.5 py-2">
+        <div className="min-w-0">
+          <p className="text-[0.75rem] font-semibold text-content-primary">
+            Showing {visible.length} of {total}
+          </p>
+          <p className="caption truncate text-[0.6875rem]">{rangeLabel(bounds.start, bounds.end, total)}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="caption hidden shrink-0 sm:inline">Per page</span>
+          <PageSizePicker value={pageSize} total={total} onChange={changePageSize} />
+        </div>
+      </div>
+
       {/* Questions on this page */}
       <div className="flex flex-col gap-3.5">
         {visible.map((question) => {
-          const index = questions.findIndex((row) => row.id === question.id);
+          const index = indexById.get(question.id) ?? 0;
           const chosen = answers[question.id] ?? [];
           const isFlagged = flagged.has(question.id);
           return (
@@ -902,11 +929,13 @@ export function MockSession({
               key={question.id}
               question={question}
               label={`Q${index + 1}`}
+              of={total}
               mode="mock"
               selected={chosen}
               onToggle={(choice) => toggle(question, choice)}
               showShortcuts={visible.length === 1}
               active={visible.length > 1 && question.id === currentQuestion?.id}
+              compact={visible.length > 1}
               badges={
                 <>
                   {chosen.length > 0 ? <span className="badge badge-success">Answered</span> : null}

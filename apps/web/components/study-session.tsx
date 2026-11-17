@@ -37,10 +37,12 @@ import {
 import {
   DEFAULT_PAGE_SIZE,
   elapsedLabel,
+  fitPageSize,
   pageBounds,
   pageCount,
   pageOfQuestion,
   parsePageSize,
+  rangeLabel,
   statusOf,
   toggleSelection,
   type AnsweredResult,
@@ -127,6 +129,9 @@ export function StudySession({
   // A jump can target a card on another page, so the scroll runs after the new
   // page has rendered rather than inside the click handler.
   const pendingScrollId = useRef<string | null>(null);
+  // A version-1 snapshot stored a question index that we can only turn into a
+  // page after the paper has loaded.
+  const legacyIndex = useRef<number | null>(null);
 
   /* ---------------- load ---------------- */
 
@@ -246,7 +251,8 @@ export function StudySession({
     const saved = loadAutosave<PracticeSnapshot>(autosaveKey);
     if (saved && saved.answers) {
       setPage(typeof saved.page === 'number' ? saved.page : 0);
-      if (storedSize === null && saved.pageSize) setPageSize(saved.pageSize);
+      const savedSize = parsePageSize(saved.pageSize);
+      if (storedSize === null && savedSize) setPageSize(savedSize);
       setAnswers(saved.answers ?? {});
       setRevealed(saved.revealed ?? {});
       setFlagged(new Set(saved.flagged ?? []));
@@ -259,8 +265,8 @@ export function StudySession({
         const answered = new Set(legacy.answered ?? []);
         setRevealed(Object.fromEntries([...answered].map((id) => [id, true])));
         recorded.current = answered;
-        const index = Math.max(0, legacy.index ?? 0);
-        setPage(index);
+        // The old snapshot used one-per-page, so its index was the question.
+        legacyIndex.current = Math.max(0, legacy.index ?? 0);
         setRestored(answered.size > 0);
       }
     }
@@ -304,6 +310,10 @@ export function StudySession({
   }, [questions, activeId, bounds.start, total]);
 
   const currentQuestion = questions[activeIndex] ?? null;
+  const indexById = useMemo(
+    () => new Map(questions.map((question, index) => [question.id, index])),
+    [questions],
+  );
 
   useEffect(() => {
     const now = Date.now();
@@ -312,9 +322,24 @@ export function StudySession({
     }
   }, [visible]);
 
-  // Clamp a restored cursor once the real question count is known.
+  // Clamp a restored cursor once the real question count is known, and fold a
+  // stored size the paper cannot fill into "All".
   useEffect(() => {
     if (!data) return;
+    const fitted = fitPageSize(pageSize, total);
+    if (fitted !== pageSize) {
+      setPageSize(fitted);
+      return;
+    }
+    if (legacyIndex.current !== null) {
+      const index = Math.min(Math.max(0, legacyIndex.current), Math.max(0, total - 1));
+      legacyIndex.current = null;
+      const question = data.questions[index];
+      setPage(pageOfQuestion(index, total, fitted));
+      setActiveId(question?.id ?? null);
+      pendingScrollId.current = question?.id ?? null;
+      return;
+    }
     setPage((current) => pageBounds(current, total, pageSize).page);
     setActiveId((current) => current ?? data.questions[0]?.id ?? null);
   }, [data, total, pageSize]);
@@ -365,11 +390,14 @@ export function StudySession({
 
   const changePageSize = useCallback(
     (size: PageSize) => {
-      setPageSizePreference('practice', String(size));
-      setPageSize(size);
-      setPage(pageOfQuestion(activeIndex, total, size));
+      const next = fitPageSize(size, total);
+      setPageSizePreference('practice', String(next));
+      setPageSize(next);
+      setPage(pageOfQuestion(activeIndex, total, next));
+      const question = questions[activeIndex];
+      if (question) pendingScrollId.current = question.id;
     },
-    [activeIndex, total],
+    [activeIndex, total, questions],
   );
 
   const toggle = useCallback((question: Question, key: string) => {
@@ -626,7 +654,7 @@ export function StudySession({
                 {examKey}
               </span>
               <span className="truncate text-[0.8125rem] font-semibold">
-                Q{activeIndex + 1}
+                {visible.length > 1 ? `${bounds.start + 1}–${bounds.end}` : `Q${activeIndex + 1}`}
                 <span className="text-content-muted"> / {total}</span>
               </span>
               {restored ? (
@@ -651,10 +679,6 @@ export function StudySession({
           >
             <IconClock width={13} height={13} />
             {elapsedLabel(elapsedMs)}
-          </div>
-
-          <div className="hidden shrink-0 lg:block">
-            <PageSizePicker value={pageSize} total={total} onChange={changePageSize} />
           </div>
 
           <div className="flex shrink-0 items-center gap-0.5">
@@ -683,6 +707,19 @@ export function StudySession({
         </div>
       </header>
 
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[1.1rem] border border-surface-border bg-surface-raised/70 px-2.5 py-2">
+        <div className="min-w-0">
+          <p className="text-[0.75rem] font-semibold text-content-primary">
+            Showing {visible.length} of {total}
+          </p>
+          <p className="caption truncate text-[0.6875rem]">{rangeLabel(bounds.start, bounds.end, total)}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="caption hidden shrink-0 sm:inline">Per page</span>
+          <PageSizePicker value={pageSize} total={total} onChange={changePageSize} />
+        </div>
+      </div>
+
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         <div className="min-w-0 flex-1">
           {/* ---------- Questions on this page ---------- */}
@@ -692,7 +729,7 @@ export function StudySession({
             className={cn('flex flex-col gap-4', visible.length === 1 && 'touch-pan-y')}
           >
             {visible.map((question) => {
-              const index = questions.findIndex((item) => item.id === question.id);
+              const index = indexById.get(question.id) ?? 0;
               const chosen = answers[question.id] ?? [];
               const isRevealed = Boolean(revealed[question.id]);
               const key = question.answer ?? '';
@@ -707,6 +744,7 @@ export function StudySession({
                   question={question}
                   index={index}
                   total={total}
+                  compact={visible.length > 1}
                   providerId={providerId}
                   examKey={examKey}
                   selected={chosen}
@@ -745,6 +783,11 @@ export function StudySession({
           />
 
           <p className="caption mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center">
+            {visible.length > 1 ? (
+              <span className="w-full text-[0.6875rem] text-content-muted">
+                Shortcuts act on the outlined question.
+              </span>
+            ) : null}
             <span className="inline-flex items-center gap-1">
               <span className="kbd">←</span>
               <span className="kbd">→</span> move

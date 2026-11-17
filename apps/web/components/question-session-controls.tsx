@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/format';
 import type { QuestionStatus } from '@/lib/question-session';
-import { pageSizeChoices, rangeLabel, type PageSize } from '@/lib/question-session';
+import { pageSizeChoices, pageLinks, rangeLabel, type PageSize } from '@/lib/question-session';
 import { IconArrowLeft, IconArrowRight, IconCheck, IconFlag } from './icons';
 
 /* ------------------------------------------------------------------ */
@@ -41,11 +41,12 @@ export function PageSizePicker({
           <button
             key={text}
             type="button"
+            data-page-size={size}
             onClick={() => onChange(size)}
             aria-pressed={active}
             title={size === 'all' ? 'Show every question on one page' : `${size} per page`}
             className={cn(
-              'min-h-8 rounded-full px-2.5 text-[0.6875rem] font-bold transition-colors',
+              'min-h-8 shrink-0 rounded-full px-2.5 text-[0.6875rem] font-bold transition-colors sm:px-3',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
               active
                 ? 'bg-surface-raised text-content-primary shadow-xs'
@@ -56,6 +57,11 @@ export function PageSizePicker({
           </button>
         );
       })}
+      <span className="sr-only" aria-live="polite">
+        {value === 'all'
+          ? `Showing all ${total} questions on one page`
+          : `Showing ${Math.min(value, total)} questions per page`}
+      </span>
     </div>
   );
 }
@@ -96,43 +102,84 @@ export function QuestionPager({
     <nav
       aria-label="Question navigation"
       className={cn(
-        'flex items-center justify-between gap-2 rounded-[1.25rem] border border-surface-border bg-surface-raised/85 p-2 shadow-sm backdrop-blur-md',
+        'flex flex-col gap-2 rounded-[1.25rem] border border-surface-border bg-surface-raised/85 p-2 shadow-sm backdrop-blur-md',
         className,
       )}
     >
-      <button
-        type="button"
-        onClick={() => onPage(page - 1)}
-        disabled={atStart}
-        className={cn(button, 'shrink-0')}
-        aria-label="Previous questions"
-      >
-        <IconArrowLeft className="h-4 w-4" aria-hidden="true" />
-        <span className={cn(size === 'compact' && 'sr-only')}>Previous</span>
-      </button>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => onPage(page - 1)}
+          disabled={atStart}
+          className={cn(button, 'shrink-0')}
+          aria-label="Previous questions"
+        >
+          <IconArrowLeft className="h-4 w-4" aria-hidden="true" />
+          <span className={cn(size === 'compact' && 'sr-only')}>Previous</span>
+        </button>
 
-      <div className="min-w-0 text-center">
-        <p className="numeric truncate text-[0.75rem] font-semibold text-content-primary">
-          {rangeLabel(start, end, total)}
-        </p>
-        <p className="caption truncate text-[0.6875rem]">
-          {single ? 'All on one page' : `Page ${page + 1} of ${pages}`}
-        </p>
+        <div className="min-w-0 flex-1 text-center">
+          <p className="numeric truncate text-[0.75rem] font-semibold text-content-primary">
+            {rangeLabel(start, end, total)}
+          </p>
+          <p className="caption truncate text-[0.6875rem]">
+            {single ? 'All on one page' : `Page ${page + 1} of ${pages}`}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onPage(page + 1)}
+          disabled={atEnd}
+          className={cn(button, 'shrink-0')}
+          aria-label="Next questions"
+        >
+          <span className={cn(size === 'compact' && 'sr-only')}>Next</span>
+          <IconArrowRight className="h-4 w-4" aria-hidden="true" />
+        </button>
       </div>
 
-      <button
-        type="button"
-        onClick={() => onPage(page + 1)}
-        disabled={atEnd}
-        className={cn(button, 'shrink-0')}
-        aria-label="Next questions"
-      >
-        <span className={cn(size === 'compact' && 'sr-only')}>Next</span>
-        <IconArrowRight className="h-4 w-4" aria-hidden="true" />
-      </button>
+      {!single ? (
+        <div
+          className="no-scrollbar flex items-center justify-center gap-1 overflow-x-auto px-0.5"
+          role="group"
+          aria-label="Jump to a page"
+        >
+          {pageLinks(page, pages).map((entry, index) =>
+            entry === 'gap' ? (
+              <span
+                key={`gap-${index}`}
+                aria-hidden="true"
+                className="numeric px-1 text-[0.75rem] text-content-muted"
+              >
+                …
+              </span>
+            ) : (
+              <button
+                key={entry}
+                type="button"
+                onClick={() => onPage(entry)}
+                aria-current={entry === page ? 'page' : undefined}
+                aria-label={`Page ${entry + 1}`}
+                className={cn(
+                  'numeric grid h-8 min-w-8 shrink-0 place-items-center rounded-full px-2 text-[0.75rem] font-bold transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
+                  entry === page
+                    ? 'bg-accent text-[rgb(var(--accent-contrast))]'
+                    : 'border border-surface-border bg-surface-raised text-content-secondary hover:border-accent/50 hover:text-content-primary',
+                )}
+              >
+                {entry + 1}
+              </button>
+            ),
+          )}
+        </div>
+      ) : null}
     </nav>
   );
 }
+
+/** First, last and the pages around the cursor, with gaps for the rest. */
 
 /* ------------------------------------------------------------------ */
 /* Palette                                                             */

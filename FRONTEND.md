@@ -55,13 +55,14 @@ a learner does not have to relearn the interface between the two modes.
   picker, the pager and the palette. The palette counts answered / flagged /
   left and labels each cell for assistive tech.
 - **`lib/question-session.ts`** is pure and unit-tested
-  (`test/question-session.test.ts`): supported page sizes (`1`, `5`, `10`, `20`,
-  `all`), page bounds and clamping, jump-to-page mapping, selection rules,
-  status derivation and the elapsed clock. Nothing here touches the DOM.
-- **Paging.** The runner remembers the cursor, not a raw page index, so changing
-  the page size keeps the current question on screen. The palette jumps across
-  pages. With more than one question visible, the cursor's card is outlined and
-  brought into view.
+  (`test/question-session.test.ts`): supported page sizes (`5`, `10`, `20`, `50`,
+  `all`), page bounds and clamping, jump-to-page mapping, pager links, selection
+  rules, status derivation and the elapsed clock. Nothing here touches the DOM.
+- **Paging.** Five cards per page is the default. The pager offers only sizes the
+  session can fill (plus `All`), shows numbered page links, and the runner
+  remembers the cursor, not a raw page index, so changing the page size keeps the
+  current question on screen. The palette jumps across pages. With more than one
+  question visible, the cursor's card is outlined and brought into view.
 - **Keys.** `←`/`→` or `k`/`j` move the cursor, `1`–`9` pick an option, `F`
   flags, `G` opens the palette, and `Escape` closes overlays. Inputs are ignored
   while a text field has focus. The same handler is installed in both runners.
@@ -74,8 +75,10 @@ a learner does not have to relearn the interface between the two modes.
   longer `in_progress`, and computes the remaining clock from the server's
   `startedAt` + `timeLimitSeconds`. Submission is still the only grading step.
   The device cache is convenience state, never the grading authority.
-- **Page-size preference.** Stored per surface (`practice` / `mock`) so a
-  one-question drill does not force the simulator into the same layout.
+- **Page-size preference.** Stored per surface (`practice` / `mock`) and restored
+  before the first paint after mount, so returning to a session keeps the chosen
+  layout. A size the current paper cannot fill folds into `All` instead of
+  leaving no option selected.
 - **Mock conditions.** Paging and flags are presentation only. No answer key is
   sent to the browser, no per-question grading happens, and the submitted
   payload is unchanged. Review only becomes available after the attempt is
@@ -100,11 +103,16 @@ a learner does not have to relearn the interface between the two modes.
   reader scrolls up, and a "latest" jump.
 - **Composer and limits.** Auto-growing textarea, Enter to send, Shift+Enter for
   a new line, mode chips, suggested prompts and a clear daily-limit banner with
-  a link to plans. Quota and configuration errors surface as messages in the
-  thread rather than replacing the page.
+  a link to plans. Suggested follow-ups live in a dedicated strip immediately
+  above the composer, outside the transcript scroller: they wrap instead of
+  clipping, never overlap messages, and stay put while the transcript scrolls.
+  They are hidden while an answer streams. Quota and configuration errors surface
+  as messages in the thread rather than replacing the page.
 - **Docking.** `components/ai-dock.tsx` keeps the panel mounted while it is
   hidden, so closing the tutor does not cancel a streaming answer. It is a
-  full-height sheet on phones and a column beside the question from `lg` up.
+  full-height sheet on phones and a sticky column beside the question from `lg`
+  up; the desktop column is sized to the remaining viewport and scrolled into
+  view on open, so the suggestion strip and composer stay reachable.
 - **Workspace layout.** `/ask` pins the conversation to the viewport so the
   composer stays above the mobile bottom nav however long the transcript grows,
   and portals the panel to `<body>` so it cannot be painted under the footer.

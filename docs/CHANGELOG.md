@@ -8,15 +8,16 @@ All notable changes to ExamDump Pro.
 
 - **Rearchitected question sessions.** Practice and mock now share
   `components/question-stage.tsx` and a pager/palette from
-  `components/question-session-controls.tsx`. Learners choose 1, 5, 10, 20 or
-  all questions per page, jump from a palette that marks current, answered,
-  unanswered and flagged items, clear an answer, mark for review, and move with
-  `←`/`→`, `j`/`k`, `1`–`9`, `F` and `G`. Cursor, page size, answers and flags
-  are restored after a refresh; practice still grades through
-  `POST /api/analytics/practice`, and the mock still submits once, with no answer
-  key in the browser before submission. The score report gains filtered review
-  (all / incorrect / skipped / flagged) with the verified answer and explanation.
-  Mechanics live in `apps/web/lib/question-session.ts` and are unit tested.
+  `components/question-session-controls.tsx`. Learners see five complete cards by
+  default and can switch to 5, 10, 20, 50 or all questions per page, jump from a
+  numbered pager or a palette that marks current, answered, unanswered and
+  flagged items, clear an answer, mark for review, and move with `←`/`→`, `j`/`k`,
+  `1`–`9`, `F` and `G`. Cursor, page size, answers and flags are restored after a
+  refresh; practice still grades through `POST /api/analytics/practice`, and the
+  mock still submits once, with no answer key in the browser before submission.
+  The score report gains filtered review (all / incorrect / skipped / flagged)
+  with the verified answer and explanation. Mechanics live in
+  `apps/web/lib/question-session.ts` and are unit tested.
 - **Rebuilt AI tutor workspace.** `components/ai-chat.tsx` now has teaching
   modes (step-by-step, Socratic, plain English, real-world, quiz), saved
   conversation history with search, question-anchored threads that resume, a
@@ -140,6 +141,21 @@ All notable changes to ExamDump Pro.
 
 ### Fixed
 
+- **Question sessions opened one card at a time and the page-size control was
+  incomplete.** Practice and mock now default to five complete cards, offer 5,
+  10, 20, 50 and All, render exactly the chosen number, paginate with numbered
+  page links, and restore the choice per surface after navigation and refresh.
+  Sizes above the paper collapse into All; oversized stored values and the old
+  one-per-page snapshots are normalised. Cards gained a compact density when
+  several share a page, clearer selected-option indicators, `of N` numbering,
+  monospace fenced/inline code in stems and explanations, and an outlined cursor
+  card.
+- **AI follow-up suggestions were detached from the composer.** They now live in
+  their own strip directly above the composer, outside the transcript scroller.
+  Chips wrap instead of being clipped, disappear while a reply streams, and stay
+  put when the conversation scrolls. The docked tutor is sticky on desktop, sized
+  to the viewport and scrolled into view on open so the strip and composer are
+  both reachable.
 - **Pricing comparison widened the whole document on phones.** The table's
   `sr-only` `<caption>` is `position: absolute`; because the scroll wrapper was
   `position: static`, the caption resolved against the viewport, escaped the

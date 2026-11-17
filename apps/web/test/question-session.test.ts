@@ -3,9 +3,11 @@ import {
   DEFAULT_PAGE_SIZE,
   clampPage,
   elapsedLabel,
+  fitPageSize,
   pageBounds,
   pageCount,
   pageOfQuestion,
+  pageLinks,
   pageSizeChoices,
   parsePageSize,
   perPage,
@@ -16,20 +18,32 @@ import {
 } from '../lib/question-session';
 
 describe('page size', () => {
-  it('only accepts the supported sizes', () => {
+  it('defaults to five per page and only accepts the supported sizes', () => {
     expect(parsePageSize('all')).toBe('all');
     expect(parsePageSize('5')).toBe(5);
     expect(parsePageSize(20)).toBe(20);
+    expect(parsePageSize(50)).toBe(50);
     expect(parsePageSize('7')).toBeNull();
     expect(parsePageSize('nonsense')).toBeNull();
-    expect(DEFAULT_PAGE_SIZE).toBe(1);
+    // Version 1 stored one-per-page; it now folds into the new default.
+    expect(parsePageSize(1)).toBe(5);
+    expect(DEFAULT_PAGE_SIZE).toBe(5);
   });
 
   it('offers sizes that fit the session', () => {
-    expect(pageSizeChoices(40)).toEqual([1, 5, 10, 20, 'all']);
-    expect(pageSizeChoices(12)).toEqual([1, 5, 10, 'all']);
-    expect(pageSizeChoices(4)).toEqual([1, 'all']);
-    expect(pageSizeChoices(0)).toEqual([1, 'all']);
+    expect(pageSizeChoices(40)).toEqual([5, 10, 20, 'all']);
+    expect(pageSizeChoices(60)).toEqual([5, 10, 20, 50, 'all']);
+    expect(pageSizeChoices(12)).toEqual([5, 10, 'all']);
+    expect(pageSizeChoices(5)).toEqual([5, 'all']);
+    expect(pageSizeChoices(4)).toEqual(['all']);
+    expect(pageSizeChoices(0)).toEqual(['all']);
+  });
+
+  it('folds a stored size the paper cannot fill into all', () => {
+    expect(fitPageSize(50, 60)).toBe(50);
+    expect(fitPageSize(50, 12)).toBe('all');
+    expect(fitPageSize(5, 3)).toBe('all');
+    expect(fitPageSize('all', 60)).toBe('all');
   });
 
   it('treats "all" as one page and never divides by zero', () => {
@@ -65,6 +79,15 @@ describe('paging', () => {
     expect(rangeLabel(0, 5, 40)).toBe('Questions 1–5 of 40');
     expect(rangeLabel(35, 40, 40)).toBe('Questions 36–40 of 40');
     expect(rangeLabel(0, 0, 0)).toBe('No questions');
+  });
+
+  it('builds a compact set of page links', () => {
+    expect(pageLinks(0, 1)).toEqual([0]);
+    expect(pageLinks(0, 5)).toEqual([0, 1, 2, 3, 4]);
+    expect(pageLinks(5, 12)).toEqual([0, 'gap', 4, 5, 6, 'gap', 11]);
+    // First and last pages never hide the adjacent page.
+    expect(pageLinks(0, 12)).toEqual([0, 1, 'gap', 11]);
+    expect(pageLinks(11, 12)).toEqual([0, 'gap', 10, 11]);
   });
 });
 

@@ -24,6 +24,8 @@ export interface QuestionStageProps {
   question: Question;
   /** Short label such as "Q12". */
   label: string;
+  /** Session length, rendered as "of N" beside the label. */
+  of?: number;
   mode: 'practice' | 'mock';
   selected: string[];
   onToggle?: (key: string) => void;
@@ -41,6 +43,8 @@ export interface QuestionStageProps {
   showShortcuts?: boolean;
   /** Marks the question the keyboard cursor is on when several are visible. */
   active?: boolean;
+  /** Tighter spacing when several cards share one page. */
+  compact?: boolean;
   className?: string;
 }
 
@@ -55,6 +59,7 @@ export interface QuestionStageProps {
 export function QuestionStage({
   question,
   label,
+  of,
   mode,
   selected,
   onToggle,
@@ -66,6 +71,7 @@ export function QuestionStage({
   footer,
   showShortcuts = false,
   active = false,
+  compact = false,
   className,
 }: QuestionStageProps) {
   const [zoom, setZoom] = useState<string | null>(null);
@@ -102,6 +108,7 @@ export function QuestionStage({
   return (
     <article
       data-question-id={question.id}
+      data-question-type={question.type}
       className={cn(
         'relative scroll-mt-24 overflow-hidden rounded-[1.75rem] border bg-surface-raised shadow-sm transition-colors',
         active ? 'border-accent/60 ring-2 ring-accent/20' : 'border-surface-border',
@@ -109,14 +116,28 @@ export function QuestionStage({
       )}
       aria-labelledby={`q-${question.id}-label`}
     >
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-surface-border/70 px-4 py-2.5 sm:px-5">
+      <header
+        className={cn(
+          'flex flex-wrap items-center justify-between gap-2 border-b border-surface-border/70',
+          compact ? 'px-3.5 py-2' : 'px-4 py-2.5 sm:px-5',
+        )}
+      >
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <span
-            id={`q-${question.id}-label`}
-            className="numeric rounded-full bg-surface-inset px-2.5 py-1 text-[0.75rem] font-bold text-content-primary"
-          >
-            {label}
+          <span className="inline-flex min-w-0 items-baseline gap-1">
+            <span
+              id={`q-${question.id}-label`}
+              className={cn(
+                'numeric rounded-full bg-accent/[0.09] font-bold text-accent ring-1 ring-inset ring-accent/15',
+                compact ? 'px-2 py-0.5 text-[0.6875rem]' : 'px-2.5 py-1 text-[0.75rem]',
+              )}
+            >
+              {label}
+            </span>
+            {of ? (
+              <span className="numeric text-[0.6875rem] font-semibold text-content-muted">of {of}</span>
+            ) : null}
           </span>
+          {active ? <span className="badge badge-accent">Active</span> : null}
           {question.type === 'multiple' ? (
             <span className="badge badge-accent">Select all that apply</span>
           ) : null}
@@ -129,8 +150,13 @@ export function QuestionStage({
         {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
       </header>
 
-      <div className="px-4 py-4 sm:px-5 sm:py-5">
-        <div className="max-w-[70ch] text-[1rem] leading-[1.7] text-content-primary sm:text-[1.0625rem]">
+      <div className={cn(compact ? 'px-3.5 py-3.5' : 'px-4 py-4 sm:px-5 sm:py-5')}>
+        <div
+          className={cn(
+            'max-w-[70ch] text-content-primary',
+            compact ? 'text-[0.9375rem] leading-[1.65]' : 'text-[1rem] leading-[1.7] sm:text-[1.0625rem]',
+          )}
+        >
           <QuestionContent items={question.stem} onImage={setZoom} />
         </div>
 
@@ -146,7 +172,7 @@ export function QuestionStage({
               </p>
             ) : null}
             <ul
-              className="mt-3 flex flex-col gap-2 sm:gap-2.5"
+              className={cn('mt-3 flex flex-col', compact ? 'gap-1.5' : 'gap-2 sm:gap-2.5')}
               role={multi ? 'group' : 'radiogroup'}
               aria-label="Answer choices"
             >
@@ -161,8 +187,11 @@ export function QuestionStage({
                       onClick={() => (interactive ? onToggle?.(choice.key) : undefined)}
                       disabled={!interactive}
                       aria-pressed={isSelected}
+                      data-choice={choice.key}
+                      data-state={isAnswer ? 'correct' : isWrongPick ? 'incorrect' : isSelected ? 'selected' : 'idle'}
                       className={cn(
-                        'group flex min-h-14 w-full items-start gap-3 rounded-[1rem] border px-3 py-3 text-left transition-colors duration-150 sm:px-4',
+                        'group flex w-full items-start gap-3 rounded-[1rem] border text-left transition-colors duration-150',
+                        compact ? 'min-h-12 px-3 py-2.5' : 'min-h-14 px-3 py-3 sm:px-4',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
                         interactive ? 'cursor-pointer' : 'cursor-default',
                         optionClass(choice.key),
@@ -183,7 +212,14 @@ export function QuestionStage({
                           choice.key
                         )}
                       </span>
-                      <span className="min-w-0 flex-1 text-[0.9375rem] leading-relaxed text-content-primary">
+                      <span
+                        className={cn(
+                          'min-w-0 flex-1 text-content-primary',
+                          compact
+                            ? 'text-[0.9375rem] leading-relaxed'
+                            : 'text-[0.9375rem] leading-relaxed sm:text-base',
+                        )}
+                      >
                         <QuestionContent
                           items={stripOptionLabelFromContent(choice.content, choice.key)}
                           onImage={setZoom}
@@ -192,6 +228,14 @@ export function QuestionStage({
                       {showShortcuts && interactive && i < 9 ? (
                         <span className="ml-auto hidden shrink-0 pt-1 sm:block" aria-hidden="true">
                           <span className="kbd">{i + 1}</span>
+                        </span>
+                      ) : null}
+                      {!revealed && isSelected ? (
+                        <span
+                          aria-hidden="true"
+                          className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent text-[rgb(var(--accent-contrast))]"
+                        >
+                          <IconCheck width={12} height={12} />
                         </span>
                       ) : null}
                     </button>

@@ -6,7 +6,7 @@
  * decides how that state maps to pages and statuses.
  */
 
-export const PAGE_SIZES = [1, 5, 10, 20, 'all'] as const;
+export const PAGE_SIZES = [5, 10, 20, 50, 'all'] as const;
 export type PageSize = (typeof PAGE_SIZES)[number];
 
 /** One graded practice answer, queued for `POST /api/analytics/practice`. */
@@ -17,25 +17,43 @@ export interface AnsweredResult {
   timeSpentMs: number;
 }
 
-export const DEFAULT_PAGE_SIZE: PageSize = 1;
+/**
+ * Five complete cards per page is the default: enough to work in context
+ * without turning the session into an endless scroll. One-per-page remains
+ * unnecessary now that the palette and pager both jump by question.
+ */
+export const DEFAULT_PAGE_SIZE: PageSize = 5;
 
 /** Sanitise a value restored from storage or a query string. */
 export function parsePageSize(value: unknown): PageSize | null {
   if (value === 'all') return 'all';
   const numeric = typeof value === 'string' ? Number(value) : value;
   if (typeof numeric !== 'number' || !Number.isFinite(numeric)) return null;
+  // Version 1 defaulted to one-per-page; treat it as the new default rather
+  // than leaving a restored session stuck in the old layout.
+  if (numeric === 1) return DEFAULT_PAGE_SIZE;
   const match = PAGE_SIZES.find((size) => size !== 'all' && size === numeric);
   return match ?? null;
 }
 
 /**
- * Page sizes that make sense for a session. Offering "20" on a five-question
- * sampler is noise, so options larger than the session collapse into "All".
+ * Page sizes that make sense for a session. A size larger than the paper is
+ * noise, so those collapse into "All"; the smallest size is only offered when
+ * the session can actually fill it.
  */
 export function pageSizeChoices(total: number): PageSize[] {
-  const safeTotal = Math.max(0, total);
-  const sizes = PAGE_SIZES.filter((size) => size === 'all' || size === 1 || size < safeTotal);
-  return sizes.length > 0 ? sizes : ['all'];
+  const safeTotal = Math.max(0, Math.floor(total));
+  if (safeTotal <= 0) return ['all'];
+  const sizes = PAGE_SIZES.filter(
+    (size): size is Exclude<PageSize, 'all'> => size !== 'all' && size <= safeTotal,
+  );
+  return sizes.length > 0 ? [...sizes, 'all'] : ['all'];
+}
+
+/** The nearest size the session can honour, used to validate stored state. */
+export function fitPageSize(size: PageSize, total: number): PageSize {
+  const choices = pageSizeChoices(total);
+  return choices.includes(size) ? size : 'all';
 }
 
 /** Questions rendered on one page. "All" is a single page. */
@@ -139,4 +157,26 @@ export function elapsedLabel(ms: number): string {
 export function rangeLabel(start: number, end: number, total: number): string {
   if (total <= 0) return 'No questions';
   return `Questions ${start + 1}–${Math.max(start + 1, end)} of ${total}`;
+}
+
+/**
+ * Page buttons for the pager: first, last and the pages around the cursor,
+ * with `gap` entries where the numbering skips.
+ */
+export function pageLinks(page: number, pages: number, window = 1): Array<number | 'gap'> {
+  if (pages <= 0) return [0];
+  if (pages <= 7) return Array.from({ length: pages }, (_, index) => index);
+  const wanted = new Set<number>([0, pages - 1]);
+  for (let offset = -window; offset <= window; offset += 1) {
+    const candidate = page + offset;
+    if (candidate > 0 && candidate < pages - 1) wanted.add(candidate);
+  }
+  const sorted = [...wanted].sort((a, b) => a - b);
+  const out: Array<number | 'gap'> = [];
+  for (let index = 0; index < sorted.length; index += 1) {
+    const value = sorted[index]!;
+    if (index > 0 && value - sorted[index - 1]! > 1) out.push('gap');
+    out.push(value);
+  }
+  return out;
 }

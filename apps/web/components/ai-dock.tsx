@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { cn } from '@/lib/format';
 
 /**
@@ -8,7 +8,9 @@ import { cn } from '@/lib/format';
  * sheet on a phone, without navigating away from the session.
  *
  * The panel stays mounted once opened (`open` only hides it) so a streaming
- * answer is not cut off when the learner glances back at the question.
+ * answer is not cut off when the learner glances back at the question. On a
+ * desktop it sticks below the session bar and is sized to the remaining
+ * viewport, so the composer and follow-up strip are always reachable.
  */
 export function AiDock({
   open,
@@ -23,6 +25,22 @@ export function AiDock({
   children: ReactNode;
   label?: string;
 }) {
+  const ref = useRef<HTMLElement>(null);
+
+  // Open the dock in position: a tall question can start it below the fold, so
+  // bring the composer into view once rather than making the learner scroll.
+  useEffect(() => {
+    if (!open) return;
+    if (!window.matchMedia('(min-width: 1024px)').matches) return;
+    const element = ref.current;
+    if (!element) return;
+    const frame = window.requestAnimationFrame(() => {
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      element.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
+
   return (
     <>
       <div
@@ -34,11 +52,12 @@ export function AiDock({
         aria-hidden="true"
       />
       <aside
+        ref={ref}
         aria-label={label}
         aria-hidden={!open}
         className={cn(
           'fixed inset-x-0 bottom-0 top-[calc(var(--header-h)+env(safe-area-inset-top,0px))] z-[100] flex flex-col overflow-hidden border-t border-surface-border bg-surface-raised shadow-2xl',
-          'lg:static lg:inset-auto lg:z-auto lg:h-[calc(100dvh-7.5rem)] lg:w-[25rem] lg:shrink-0 lg:rounded-[1.6rem] lg:border lg:shadow-sm',
+          'lg:sticky lg:inset-auto lg:top-[calc(var(--header-h)+4.5rem)] lg:z-auto lg:h-[calc(100dvh-var(--header-h)-5.25rem)] lg:w-[25rem] lg:shrink-0 lg:self-start lg:rounded-[1.6rem] lg:border lg:shadow-sm',
           !open && 'hidden',
         )}
       >

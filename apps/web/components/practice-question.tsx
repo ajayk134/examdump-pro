@@ -39,6 +39,8 @@ interface Props {
   showShortcuts?: boolean;
   /** Keyboard cursor when more than one question is on screen. */
   active?: boolean;
+  /** Tighter spacing when several cards share a page. */
+  compact?: boolean;
   onToggle: (key: string) => void;
   onCheck: () => void;
   onClear: () => void;
@@ -72,6 +74,7 @@ export function PracticeQuestion({
   aiRemaining,
   showShortcuts,
   active,
+  compact,
   onToggle,
   onCheck,
   onClear,
@@ -308,6 +311,7 @@ export function PracticeQuestion({
     <QuestionStage
       question={question}
       label={`Q${index + 1}`}
+      of={total}
       mode="practice"
       selected={selected}
       onToggle={onToggle}
@@ -316,6 +320,7 @@ export function PracticeQuestion({
       disabled={revealed}
       showShortcuts={showShortcuts}
       active={active}
+      compact={compact}
       badges={
         <>
           {revealed ? (

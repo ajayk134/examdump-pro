@@ -1,12 +1,32 @@
 import type { ContentItem } from '@/lib/types';
 import { cn } from '@/lib/format';
 
+/** Inline `code` spans inside a block of question text. */
+function renderInline(value: string, key: string) {
+  const parts = value.split(/(`[^`\n]+`)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      return (
+        <code
+          key={`${key}-c${index}`}
+          className="rounded bg-surface-sunken px-1 py-0.5 font-mono text-[0.92em] text-content-primary"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    return part ? <span key={`${key}-t${index}`}>{part}</span> : null;
+  });
+}
+
 /**
  * Renders a question stem or answer option.
  *
- * Text keeps its original line breaks, and images can be made expandable by
- * passing `onImage` — the exam interface uses that to open a full-size viewer
- * without losing the answers already chosen.
+ * Text keeps its original line breaks. Fenced blocks and inline backticks are
+ * shown as monospace code so CLI output and configuration snippets stay
+ * readable in a question; no HTML from the dataset is ever interpreted.
+ * Images can be made expandable by passing `onImage` — the exam interface uses
+ * that to open a full-size viewer without losing the answers already chosen.
  */
 export function QuestionContent({
   items,
@@ -22,9 +42,29 @@ export function QuestionContent({
     <div className={className}>
       {items.map((item, index) => {
         if (item.type === 'text') {
+          const value = item.value ?? '';
+          // Even indexes are prose, odd indexes sit between ``` fences.
+          const segments = value.split('```');
           return (
-            <span key={index} className="whitespace-pre-wrap">
-              {item.value}
+            <span key={index}>
+              {segments.map((segment, segmentIndex) => {
+                if (segmentIndex % 2 === 1) {
+                  const code = segment.replace(/^[a-zA-Z0-9+#-]*\n/, '');
+                  return (
+                    <code
+                      key={`code-${segmentIndex}`}
+                      className="my-2 block max-w-full overflow-x-auto rounded-xl border border-surface-border bg-surface-sunken/70 px-3 py-2 font-mono text-[0.8125rem] leading-relaxed text-content-primary whitespace-pre"
+                    >
+                      {code}
+                    </code>
+                  );
+                }
+                return (
+                  <span key={`text-${segmentIndex}`} className="whitespace-pre-wrap">
+                    {renderInline(segment, `${index}-${segmentIndex}`)}
+                  </span>
+                );
+              })}
             </span>
           );
         }
@@ -40,7 +80,7 @@ export function QuestionContent({
               loading="lazy"
               referrerPolicy="no-referrer"
               className={cn(
-                'my-3 max-h-80 w-auto max-w-full rounded-xl border border-surface-border bg-white object-contain p-1',
+                'my-3 max-h-72 w-auto max-w-full rounded-xl border border-surface-border bg-white object-contain p-1 sm:max-h-80',
                 onImage && 'transition-transform duration-200 group-hover:scale-[1.01]',
               )}
             />
