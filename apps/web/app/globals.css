@@ -10,44 +10,49 @@
    ========================================================================== */
 
 :root {
-  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+  /* Type — a geometric display face over a rounded text face. */
+  --font-display: var(--font-grotesk), 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --font-sans: var(--font-manrope), 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains), 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
 
-  /* Surfaces: a soft, cool paper stack. */
-  --surface-base: 249 251 254;
+  /* Surfaces — a warm lilac paper stack rather than cool slate. */
+  --surface-base: 250 249 255;
   --surface-raised: 255 255 255;
-  --surface-overlay: 243 247 252;
-  --surface-sunken: 234 241 249;
-  --surface-inset: 229 238 248;
-  --surface-border: 214 226 239;
-  --surface-border-strong: 190 208 227;
+  --surface-overlay: 245 242 254;
+  --surface-sunken: 238 233 252;
+  --surface-inset: 231 224 250;
+  --surface-border: 226 220 245;
+  --surface-border-strong: 202 192 236;
 
-  /* Content */
-  --content-primary: 12 27 46;
-  --content-secondary: 58 81 108;
-  --content-muted: 118 140 165;
+  /* Content — deep indigo ink. */
+  --content-primary: 24 12 53;
+  --content-secondary: 76 63 110;
+  --content-muted: 128 117 156;
 
-  /* Brand accents */
-  --accent: 37 122 235;
+  /* Signature palette: electric violet, hot magenta, bright cyan. */
+  --accent: 109 59 245;
   --accent-contrast: 255 255 255;
-  --accent-soft: 231 242 254;
+  --accent-soft: 238 232 255;
+  --accent-2: 227 48 140;
+  --accent-3: 34 211 238;
 
   /* Semantic */
-  --success: 16 152 106;
-  --success-soft: 224 247 239;
-  --warning: 146 90 10;
-  --warning-soft: 253 243 220;
-  --danger: 205 51 74;
-  --danger-soft: 253 232 236;
+  --success: 13 148 105;
+  --success-soft: 219 248 237;
+  --warning: 176 104 8;
+  --warning-soft: 253 242 216;
+  --danger: 225 29 72;
+  --danger-soft: 254 231 238;
 
-  /* Elevation — tuned so light theme reads crisp, not muddy. */
-  --shadow-xs: 0 1px 2px rgba(16, 40, 68, 0.05);
-  --shadow-sm: 0 2px 6px -1px rgba(16, 40, 68, 0.07), 0 1px 2px rgba(16, 40, 68, 0.04);
-  --shadow-md: 0 10px 24px -12px rgba(16, 40, 68, 0.22), 0 2px 6px -2px rgba(16, 40, 68, 0.06);
-  --shadow-lg: 0 24px 48px -20px rgba(13, 45, 84, 0.28), 0 4px 12px -4px rgba(16, 40, 68, 0.08);
-  --shadow-glow: 0 18px 40px -18px rgba(37, 122, 235, 0.45);
+  /* Elevation — tinted with the brand hue so shadows read warm, not grey. */
+  --shadow-xs: 0 1px 2px rgba(38, 18, 90, 0.05);
+  --shadow-sm: 0 2px 8px -2px rgba(38, 18, 90, 0.09), 0 1px 2px rgba(38, 18, 90, 0.04);
+  --shadow-md: 0 16px 32px -16px rgba(38, 18, 90, 0.26), 0 4px 10px -4px rgba(38, 18, 90, 0.08);
+  --shadow-lg: 0 36px 64px -28px rgba(38, 18, 90, 0.34), 0 8px 20px -8px rgba(38, 18, 90, 0.12);
+  --shadow-glow: 0 22px 48px -18px rgba(109, 59, 245, 0.55);
+  --shadow-glow-sm: 0 12px 26px -12px rgba(109, 59, 245, 0.5);
 
-  --ring-accent: 37 122 235;
+  --ring-accent: 109 59 245;
 
   /* Safe areas for notched devices */
   --safe-b: env(safe-area-inset-bottom, 0px);
@@ -65,36 +70,39 @@
 
 
 .dark {
-  --surface-base: 7 13 24;
-  --surface-raised: 14 24 41;
-  --surface-overlay: 20 33 54;
-  --surface-sunken: 10 18 32;
-  --surface-inset: 24 39 62;
-  --surface-border: 35 54 82;
-  --surface-border-strong: 54 78 112;
+  --surface-base: 8 5 20;
+  --surface-raised: 20 12 43;
+  --surface-overlay: 28 18 57;
+  --surface-sunken: 13 8 30;
+  --surface-inset: 37 24 70;
+  --surface-border: 46 33 84;
+  --surface-border-strong: 70 52 116;
 
-  --content-primary: 236 244 253;
-  --content-secondary: 172 194 219;
-  --content-muted: 122 147 177;
+  --content-primary: 244 241 255;
+  --content-secondary: 194 182 231;
+  --content-muted: 142 128 180;
 
-  --accent: 76 158 250;
-  --accent-contrast: 6 13 24;
-  --accent-soft: 22 47 80;
+  --accent: 155 124 255;
+  --accent-contrast: 10 6 22;
+  --accent-soft: 35 22 68;
+  --accent-2: 255 111 181;
+  --accent-3: 94 234 255;
 
-  --success: 52 199 143;
-  --success-soft: 15 51 42;
-  --warning: 240 178 74;
-  --warning-soft: 55 42 16;
-  --danger: 248 113 133;
-  --danger-soft: 58 22 31;
+  --success: 52 211 153;
+  --success-soft: 12 46 38;
+  --warning: 251 191 75;
+  --warning-soft: 58 42 12;
+  --danger: 251 113 133;
+  --danger-soft: 62 20 34;
 
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-sm: 0 2px 8px -2px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 12px 28px -14px rgba(0, 0, 0, 0.7), 0 2px 8px -4px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 28px 56px -24px rgba(0, 0, 0, 0.8), 0 6px 16px -8px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 20px 44px -20px rgba(76, 158, 250, 0.5);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 2px 10px -2px rgba(0, 0, 0, 0.6);
+  --shadow-md: 0 16px 34px -16px rgba(0, 0, 0, 0.75), 0 3px 10px -4px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 34px 64px -26px rgba(0, 0, 0, 0.85), 0 8px 20px -8px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 24px 54px -20px rgba(155, 124, 255, 0.6);
+  --shadow-glow-sm: 0 14px 30px -14px rgba(155, 124, 255, 0.55);
 
-  --ring-accent: 76 158 250;
+  --ring-accent: 155 124 255;
 }
 
 /* --------------------------------------------------------------------------
@@ -128,7 +136,8 @@ body {
   overflow-x: hidden;
 }
 
-/* Ambient aurora wash. Fixed + pointer-events-none so it never affects scroll. */
+/* Ambient aurora mesh. Fixed + pointer-events-none so it never affects scroll.
+   Violet, magenta and cyan blooms give every page the same signature glow. */
 body::before {
   content: '';
   position: fixed;
@@ -136,20 +145,20 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(60rem 40rem at 12% -16%, rgba(59, 152, 246, 0.16), transparent 60%),
-    radial-gradient(48rem 32rem at 100% -10%, rgba(129, 140, 248, 0.14), transparent 58%),
-    radial-gradient(44rem 28rem at 50% 112%, rgba(14, 165, 233, 0.09), transparent 62%);
+    radial-gradient(52rem 38rem at 8% -12%, rgba(109, 59, 245, 0.20), transparent 62%),
+    radial-gradient(46rem 32rem at 102% -6%, rgba(227, 48, 140, 0.16), transparent 60%),
+    radial-gradient(40rem 30rem at 68% 108%, rgba(34, 211, 238, 0.12), transparent 62%);
 }
 
 .dark body::before {
   background:
-    radial-gradient(60rem 40rem at 12% -16%, rgba(56, 189, 248, 0.14), transparent 60%),
-    radial-gradient(48rem 32rem at 100% -10%, rgba(99, 102, 241, 0.16), transparent 58%),
-    radial-gradient(44rem 28rem at 50% 112%, rgba(14, 165, 233, 0.1), transparent 62%);
+    radial-gradient(52rem 38rem at 8% -12%, rgba(155, 124, 255, 0.24), transparent 62%),
+    radial-gradient(46rem 32rem at 102% -6%, rgba(255, 111, 181, 0.16), transparent 58%),
+    radial-gradient(44rem 30rem at 62% 110%, rgba(94, 234, 255, 0.12), transparent 62%);
 }
 
 ::selection {
-  background: rgb(var(--accent) / 0.24);
+  background: rgb(var(--accent) / 0.28);
 }
 
 /* --------------------------------------------------------------------------
@@ -158,19 +167,23 @@ body::before {
 
 @layer components {
   .display-1 {
-    @apply text-[2.15rem] font-extrabold leading-[1.08] tracking-[-0.03em] sm:text-5xl lg:text-[3.4rem];
+    font-family: var(--font-display);
+    @apply text-[2.6rem] font-bold leading-[0.98] tracking-[-0.035em] sm:text-6xl lg:text-[4.25rem];
   }
 
   .display-2 {
-    @apply text-[1.7rem] font-bold leading-[1.14] tracking-[-0.025em] sm:text-4xl;
+    font-family: var(--font-display);
+    @apply text-[1.9rem] font-bold leading-[1.05] tracking-[-0.03em] sm:text-[2.75rem];
   }
 
   .heading-1 {
-    @apply text-xl font-semibold leading-tight tracking-[-0.02em] sm:text-2xl;
+    font-family: var(--font-display);
+    @apply text-xl font-semibold leading-tight tracking-[-0.025em] sm:text-2xl;
   }
 
   .heading-2 {
-    @apply text-base font-semibold leading-snug tracking-[-0.01em] sm:text-lg;
+    font-family: var(--font-display);
+    @apply text-base font-semibold leading-snug tracking-[-0.015em] sm:text-lg;
   }
 
   .heading-3 {
@@ -178,7 +191,7 @@ body::before {
   }
 
   .body-text {
-    @apply text-sm leading-relaxed text-content-secondary;
+    @apply text-[0.9375rem] leading-relaxed text-content-secondary;
   }
 
   .caption {
@@ -186,7 +199,7 @@ body::before {
   }
 
   .eyebrow {
-    @apply text-[0.75rem] font-bold uppercase tracking-[0.12em] text-content-muted;
+    @apply text-[0.72rem] font-bold uppercase tracking-[0.16em] text-accent;
   }
 
   .numeric {
@@ -201,38 +214,38 @@ body::before {
 
 @layer components {
   .surface {
-    @apply rounded-2xl border bg-surface-raised;
+    @apply rounded-[1.35rem] border bg-surface-raised;
     border-color: rgb(var(--surface-border));
     box-shadow: var(--shadow-xs);
   }
 
   .surface-lg {
-    @apply rounded-3xl border bg-surface-raised;
+    @apply rounded-[1.85rem] border bg-surface-raised;
     border-color: rgb(var(--surface-border));
     box-shadow: var(--shadow-sm);
   }
 
   .surface-flat {
-    @apply rounded-2xl border;
+    @apply rounded-[1.35rem] border;
     background-color: rgb(var(--surface-overlay));
     border-color: rgb(var(--surface-border));
   }
 
   .surface-inset {
-    @apply rounded-xl;
+    @apply rounded-[1.1rem];
     background-color: rgb(var(--surface-sunken));
   }
 
   .surface-interactive {
-    @apply surface transition-all duration-200;
+    @apply surface transition-all duration-200 ease-smooth;
     will-change: transform;
   }
 
   @media (hover: hover) {
     .surface-interactive:hover {
-      border-color: rgb(var(--accent) / 0.45);
-      box-shadow: var(--shadow-md);
-      transform: translateY(-2px);
+      border-color: rgb(var(--accent) / 0.5);
+      box-shadow: var(--shadow-md), 0 0 0 1px rgb(var(--accent) / 0.14);
+      transform: translateY(-3px);
     }
   }
 
@@ -256,8 +269,8 @@ body::before {
 
   .glass {
     background-color: rgb(var(--surface-raised) / 0.72);
-    backdrop-filter: blur(16px) saturate(150%);
-    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
   }
 }
 
@@ -276,24 +289,25 @@ body::before {
 
 @layer components {
   .panel {
-    @apply rounded-2xl border bg-surface-raised;
+    @apply rounded-[1.5rem] border bg-surface-raised;
     border-color: rgb(var(--surface-border));
     box-shadow: var(--shadow-xs);
   }
 
   .panel-lg {
-    @apply panel rounded-3xl;
+    @apply rounded-[2rem] border bg-surface-raised;
+    border-color: rgb(var(--surface-border));
     box-shadow: var(--shadow-sm);
   }
 
   /* A panel that reads as part of the page rather than a floating card. */
   .panel-sunken {
-    @apply rounded-2xl border-0;
+    @apply rounded-[1.5rem] border-0;
     background-color: rgb(var(--surface-sunken));
   }
 
   .tile {
-    @apply rounded-xl border-0 transition-colors;
+    @apply rounded-[1.1rem] border-0 transition-colors;
     background-color: rgb(var(--surface-overlay));
   }
 
@@ -320,11 +334,11 @@ body::before {
   /* Faint technical grid — used behind hero/feature art only. */
   .grid-fade {
     background-image:
-      linear-gradient(to right, rgb(var(--surface-border) / 0.5) 1px, transparent 1px),
-      linear-gradient(to bottom, rgb(var(--surface-border) / 0.5) 1px, transparent 1px);
-    background-size: 44px 44px;
-    mask-image: radial-gradient(80% 60% at 50% 0%, black, transparent 78%);
-    -webkit-mask-image: radial-gradient(80% 60% at 50% 0%, black, transparent 78%);
+      linear-gradient(to right, rgb(var(--content-primary) / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(var(--content-primary) / 0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(75% 60% at 50% 0%, black, transparent 80%);
+    -webkit-mask-image: radial-gradient(75% 60% at 50% 0%, black, transparent 80%);
   }
 
   /* Horizontal snap rail for discovery carousels. */
@@ -341,6 +355,74 @@ body::before {
     scroll-snap-align: start;
     flex: 0 0 auto;
   }
+
+  /* ---------------------------------------------------------------- */
+  /* Signature language                                               */
+  /* ---------------------------------------------------------------- */
+
+  /* The brand gradient, as text. Used on hero words and the wordmark. */
+  .gradient-text {
+    background-image: linear-gradient(100deg, rgb(var(--accent)) 0%, rgb(var(--accent-2)) 52%, rgb(var(--accent-3)) 100%);
+    background-size: 180% 180%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* A 1px gradient hairline border that follows any radius. */
+  .ring-gradient {
+    position: relative;
+  }
+
+  .ring-gradient::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgb(var(--accent) / 0.85), rgb(var(--accent-2) / 0.55) 55%, rgb(var(--accent-3) / 0.5));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Blurred glow blob used behind hero / feature art. */
+  .orb {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(60px);
+    pointer-events: none;
+  }
+
+  /* Full-bleed gradient mesh panel. */
+  .mesh {
+    background-image:
+      radial-gradient(40% 60% at 12% 8%, rgb(var(--accent) / 0.5), transparent 60%),
+      radial-gradient(38% 55% at 92% 12%, rgb(var(--accent-2) / 0.44), transparent 62%),
+      radial-gradient(46% 60% at 62% 100%, rgb(var(--accent-3) / 0.36), transparent 64%);
+  }
+
+  /* Scroll reveal — set by a tiny IntersectionObserver, degrades to visible. */
+  .reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .reveal-in {
+    opacity: 1;
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -349,9 +431,9 @@ body::before {
 
 @layer components {
   .btn {
-    @apply inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 text-sm font-semibold transition-all duration-150;
-    min-height: 2.5rem;
-    padding-block: 0.5rem;
+    @apply inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-full px-5 text-sm font-semibold transition-all duration-200 ease-smooth;
+    min-height: 2.625rem;
+    padding-block: 0.55rem;
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-45;
     --tw-ring-color: rgb(var(--accent) / 0.55);
     --tw-ring-offset-color: rgb(var(--surface-base));
@@ -365,8 +447,17 @@ body::before {
 
   .btn-primary {
     @apply btn font-semibold text-white;
-    background-image: linear-gradient(135deg, #257aeb 0%, #3b98f6 55%, #38bdf8 100%);
+    background-image: linear-gradient(120deg, #7c4dff 0%, #6d3bf5 42%, #e5308c 100%);
+    background-size: 160% 160%;
     box-shadow: var(--shadow-glow);
+  }
+
+  @media (hover: hover) {
+    .btn-primary:hover {
+      background-position: 100% 0;
+      transform: translateY(-1px);
+      box-shadow: 0 26px 52px -18px rgba(109, 59, 245, 0.62);
+    }
   }
 
   .btn-primary:active {
@@ -376,14 +467,16 @@ body::before {
 
   .btn-secondary {
     @apply btn text-content-primary;
-    background-color: rgb(var(--surface-overlay));
+    background-color: rgb(var(--surface-raised));
     border: 1px solid rgb(var(--surface-border-strong));
+    box-shadow: var(--shadow-xs);
   }
 
   @media (hover: hover) {
     .btn-secondary:hover {
-      background-color: rgb(var(--surface-inset));
-      border-color: rgb(var(--accent) / 0.4);
+      background-color: rgb(var(--surface-overlay));
+      border-color: rgb(var(--accent) / 0.5);
+      transform: translateY(-1px);
     }
   }
 
@@ -401,12 +494,13 @@ body::before {
   .btn-danger {
     @apply btn text-white;
     background-color: rgb(var(--danger));
+    box-shadow: 0 16px 34px -16px rgb(var(--danger) / 0.6);
   }
 
   .btn-sm {
-    @apply rounded-lg px-3 text-[0.8125rem];
+    @apply rounded-full px-3.5 text-[0.8125rem];
     min-height: 2.125rem;
-    padding-block: 0.3rem;
+    padding-block: 0.32rem;
   }
 
   @media (pointer: coarse) {
@@ -416,8 +510,8 @@ body::before {
   }
 
   .btn-lg {
-    @apply rounded-2xl px-6 text-base;
-    min-height: 3rem;
+    @apply rounded-full px-7 text-base;
+    min-height: 3.25rem;
   }
 
   /* Three-dot "working" indicator used while a streamed answer is pending. */
@@ -466,7 +560,7 @@ body::before {
   }
 
   .icon-btn {
-    @apply inline-grid place-items-center rounded-xl text-content-secondary transition-colors;
+    @apply inline-grid place-items-center rounded-full text-content-secondary transition-colors;
     width: 2.5rem;
     height: 2.5rem;
   }
@@ -486,7 +580,7 @@ body::before {
   }
 
   .input {
-    @apply w-full rounded-xl border bg-surface-base px-3.5 text-sm text-content-primary transition-colors placeholder:text-content-muted;
+    @apply w-full rounded-[1rem] border bg-surface-base px-4 text-sm text-content-primary transition-colors placeholder:text-content-muted;
     border-color: rgb(var(--surface-border-strong));
     /* 16px font avoids iOS Safari's focus zoom. */
     font-size: 1rem;
@@ -504,7 +598,7 @@ body::before {
   .input:focus {
     outline: none;
     border-color: rgb(var(--accent));
-    box-shadow: 0 0 0 3px rgb(var(--accent) / 0.18);
+    box-shadow: 0 0 0 3px rgb(var(--accent) / 0.2);
   }
 
   .label {
@@ -570,7 +664,7 @@ body::before {
   }
 
   .link {
-    @apply font-medium text-brand-600 underline-offset-4 hover:underline dark:text-brand-300;
+    @apply font-semibold text-accent underline-offset-4 hover:underline;
   }
 
   /*
@@ -809,6 +903,47 @@ body::before {
 .stagger > *:nth-child(4) { animation-delay: 120ms; }
 .stagger > *:nth-child(5) { animation-delay: 160ms; }
 .stagger > *:nth-child(6) { animation-delay: 200ms; }
+
+/* --------------------------------------------------------------------------
+   Ambient motion
+   -------------------------------------------------------------------------- */
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes gradient-pan {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.95; }
+}
+
+.animate-float { animation: float 7s ease-in-out infinite; }
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-pan 9s ease infinite;
+}
+.animate-marquee { animation: marquee 36s linear infinite; }
+.animate-glow { animation: glow-pulse 6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float,
+  .animate-gradient,
+  .animate-marquee,
+  .animate-glow {
+    animation: none;
+  }
+}
 
 /* --------------------------------------------------------------------------
    Accessibility

@@ -12,7 +12,6 @@ import {
   EmptyState,
   EmptyIcon,
   ErrorState,
-  PageHeader,
   SegmentedSort,
   Skeleton,
 } from '@/components/ui';
@@ -38,15 +37,6 @@ const SORTS: Array<{ id: SortKey; label: string }> = [
 ];
 
 const PAGE_SIZE = 24;
-
-/** Stable hue per provider so directory tiles are recognisable at a glance. */
-function providerHue(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i += 1) {
-    hash = (hash * 31 + id.charCodeAt(i)) % 360;
-  }
-  return hash;
-}
 
 export default function ExamsPage() {
   const { user } = useAuth();
@@ -163,17 +153,24 @@ export default function ExamsPage() {
 
   return (
     <div className="flex flex-col gap-5 sm:gap-6">
-      <PageHeader
-        eyebrow="Catalogue"
-        title="Find your certification"
-        description="Search every provider, filter by exam body, and pick up exactly where you left off."
-        actions={
-          <Link href="/bookmarks" className="btn-secondary btn-sm">
+      <section className="relative isolate overflow-hidden rounded-[2rem] border border-surface-border bg-surface-raised p-5 shadow-sm sm:p-7">
+        <div aria-hidden="true" className="grid-fade pointer-events-none absolute inset-x-0 -top-12 h-72" />
+        <div aria-hidden="true" className="orb -left-10 -top-16 h-56 w-56 bg-brand-500/20" />
+        <div aria-hidden="true" className="orb -right-16 top-4 h-56 w-56 bg-accent-2/15" />
+        <div className="relative flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <p className="eyebrow mb-2">Catalogue</p>
+            <h1 className="display-1 text-balance">Find your certification</h1>
+            <p className="body-text mt-3 max-w-2xl text-base">
+              Search every provider, filter by exam body, and pick up exactly where you left off.
+            </p>
+          </div>
+          <Link href="/bookmarks" className="btn-secondary btn-sm shrink-0">
             <IconBookmark className="h-4 w-4" />
             Saved
           </Link>
-        }
-      />
+        </div>
+      </section>
 
       {/* Search — sticky on mobile so it stays reachable while scrolling */}
       <div className="sticky top-14 z-30 -mx-3.5 border-b border-surface-border/60 bg-surface-base/90 px-3.5 py-2.5 backdrop-blur-lg sm:top-16 sm:mx-0 sm:rounded-2xl sm:border sm:border-surface-border sm:px-3 lg:static lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
@@ -373,7 +370,7 @@ export default function ExamsPage() {
                 <span
                   aria-hidden="true"
                   className="h-9 w-1.5 shrink-0 rounded-full"
-                  style={{ background: `hsl(${providerHue(p.providerId)} 82% 58%)` }}
+                  style={{ background: 'linear-gradient(180deg, rgb(var(--accent)), rgb(var(--accent-2)))' }}
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[0.8125rem] font-semibold">{p.title}</span>

@@ -21,11 +21,13 @@ export default function ErrorBoundary({
   }, [error]);
 
   return (
-    <div className="relative isolate mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center py-16 text-center sm:py-24">
-      <div aria-hidden="true" className="grid-fade pointer-events-none absolute inset-x-0 top-0 h-48 opacity-50" />
+    <div className="relative isolate mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center overflow-hidden py-16 text-center sm:py-24">
+      <span aria-hidden="true" className="grid-fade pointer-events-none absolute inset-x-0 top-0 h-56 opacity-60" />
+      <span aria-hidden="true" className="orb -left-10 top-4 h-44 w-44 bg-negative/15" />
+      <span aria-hidden="true" className="orb -right-10 top-16 h-40 w-40 bg-brand-500/15" />
 
       <div className="relative flex flex-col items-center gap-5">
-        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-negative/10 text-negative">
+        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-negative/10 text-negative ring-1 ring-inset ring-negative/20">
           <IconAlertCircle width={26} height={26} />
         </span>
 

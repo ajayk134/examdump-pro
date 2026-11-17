@@ -6,6 +6,26 @@ All notable changes to ExamDump Pro.
 
 ### Changed
 
+- **Frontend visual identity replaced — "Nova".** The interface no longer shares
+  the previous "Aurora" look. The identity is now a deep indigo ink neutral, an
+  electric-violet primary with magenta and cyan gradient partners, a geometric
+  display face (Space Grotesk) over a rounded text face (Manrope), generous radii,
+  pill controls, and a soft brand mesh behind the page. Every surface was
+  reworked to the new language while keeping its behaviour: landing (hero plus
+  live catalogue/pricing previews), discovery and provider pages (mesh heroes,
+  and brand-gradient card hairlines replacing the old per-provider rainbow hues,
+  which fought the palette), a purpose-built exam detail page, pricing
+  (ring-gradient plan cards, compare table, FAQ), the practice and mock
+  interfaces (a floating glass progress bar with a completion ring; submit
+  confirmation via the shared dialog), the workspace dashboard,
+  history/leaderboard/bookmarks/notes/referrals/support/profile, the AI tutor
+  surface, a dense admin console with a mobile section strip, a split auth shell,
+  and the legal/error/404 states. Fonts are self-hosted by `next/font`, so there
+  is no runtime font request. Two decorative glows and the admin mobile section
+  strip were bounded so no route can scroll horizontally at 360 px. No API
+  contract, entitlement, payment/UPI or auth guard changed, and no dependency was
+  added.
+
 - **Frontend redesign — the Aurora design system applied per surface.** Every
   route was rebuilt so it has a layout that fits its job instead of one repeated
   card grid, while sharing one token set. The system gained explicit layout

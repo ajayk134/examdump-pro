@@ -1,3 +1,5 @@
+import { IconCheck } from '@/components/icons';
+
 export const metadata = { title: 'Privacy policy' };
 
 const SECTIONS = [
@@ -16,69 +18,99 @@ const STORED = [
 
 export default function PrivacyPage() {
   return (
-    <div className="mx-auto w-full max-w-5xl py-2 sm:py-6">
-      <header className="border-b border-surface-border pb-5">
+    <div className="mx-auto w-full max-w-6xl py-2 sm:py-6">
+      <header className="relative isolate overflow-hidden rounded-[2rem] border border-surface-border p-6 sm:p-9">
+        <span aria-hidden="true" className="mesh absolute inset-0 -z-10 opacity-[0.13]" />
+        <span aria-hidden="true" className="grid-fade absolute inset-0 -z-10 opacity-40" />
+        <span aria-hidden="true" className="orb -right-10 -top-16 h-40 w-40 bg-aqua-400/20" />
         <p className="eyebrow mb-2">Legal</p>
         <h1 className="display-2 text-balance">Privacy policy</h1>
-        <p className="caption mt-2">Last updated: {new Date().getFullYear()}</p>
+        <p className="caption mt-3">Last updated: {new Date().getFullYear()}</p>
       </header>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-12">
+      <div className="mt-8 grid gap-8 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-12">
         <nav aria-label="On this page" className="panel p-4 lg:sticky lg:top-24 lg:self-start lg:p-5">
           <p className="eyebrow mb-3">On this page</p>
-          <ul className="flex flex-col gap-1.5">
-            {SECTIONS.map((section) => (
+          <ol className="flex flex-col gap-0.5">
+            {SECTIONS.map((section, index) => (
               <li key={section.id}>
                 <a
                   href={`#${section.id}`}
-                  className="flex min-h-11 items-center rounded-lg px-2 text-sm font-medium text-brand-600 underline-offset-4 hover:bg-surface-overlay hover:underline dark:text-brand-300"
+                  className="group flex min-h-11 items-center gap-2.5 rounded-xl px-2.5 text-sm font-medium text-content-secondary transition-colors hover:bg-surface-overlay hover:text-content-primary"
                 >
+                  <span className="numeric text-[0.6875rem] font-bold text-accent/70 group-hover:text-accent">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
                   {section.title}
                 </a>
               </li>
             ))}
-          </ul>
+          </ol>
         </nav>
 
-        <article className="max-w-[70ch]">
+        <article className="min-w-0 max-w-[70ch]">
           <p className="body-text text-pretty">
             We collect the minimum data needed to run your account and improve your study experience.
           </p>
 
-          <section id="what-we-store" className="mt-8 scroll-mt-24">
-            <h2 className="heading-1">What we store</h2>
-            <ul className="mt-3 flex flex-col gap-2.5">
-              {STORED.map((item) => (
-                <li key={item} className="flex items-start gap-2.5 text-sm leading-relaxed text-content-secondary">
-                  <span aria-hidden="true" className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <div className="mt-8 flex flex-col">
+            <section id="what-we-store" className="scroll-mt-24 border-t border-surface-border pt-7 first:border-t-0 first:pt-0">
+              <div className="flex items-baseline gap-3">
+                <span aria-hidden="true" className="numeric text-xs font-bold text-accent/70">
+                  01
+                </span>
+                <h2 className="heading-1">What we store</h2>
+              </div>
+              <ul className="mt-3 flex flex-col gap-2.5">
+                {STORED.map((item) => (
+                  <li key={item} className="tile flex items-start gap-3 px-3.5 py-3 text-sm leading-relaxed text-content-secondary">
+                    <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-positive/[0.12] text-positive">
+                      <IconCheck width={13} height={13} />
+                    </span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
 
-          <section id="what-we-never-store" className="mt-8 scroll-mt-24">
-            <h2 className="heading-1">What we never store</h2>
-            <p className="body-text mt-3 text-pretty">
-              Exam questions are served from a private GitHub dataset at request time and are never copied into our
-              application database.
-            </p>
-          </section>
+            <section id="what-we-never-store" className="mt-7 scroll-mt-24 border-t border-surface-border pt-7">
+              <div className="flex items-baseline gap-3">
+                <span aria-hidden="true" className="numeric text-xs font-bold text-accent/70">
+                  02
+                </span>
+                <h2 className="heading-1">What we never store</h2>
+              </div>
+              <p className="body-text mt-3 text-pretty">
+                Exam questions are served from a private GitHub dataset at request time and are never copied into our
+                application database.
+              </p>
+            </section>
 
-          <section id="your-rights" className="mt-8 scroll-mt-24">
-            <h2 className="heading-1">Your rights</h2>
-            <p className="body-text mt-3 text-pretty">
-              You can export or delete your data at any time from Settings → Data &amp; account.
-            </p>
-          </section>
+            <section id="your-rights" className="mt-7 scroll-mt-24 border-t border-surface-border pt-7">
+              <div className="flex items-baseline gap-3">
+                <span aria-hidden="true" className="numeric text-xs font-bold text-accent/70">
+                  03
+                </span>
+                <h2 className="heading-1">Your rights</h2>
+              </div>
+              <p className="body-text mt-3 text-pretty">
+                You can export or delete your data at any time from Settings → Data &amp; account.
+              </p>
+            </section>
 
-          <section id="third-parties" className="mt-8 scroll-mt-24">
-            <h2 className="heading-1">Third parties</h2>
-            <p className="body-text mt-3 text-pretty">
-              We use MongoDB Atlas for application data, GitHub for the question dataset, and an optional AI provider
-              for explanations. Secrets are managed with Doppler and never committed to source control.
-            </p>
-          </section>
+            <section id="third-parties" className="mt-7 scroll-mt-24 border-t border-surface-border pt-7">
+              <div className="flex items-baseline gap-3">
+                <span aria-hidden="true" className="numeric text-xs font-bold text-accent/70">
+                  04
+                </span>
+                <h2 className="heading-1">Third parties</h2>
+              </div>
+              <p className="body-text mt-3 text-pretty">
+                We use MongoDB Atlas for application data, GitHub for the question dataset, and an optional AI provider
+                for explanations. Secrets are managed with Doppler and never committed to source control.
+              </p>
+            </section>
+          </div>
         </article>
       </div>
     </div>

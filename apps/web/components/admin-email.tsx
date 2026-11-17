@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { del, get, patch, post } from '@/lib/api';
-import { Alert, Badge, Drawer, EmptyIcon, EmptyState, Spinner, StatStrip, TableScroll, Tabs } from '@/components/ui';
+import { Alert, Badge, Dialog, Drawer, EmptyIcon, EmptyState, Spinner, StatStrip, TableScroll, Tabs } from '@/components/ui';
 import { Toolbar } from '@/components/admin-ops';
 import { useToast } from '@/components/providers';
 import { formatNumber } from '@/lib/format';
@@ -478,6 +478,7 @@ function CampaignsView() {
   const [audience, setAudience] = useState<number | null>(null);
   const [preview, setPreview] = useState<{ subject: string; html: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState<Campaign | null>(null);
 
   const debouncedSearch = useDebounced(search);
   const pageSize = 10;
@@ -768,7 +769,7 @@ function CampaignsView() {
                   <button
                     type="button"
                     className="btn-ghost btn-sm text-negative"
-                    onClick={() => cancel(campaign.id)}
+                    onClick={() => setConfirmCancel(campaign)}
                   >
                     Cancel
                   </button>
@@ -780,6 +781,32 @@ function CampaignsView() {
       )}
 
       <Pagination page={page} total={total} pageSize={pageSize} onChange={setPage} />
+
+      <Dialog
+        open={Boolean(confirmCancel)}
+        onClose={() => setConfirmCancel(null)}
+        title="Cancel this campaign?"
+        description={
+          confirmCancel ? `“${confirmCancel.name}” will stop sending to the remaining audience.` : undefined
+        }
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setConfirmCancel(null)}>
+              Keep sending
+            </button>
+            <button
+              type="button"
+              className="btn-danger"
+              onClick={() => {
+                if (confirmCancel) void cancel(confirmCancel.id);
+                setConfirmCancel(null);
+              }}
+            >
+              Cancel campaign
+            </button>
+          </>
+        }
+      />
 
       <Drawer open={Boolean(preview)} onClose={() => setPreview(null)} title="Email preview">
         {preview ? (
@@ -825,6 +852,7 @@ function TemplatesView() {
   const [draft, setDraft] = useState<typeof BLANK_TEMPLATE | null>(null);
   const [preview, setPreview] = useState<{ subject: string; html: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<Template | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -870,6 +898,12 @@ function TemplatesView() {
     } catch (err) {
       toast(`Preview failed: ${(err as Error).message}`, 'error');
     }
+  }
+
+  function removeTemplate(key: string) {
+    void del(`/admin-ops/email/templates/${key}`)
+      .then(load)
+      .catch(() => toast('Built-in templates cannot be deleted', 'error'));
   }
 
   return (
@@ -994,11 +1028,7 @@ function TemplatesView() {
                   <button
                     type="button"
                     className="btn-ghost btn-sm text-negative"
-                    onClick={() =>
-                      void del(`/admin-ops/email/templates/${template.key}`)
-                        .then(load)
-                        .catch(() => toast('Built-in templates cannot be deleted', 'error'))
-                    }
+                    onClick={() => setConfirmDelete(template)}
                   >
                     Delete
                   </button>
@@ -1008,6 +1038,32 @@ function TemplatesView() {
           ))}
         </div>
       )}
+
+      <Dialog
+        open={Boolean(confirmDelete)}
+        onClose={() => setConfirmDelete(null)}
+        title="Delete this template override?"
+        description={
+          confirmDelete ? `“${confirmDelete.key}” will revert to the built-in template.` : undefined
+        }
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setConfirmDelete(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-danger"
+              onClick={() => {
+                if (confirmDelete) removeTemplate(confirmDelete.key);
+                setConfirmDelete(null);
+              }}
+            >
+              Delete
+            </button>
+          </>
+        }
+      />
 
       <Drawer open={Boolean(preview)} onClose={() => setPreview(null)} title="Template preview">
         {preview ? (
@@ -1219,6 +1275,7 @@ function SuppressionView() {
   const [reason, setReason] = useState<'manual' | 'complaint' | 'hard_bounce'>('manual');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [confirmRemove, setConfirmRemove] = useState<Suppression | null>(null);
 
   const debouncedSearch = useDebounced(search);
   const pageSize = 20;
@@ -1342,11 +1399,7 @@ function SuppressionView() {
                     <button
                       type="button"
                       className="btn-secondary btn-sm"
-                      onClick={() =>
-                        void del(`/admin-ops/email/suppressions/${encodeURIComponent(row.email)}`)
-                          .then(() => load())
-                          .catch((err) => toast(`Failed: ${(err as Error).message}`, 'error'))
-                      }
+                      onClick={() => setConfirmRemove(row)}
                     >
                       Remove
                     </button>
@@ -1357,6 +1410,34 @@ function SuppressionView() {
           </table>
         </TableScroll>
       )}
+
+      <Dialog
+        open={Boolean(confirmRemove)}
+        onClose={() => setConfirmRemove(null)}
+        title="Remove this suppression?"
+        description={confirmRemove ? `${confirmRemove.email} will become eligible for marketing mail again.` : undefined}
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setConfirmRemove(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-danger"
+              onClick={() => {
+                if (confirmRemove) {
+                  void del(`/admin-ops/email/suppressions/${encodeURIComponent(confirmRemove.email)}`)
+                    .then(() => load())
+                    .catch((err) => toast(`Failed: ${(err as Error).message}`, 'error'));
+                }
+                setConfirmRemove(null);
+              }}
+            >
+              Remove
+            </button>
+          </>
+        }
+      />
 
       <Pagination page={page} total={total} pageSize={pageSize} onChange={setPage} />
     </div>

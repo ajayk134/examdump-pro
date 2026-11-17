@@ -1,9 +1,35 @@
 import type { Metadata, Viewport } from 'next';
+import { Space_Grotesk, Manrope, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { AppProviders } from '@/components/providers';
 import { Navbar } from '@/components/navbar';
 import { Footer } from '@/components/footer';
 import { AnnouncementBanner } from '@/components/announcement-banner';
+
+/**
+ * The identity's type system: a geometric display face (Space Grotesk) over a
+ * rounded text face (Manrope), with JetBrains Mono for code and keycaps. All
+ * three are open-source (OFL) and self-hosted by `next/font` at build time, so
+ * there is no runtime request and no layout shift.
+ */
+const grotesk = Space_Grotesk({
+  subsets: ['latin'],
+  weight: ['500', '600', '700'],
+  variable: '--font-grotesk',
+  display: 'swap',
+});
+const manrope = Manrope({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+  variable: '--font-manrope',
+  display: 'swap',
+});
+const jetbrains = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-jetbrains',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: {
@@ -25,8 +51,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f7fbff' },
-    { media: '(prefers-color-scheme: dark)', color: '#060c18' },
+    { media: '(prefers-color-scheme: light)', color: '#faf9ff' },
+    { media: '(prefers-color-scheme: dark)', color: '#080514' },
   ],
 };
 
@@ -34,7 +60,11 @@ const themeScript = `(function(){try{var t=localStorage.getItem('examdump-theme'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${grotesk.variable} ${manrope.variable} ${jetbrains.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
@@ -42,7 +72,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AppProviders>
           <a
             href="#main"
-            className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-lg focus:bg-brand-500 focus:px-4 focus:py-2 focus:text-white"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-full focus:bg-accent focus:px-4 focus:py-2 focus:text-white"
           >
             Skip to content
           </a>

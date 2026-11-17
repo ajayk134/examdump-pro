@@ -42,7 +42,7 @@ export default function BookmarksPage() {
   if (!user) return <EmptyState title="Sign in to view bookmarks" action={<Link href="/login" className="btn-primary">Sign in</Link>} />;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 sm:gap-6">
       <PageHeader
         eyebrow="Saved"
         title="Bookmarks"
@@ -74,12 +74,12 @@ export default function BookmarksPage() {
           {items.map((bookmark) => (
             <li
               key={bookmark.id}
-              className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+              className="panel flex flex-col gap-3 p-4 transition-colors sm:flex-row sm:items-center sm:justify-between sm:hover:border-accent/40"
             >
               <div className="flex min-w-0 items-start gap-3">
                 <span
                   aria-hidden="true"
-                  className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-caution/[0.12] text-caution"
+                  className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-[0.9rem] bg-caution/[0.12] text-caution"
                 >
                   <IconBookmark width={16} height={16} />
                 </span>

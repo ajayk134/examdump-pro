@@ -21,15 +21,6 @@ const SORTS: Array<{ id: 'popular' | 'title' | 'questions'; label: string }> = [
   { id: 'questions', label: 'Most questions' },
 ];
 
-/** Stable hue per provider so the header accent matches its cards. */
-function providerHue(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i += 1) {
-    hash = (hash * 31 + id.charCodeAt(i)) % 360;
-  }
-  return hash;
-}
-
 export default function ProviderPage() {
   const params = useParams<{ providerId: string }>();
   const providerId = decodeURIComponent(params.providerId);
@@ -77,10 +68,7 @@ export default function ProviderPage() {
     bookmarked: bookmarks.includes(examId(exam.providerId, exam.key)),
   });
 
-  const hue = providerHue(providerId);
-
-  return (
-    <PageShell className="flex flex-col gap-4 sm:gap-5">
+  return (    <PageShell className="flex flex-col gap-4 sm:gap-5">
       <Link
         href="/exams"
         className="inline-flex w-fit items-center gap-1.5 text-[0.8125rem] font-medium text-content-muted transition-colors hover:text-content-primary"
@@ -106,34 +94,42 @@ export default function ProviderPage() {
         </>
       ) : (
         <>
-          <header className="panel-lg relative overflow-hidden p-5 sm:p-6">
-            <span
+          <header className="relative isolate overflow-hidden rounded-[2rem] border border-surface-border bg-surface-raised p-5 shadow-sm sm:p-7">
+            <div
               aria-hidden="true"
-              className="absolute inset-y-0 left-0 w-1.5"
-              style={{ background: `linear-gradient(180deg, hsl(${hue} 82% 58%), hsl(${(hue + 40) % 360} 86% 62%))` }}
+              className="pointer-events-none absolute inset-0 opacity-[0.15]"
+              style={{
+                background:
+                  'radial-gradient(42rem 22rem at 0% 0%, rgb(var(--accent) / 0.5), transparent 62%), radial-gradient(34rem 20rem at 100% 0%, rgb(var(--accent-2) / 0.45), transparent 60%)',
+              }}
             />
-            <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-0 h-1"
+              style={{ background: 'linear-gradient(90deg, rgb(var(--accent)), rgb(var(--accent-2)))' }}
+            />
+            <div className="relative flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
               <div className="min-w-0">
-                <p className="inline-flex items-center gap-2 text-[0.6875rem] font-bold uppercase tracking-[0.12em] text-content-muted">
+                <p className="inline-flex items-center gap-2 text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-content-muted">
                   <span
                     aria-hidden="true"
                     className="h-2 w-2 rounded-full"
-                    style={{ background: `hsl(${hue} 82% 58%)` }}
+                    style={{ background: 'rgb(var(--accent))' }}
                   />
                   Certification provider
                 </p>
-                <h1 className="display-2 mt-2 text-balance">{data.provider.title}</h1>
-                <p className="body-text mt-2 max-w-xl">
+                <h1 className="display-1 mt-3 text-balance">{data.provider.title}</h1>
+                <p className="body-text mt-3 max-w-xl text-base">
                   Browse every exam from this provider and open one to start practising or sit a mock test.
                 </p>
               </div>
 
-              <dl className="flex shrink-0 gap-7">
-                <div>
+              <dl className="flex shrink-0 gap-3">
+                <div className="rounded-[1.1rem] border border-surface-border bg-surface-raised/70 px-4 py-3 backdrop-blur">
                   <dt className="metric-label">Exams</dt>
                   <dd className="metric-value mt-1">{data.exams.length.toLocaleString()}</dd>
                 </div>
-                <div>
+                <div className="rounded-[1.1rem] border border-surface-border bg-surface-raised/70 px-4 py-3 backdrop-blur">
                   <dt className="metric-label">Questions</dt>
                   <dd className="metric-value mt-1">{data.provider.totalQuestions.toLocaleString()}</dd>
                 </div>

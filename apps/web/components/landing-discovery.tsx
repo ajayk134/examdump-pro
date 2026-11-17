@@ -13,7 +13,9 @@ function providerHue(id: string): number {
   for (let i = 0; i < id.length; i += 1) {
     hash = (hash * 31 + id.charCodeAt(i)) % 360;
   }
-  return hash;
+  // Keep the hue inside the brand family (indigo → violet → magenta) so a
+  // provider colour never fights the identity's palette.
+  return 245 + (hash % 110);
 }
 
 /**
@@ -58,7 +60,7 @@ export function LandingDiscovery() {
         <div className="snap-rail no-scrollbar -mx-1 px-1">
           {providers === null
             ? Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="skeleton h-[4.25rem] w-40 shrink-0 rounded-2xl" />
+                <div key={i} className="skeleton h-[4.25rem] w-40 shrink-0 rounded-[1.25rem]" />
               ))
             : providers.slice(0, 14).map((p) => {
                 const hue = providerHue(p.providerId);
@@ -66,7 +68,7 @@ export function LandingDiscovery() {
                   <Link
                     key={p.providerId}
                     href={`/exams/${encodeURIComponent(p.providerId)}`}
-                    className="group flex w-40 shrink-0 flex-col justify-between rounded-2xl border border-surface-border bg-surface-raised p-3 transition-colors hover:border-accent/40 hover:bg-surface-overlay"
+                    className="group flex w-40 shrink-0 flex-col justify-between rounded-[1.25rem] border border-surface-border bg-surface-raised p-3 shadow-xs transition-all duration-300 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md"
                   >
                     <span
                       aria-hidden="true"
@@ -94,14 +96,14 @@ export function LandingDiscovery() {
         </div>
         <ul className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
           {exams === null
-            ? Array.from({ length: 6 }).map((_, i) => <li key={i} className="skeleton h-[4.5rem] rounded-2xl" />)
+            ? Array.from({ length: 6 }).map((_, i) => <li key={i} className="skeleton h-[4.5rem] rounded-[1.25rem]" />)
             : exams.map((exam) => {
                 const hue = providerHue(exam.providerId);
                 return (
                   <li key={`${exam.providerId}:${exam.key}`}>
                     <Link
                       href={`/exams/${encodeURIComponent(exam.providerId)}/${encodeURIComponent(exam.key)}`}
-                      className="group relative flex h-full items-center gap-3 overflow-hidden rounded-2xl border border-surface-border bg-surface-raised p-3.5 transition-colors hover:border-accent/40 hover:bg-surface-overlay"
+                      className="group relative flex h-full items-center gap-3 overflow-hidden rounded-[1.25rem] border border-surface-border bg-surface-raised p-3.5 shadow-xs transition-all duration-300 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md"
                     >
                       <span
                         aria-hidden="true"
@@ -123,7 +125,7 @@ export function LandingDiscovery() {
                 );
               })}
           {exams && exams.length === 0 ? (
-            <li className="col-span-full flex items-center gap-3 rounded-2xl border border-dashed border-surface-border-strong p-4 text-sm text-content-muted">
+            <li className="col-span-full flex items-center gap-3 rounded-[1.25rem] border border-dashed border-surface-border-strong p-4 text-sm text-content-muted">
               <IconSearch className="h-5 w-5 shrink-0" />
               The catalogue is syncing. Browse all exams to see what is available.
               <Link href="/exams" className="ml-auto inline-flex shrink-0 items-center gap-1 font-semibold text-accent">

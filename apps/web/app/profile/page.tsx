@@ -7,8 +7,8 @@ import { useAuth, useTheme, useToast } from '@/components/providers';
 import { apiBase, del, get, patch, post } from '@/lib/api';
 import type { Entitlements, Invoice, Payment, Plan, Subscription, User } from '@/lib/types';
 import { Alert, Avatar, PremiumBadge, Spinner, Tabs } from '@/components/ui';
-import { IconMoon, IconSettings, IconSun } from '@/components/icons';
-import { formatDate, formatDateTime, formatMoneyMinor } from '@/lib/format';
+import { IconAlertCircle, IconMoon, IconSettings, IconShield, IconStar, IconSun, IconUser } from '@/components/icons';
+import { cn, formatDate, formatDateTime, formatMoneyMinor } from '@/lib/format';
 
 type Tab = 'profile' | 'billing' | 'preferences' | 'security' | 'data';
 
@@ -21,6 +21,15 @@ interface SessionRow {
   lastUsedAt: string;
   expiresAt: string;
 }
+
+/** The settings sections, shared by the desktop sub-nav and the mobile tab bar. */
+const SECTIONS: Array<{ id: Tab; label: string; icon: typeof IconSun }> = [
+  { id: 'profile', label: 'Profile', icon: IconUser },
+  { id: 'billing', label: 'Billing', icon: IconStar },
+  { id: 'preferences', label: 'Preferences', icon: IconSettings },
+  { id: 'security', label: 'Security', icon: IconShield },
+  { id: 'data', label: 'Data & account', icon: IconAlertCircle },
+];
 
 /** Titled region inside a settings panel. Keeps every section self-describing. */
 function SectionHeading({ id, title, description }: { id?: string; title: string; description?: string }) {
@@ -44,10 +53,11 @@ export default function ProfilePage() {
   if (!user) return <Alert tone="warning">Please <Link href="/login" className="link">sign in</Link> to manage your profile.</Alert>;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
-      <header className="panel-lg flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+      <header className="panel-lg relative isolate flex flex-col gap-4 overflow-hidden p-5 sm:flex-row sm:items-center">
+        <div aria-hidden="true" className="orb -z-10 -right-16 -top-20 h-44 w-44 bg-accent/20" />
         <Avatar name={user.name} src={user.avatarUrl} size={64} />
-        <div className="min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1">
           <h1 className="heading-1 truncate">{user.name}</h1>
           <p className="caption mt-1 truncate">{user.email}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -58,27 +68,56 @@ export default function ProfilePage() {
             {user.role === 'admin' ? <span className="badge">Admin</span> : null}
           </div>
         </div>
-        <p className="caption sm:shrink-0 sm:text-right">Member since {formatDate(user.createdAt)}</p>
+        <p className="caption relative sm:shrink-0 sm:text-right">Member since {formatDate(user.createdAt)}</p>
       </header>
 
+      {/* Phones: a sticky, swipeable tab bar. */}
       <Tabs
-        className="sticky top-14 z-30 sm:top-16"
-        tabs={[
-          { id: 'profile', label: 'Profile' },
-          { id: 'billing', label: 'Billing' },
-          { id: 'preferences', label: 'Preferences' },
-          { id: 'security', label: 'Security' },
-          { id: 'data', label: 'Data & account' },
-        ]}
+        className="sticky top-14 z-30 lg:hidden sm:top-16"
+        tabs={SECTIONS.map(({ id, label }) => ({ id, label }))}
         value={tab}
         onChange={(id) => setTab(id as Tab)}
       />
 
-      {tab === 'profile' ? <ProfileForm user={user} onSaved={refresh} /> : null}
-      {tab === 'billing' ? <BillingPanel /> : null}
-      {tab === 'preferences' ? <PreferencesForm user={user} onSaved={refresh} theme={theme} setTheme={setTheme} /> : null}
-      {tab === 'security' ? <SecurityPanel onLogout={logout} /> : null}
-      {tab === 'data' ? <DataPanel onLogout={logout} router={router} /> : null}
+      <div className="lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start lg:gap-6">
+        {/* Desktop: a sticky settings sub-nav rather than another card grid. */}
+        <aside className="sticky top-20 hidden lg:block">
+          <nav aria-label="Settings sections" className="panel p-2">
+            <ul className="flex flex-col gap-1">
+              {SECTIONS.map((section) => {
+                const Icon = section.icon;
+                const active = tab === section.id;
+                return (
+                  <li key={section.id}>
+                    <button
+                      type="button"
+                      aria-current={active ? 'true' : undefined}
+                      onClick={() => setTab(section.id)}
+                      className={cn(
+                        'flex w-full items-center gap-2.5 rounded-[1rem] px-3 py-2.5 text-left text-sm font-semibold transition-colors',
+                        active
+                          ? 'bg-accent/10 text-accent'
+                          : 'text-content-secondary hover:bg-surface-overlay hover:text-content-primary',
+                      )}
+                    >
+                      <Icon width={17} height={17} aria-hidden="true" />
+                      {section.label}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        </aside>
+
+        <div className="min-w-0">
+          {tab === 'profile' ? <ProfileForm user={user} onSaved={refresh} /> : null}
+          {tab === 'billing' ? <BillingPanel /> : null}
+          {tab === 'preferences' ? <PreferencesForm user={user} onSaved={refresh} theme={theme} setTheme={setTheme} /> : null}
+          {tab === 'security' ? <SecurityPanel onLogout={logout} /> : null}
+          {tab === 'data' ? <DataPanel onLogout={logout} router={router} /> : null}
+        </div>
+      </div>
     </div>
   );
 }
@@ -325,7 +364,7 @@ function EmailPreferenceToggles() {
 
 function Toggle({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (value: boolean) => void }) {
   return (
-    <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl px-1 py-0.5 transition-colors focus-within:ring-2 focus-within:ring-accent/60">
+    <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl px-1 py-1 transition-colors hover:bg-surface-overlay/60 focus-within:ring-2 focus-within:ring-accent/60">
       <span className="min-w-0">
         <span className="block text-sm font-medium text-content-primary">{label}</span>
         <span className="caption mt-0.5 block">{description}</span>

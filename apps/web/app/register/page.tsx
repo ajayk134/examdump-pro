@@ -9,6 +9,7 @@ import { Alert, Spinner } from '@/components/ui';
 import { useAuth, useToast } from '@/components/providers';
 import { post } from '@/lib/api';
 import type { User } from '@/lib/types';
+import { IconSend } from '@/components/icons';
 
 function RegisterForm() {
   const router = useRouter();
@@ -68,6 +69,9 @@ function RegisterForm() {
     return (
       <AuthShell title="Check your inbox" subtitle="We sent you a verification link.">
         <div className="flex flex-col gap-4">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-positive/10 text-positive ring-1 ring-inset ring-positive/20">
+            <IconSend width={22} height={22} />
+          </span>
           <Alert tone="success">Your account is created. Verify your email to unlock everything.</Alert>
           {devVerify ? (
             <Alert tone="info">
@@ -98,7 +102,7 @@ function RegisterForm() {
         </>
       }
     >
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <form onSubmit={onSubmit} className="flex flex-col gap-4" aria-busy={loading}>
         {error ? <Alert tone="error">{error}</Alert> : null}
 
         <div>
@@ -170,7 +174,7 @@ function RegisterForm() {
           />
         </div>
 
-        <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl px-1 py-1.5 text-sm text-content-secondary">
+        <label className="tile flex min-h-11 cursor-pointer items-start gap-3 rounded-2xl px-3.5 py-3 text-sm text-content-secondary ring-1 ring-inset ring-surface-border transition-colors focus-within:ring-2 focus-within:ring-accent/55">
           <input
             id="acceptTerms"
             name="acceptTerms"

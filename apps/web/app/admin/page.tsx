@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useState, type ComponentType, type SVGPr
 import { useAuth, useToast } from '@/components/providers';
 import { get, patch, post, del } from '@/lib/api';
 import type { Paginated, Plan, User } from '@/lib/types';
-import { Alert, EmptyIcon, EmptyState, PageShell, Spinner, StatStrip, TableScroll } from '@/components/ui';
+import { Alert, Dialog, EmptyIcon, EmptyState, PageShell, Spinner, StatStrip, TableScroll } from '@/components/ui';
 import { cn, formatDate, formatMoneyMinor, formatNumber } from '@/lib/format';
 import {
   IconBell,
@@ -122,9 +122,10 @@ export default function AdminPage() {
 
   return (
     <PageShell>
-      <header className="flex items-start gap-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-accent/10 text-accent">
-          <IconShield width={22} height={22} />
+      <header className="relative isolate flex items-start gap-3.5 overflow-hidden pt-1">
+        <div aria-hidden="true" className="grid-fade pointer-events-none absolute inset-x-0 -top-8 h-36 opacity-50" />
+        <span className="relative grid h-12 w-12 shrink-0 place-items-center rounded-[1.1rem] bg-gradient-to-br from-brand-600 to-accent-2 text-white shadow-glow-sm">
+          <IconShield width={23} height={23} />
         </span>
         <div className="min-w-0">
           <p className="eyebrow mb-1">Operator</p>
@@ -133,11 +134,11 @@ export default function AdminPage() {
         </div>
       </header>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:gap-6">
+      <div className="mt-5 grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:gap-6">
         {/* Section rail: vertical on desktop, a scrollable tab strip on phones. */}
         <nav
           aria-label="Admin sections"
-          className="lg:sticky lg:top-20 lg:self-start lg:rounded-2xl lg:border lg:border-surface-border lg:bg-surface-raised lg:p-2 lg:shadow-xs"
+          className="min-w-0 lg:sticky lg:top-20 lg:self-start lg:rounded-[1.5rem] lg:border lg:border-surface-border lg:bg-surface-raised lg:p-2 lg:shadow-xs"
         >
           <div
             role="tablist"
@@ -157,12 +158,18 @@ export default function AdminPage() {
                   aria-controls="admin-panel"
                   onClick={() => setTab(item.id)}
                   className={cn(
-                    'inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition-colors lg:w-full lg:justify-start',
+                    'relative inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition-colors lg:w-full lg:justify-start',
                     selected
                       ? 'bg-accent/10 text-accent'
                       : 'text-content-secondary hover:bg-surface-overlay hover:text-content-primary',
                   )}
                 >
+                  {selected ? (
+                    <span
+                      aria-hidden="true"
+                      className="absolute left-0 top-1/2 hidden h-5 w-1 -translate-y-1/2 rounded-full bg-accent lg:block"
+                    />
+                  ) : null}
                   <Icon width={17} height={17} className="shrink-0" aria-hidden="true" />
                   <span className="whitespace-nowrap">{item.label}</span>
                 </button>
@@ -298,6 +305,7 @@ function UsersPanel() {
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const [error, setError] = useState('');
+  const [confirmUser, setConfirmUser] = useState<User | null>(null);
 
   const load = useCallback(() => {
     get<Paginated<User>>(`/admin/users?page=${page}&pageSize=20${query ? `&q=${encodeURIComponent(query)}` : ''}`)
@@ -398,7 +406,7 @@ function UsersPanel() {
                       <button
                         type="button"
                         className="btn-ghost btn-sm text-negative"
-                        onClick={() => update(u.id, { suspended: !u.suspended })}
+                        onClick={() => setConfirmUser(u)}
                       >
                         {u.suspended ? 'Unsuspend' : 'Suspend'}
                       </button>
@@ -434,6 +442,30 @@ function UsersPanel() {
           </button>
         </div>
       ) : null}
+
+      <Dialog
+        open={Boolean(confirmUser)}
+        onClose={() => setConfirmUser(null)}
+        title={confirmUser?.suspended ? 'Restore this account?' : 'Suspend this account?'}
+        description={confirmUser ? `${confirmUser.name} · ${confirmUser.email}` : undefined}
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setConfirmUser(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={confirmUser?.suspended ? 'btn-primary' : 'btn-danger'}
+              onClick={() => {
+                if (confirmUser) void update(confirmUser.id, { suspended: !confirmUser.suspended });
+                setConfirmUser(null);
+              }}
+            >
+              {confirmUser?.suspended ? 'Restore account' : 'Suspend account'}
+            </button>
+          </>
+        }
+      />
     </div>
   );
 }
@@ -442,6 +474,7 @@ function CouponsPanel() {
   const { toast } = useToast();
   const [coupons, setCoupons] = useState<Coupon[] | null>(null);
   const [form, setForm] = useState({ code: '', percentOff: 20, maxRedemptions: 0, description: '' });
+  const [confirmCoupon, setConfirmCoupon] = useState<Coupon | null>(null);
 
   const load = () =>
     get<{ coupons: Coupon[] }>('/admin/coupons')
@@ -557,7 +590,7 @@ function CouponsPanel() {
                     {coupon.active ? (
                       <button
                         type="button"
-                        onClick={() => deactivate(coupon.id)}
+                        onClick={() => setConfirmCoupon(coupon)}
                         className="btn-ghost btn-sm text-negative"
                       >
                         Deactivate
@@ -570,6 +603,30 @@ function CouponsPanel() {
           </table>
         </TableScroll>
       )}
+
+      <Dialog
+        open={Boolean(confirmCoupon)}
+        onClose={() => setConfirmCoupon(null)}
+        title="Deactivate this coupon?"
+        description={confirmCoupon ? `Code ${confirmCoupon.code} will stop accepting redemptions.` : undefined}
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setConfirmCoupon(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-danger"
+              onClick={() => {
+                if (confirmCoupon) void deactivate(confirmCoupon.id);
+                setConfirmCoupon(null);
+              }}
+            >
+              Deactivate
+            </button>
+          </>
+        }
+      />
     </div>
   );
 }
@@ -750,6 +807,11 @@ function SettingsPanel() {
 
   return (
     <div className="panel flex flex-col gap-4 p-5">
+      <div>
+        <h2 className="heading-3">Platform settings</h2>
+        <p className="caption mt-1">Limits and global toggles applied server-side.</p>
+      </div>
+      <div className="hairline" role="separator" />
       <div className="grid gap-3 sm:grid-cols-2">
         <NumberField
           label="Free questions per exam"

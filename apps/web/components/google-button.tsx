@@ -82,7 +82,9 @@ export function GoogleButton({ label = 'Continue with Google' }: { label?: strin
       </div>
 
       <div className="flex items-center gap-3 text-xs font-medium text-content-muted" aria-hidden="true">
-        <span className="hairline h-px flex-1" /> or <span className="hairline h-px flex-1" />
+        <span className="hairline h-px flex-1" />
+        <span className="tracking-wide">or</span>
+        <span className="hairline h-px flex-1" />
       </div>
     </div>
   );

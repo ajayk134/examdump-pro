@@ -6,6 +6,7 @@ import { useAuth, useToast } from '@/components/providers';
 import { get, post } from '@/lib/api';
 import type { SupportTicket, TicketMessage } from '@/lib/types';
 import { Alert, Badge, EmptyState, EmptyIcon, PageHeader, Spinner } from '@/components/ui';
+import { Reveal } from '@/components/reveal';
 import { IconChevronDown, IconMessage, IconSend, IconTrophy } from '@/components/icons';
 import { formatDateTime } from '@/lib/format';
 
@@ -21,6 +22,30 @@ interface TicketDetailResponse {
   ticket: SupportTicket;
   messages: TicketMessage[];
 }
+
+/** Questions that are answerable without opening a ticket. */
+const FAQ = [
+  {
+    q: 'How soon will I get a reply?',
+    a: 'Support replies arrive by email, and every reply also appears in the conversation below if you are signed in.',
+  },
+  {
+    q: 'What should I include in a ticket?',
+    a: 'A clear subject and the exact detail get the fastest answer. For a charge, include the payment reference shown on your invoice.',
+  },
+  {
+    q: 'Can I track my ticket?',
+    a: 'Yes. Sign in and your conversations appear on this page with their current status, so you can follow up in one place.',
+  },
+  {
+    q: 'Do I need an account to contact you?',
+    a: 'No. You can submit a ticket with just an email address. Signing in is what lets you read the replies here as well as by email.',
+  },
+  {
+    q: 'Where do I compare passes before buying?',
+    a: 'Every pass, its scope and its price are listed on the pricing page. Open it from the card above or the link in the footer.',
+  },
+];
 
 function statusTone(status: SupportTicket['status']): 'accent' | 'warning' | 'success' | 'default' {
   if (status === 'open') return 'accent';
@@ -119,119 +144,155 @@ export default function SupportPage() {
         description="Questions about billing, access or content? Open a ticket and we will reply by email."
       />
 
-      {/* Three real routes to help, so nobody has to guess what to do first. */}
-      <section aria-label="Ways to get help" className="grid gap-2.5 sm:grid-cols-3">
-        <a
-          href="#new-ticket"
-          className="panel flex items-start gap-3 p-4 transition-colors hover:border-accent/45"
-        >
-          <IconSend width={18} height={18} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
-          <span className="min-w-0">
-            <span className="block text-sm font-semibold">Open a ticket</span>
-            <span className="block text-xs leading-relaxed text-content-muted">
-              Best for billing, payments and account questions.
+      <Reveal>
+        {/* Three real routes to help, so nobody has to guess what to do first. */}
+        <section aria-label="Ways to get help" className="grid gap-2.5 sm:grid-cols-3">
+          <a
+            href="#new-ticket"
+            className="panel flex items-start gap-3 p-4 transition-colors hover:border-accent/45"
+          >
+            <IconSend width={18} height={18} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold">Open a ticket</span>
+              <span className="block text-xs leading-relaxed text-content-muted">
+                Best for billing, payments and account questions.
+              </span>
             </span>
-          </span>
-        </a>
-        <a
-          href="mailto:support@examdump.pro"
-          className="panel flex items-start gap-3 p-4 transition-colors hover:border-accent/45"
-        >
-          <IconMessage width={18} height={18} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
-          <span className="min-w-0">
-            <span className="block text-sm font-semibold">Email us</span>
-            <span className="block text-xs leading-relaxed text-content-muted">support@examdump.pro</span>
-          </span>
-        </a>
-        <Link href="/pricing" className="panel flex items-start gap-3 p-4 transition-colors hover:border-accent/45">
-          <IconTrophy width={18} height={18} className="mt-0.5 shrink-0 text-caution" aria-hidden="true" />
-          <span className="min-w-0">
-            <span className="block text-sm font-semibold">Passes and plans</span>
-            <span className="block text-xs leading-relaxed text-content-muted">
-              Compare passes before you buy or upgrade.
+          </a>
+          <a
+            href="mailto:support@examdump.pro"
+            className="panel flex items-start gap-3 p-4 transition-colors hover:border-accent/45"
+          >
+            <IconMessage width={18} height={18} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold">Email us</span>
+              <span className="block text-xs leading-relaxed text-content-muted">support@examdump.pro</span>
             </span>
-          </span>
-        </Link>
-      </section>
+          </a>
+          <Link href="/pricing" className="panel flex items-start gap-3 p-4 transition-colors hover:border-accent/45">
+            <IconTrophy width={18} height={18} className="mt-0.5 shrink-0 text-caution" aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold">Passes and plans</span>
+              <span className="block text-xs leading-relaxed text-content-muted">
+                Compare passes before you buy or upgrade.
+              </span>
+            </span>
+          </Link>
+        </section>
+      </Reveal>
 
-      <section id="new-ticket" aria-labelledby="new-ticket-heading" className="panel scroll-mt-24 p-4 sm:p-5">
-        <div className="mb-4">
-          <h2 id="new-ticket-heading" className="heading-2">
-            New ticket
-          </h2>
-          <p className="caption mt-1">A clear subject and the exact error get the fastest answer.</p>
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <div>
-            <label className="label" htmlFor="ticket-subject">
-              Subject
-            </label>
-            <input
-              id="ticket-subject"
-              className="input"
-              value={draft.subject}
-              onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
-              placeholder="Short summary"
-            />
-          </div>
-
-          <div>
-            <label className="label" htmlFor="ticket-category">
-              Category
-            </label>
-            <select
-              id="ticket-category"
-              className="select"
-              value={draft.category}
-              onChange={(e) => setDraft({ ...draft, category: e.target.value as Category })}
-            >
-              {CATEGORIES.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-            <p className="caption mt-1.5">Pick the closest match.</p>
-          </div>
-
-          {!user ? (
+      <Reveal>
+        {/* Self-serve first: the most common questions, answered in place. */}
+        <section aria-labelledby="faq-heading" className="section">
+          <div className="section-head">
             <div>
-              <label className="label" htmlFor="ticket-email">
-                Email
+              <p className="eyebrow mb-1">Quick answers</p>
+              <h2 id="faq-heading" className="heading-2">
+                Frequently asked
+              </h2>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-[1.5rem] border border-surface-border bg-surface-raised">
+            {FAQ.map((item) => (
+              <details key={item.q} className="group border-t border-surface-border first:border-t-0">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 text-sm font-semibold text-content-primary transition-colors hover:bg-surface-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent sm:px-5 [&::-webkit-details-marker]:hidden">
+                  {item.q}
+                  <IconChevronDown
+                    width={18}
+                    height={18}
+                    className="shrink-0 text-content-muted transition-transform group-open:rotate-180"
+                    aria-hidden="true"
+                  />
+                </summary>
+                <p className="px-4 pb-4 text-sm leading-relaxed text-content-secondary sm:px-5">{item.a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+      </Reveal>
+
+      <Reveal>
+        <section id="new-ticket" aria-labelledby="new-ticket-heading" className="panel scroll-mt-24 p-4 sm:p-5">
+          <div className="mb-4">
+            <p className="eyebrow mb-1">Write to us</p>
+            <h2 id="new-ticket-heading" className="heading-2">
+              New ticket
+            </h2>
+            <p className="caption mt-1">A clear subject and the exact error get the fastest answer.</p>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <div>
+              <label className="label" htmlFor="ticket-subject">
+                Subject
               </label>
               <input
-                id="ticket-email"
-                type="email"
+                id="ticket-subject"
                 className="input"
-                value={draft.email}
-                onChange={(e) => setDraft({ ...draft, email: e.target.value })}
-                placeholder="you@example.com"
+                value={draft.subject}
+                onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
+                placeholder="Short summary"
               />
             </div>
-          ) : null}
 
-          <div>
-            <label className="label" htmlFor="ticket-message">
-              Message
-            </label>
-            <textarea
-              id="ticket-message"
-              className="input min-h-32"
-              value={draft.message}
-              onChange={(e) => setDraft({ ...draft, message: e.target.value })}
-              placeholder="Include your payment reference if this is about a charge."
-            />
-          </div>
+            <div>
+              <label className="label" htmlFor="ticket-category">
+                Category
+              </label>
+              <select
+                id="ticket-category"
+                className="select"
+                value={draft.category}
+                onChange={(e) => setDraft({ ...draft, category: e.target.value as Category })}
+              >
+                {CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+              <p className="caption mt-1.5">Pick the closest match.</p>
+            </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <button type="button" className="btn-primary" disabled={busy} onClick={() => void createTicket()}>
-              {busy ? 'Sending...' : 'Submit ticket'}
-            </button>
-            <p className="text-xs text-content-muted">Replies arrive by email, and appear below.</p>
+            {!user ? (
+              <div>
+                <label className="label" htmlFor="ticket-email">
+                  Email
+                </label>
+                <input
+                  id="ticket-email"
+                  type="email"
+                  className="input"
+                  value={draft.email}
+                  onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+                  placeholder="you@example.com"
+                />
+              </div>
+            ) : null}
+
+            <div>
+              <label className="label" htmlFor="ticket-message">
+                Message
+              </label>
+              <textarea
+                id="ticket-message"
+                className="input min-h-32"
+                value={draft.message}
+                onChange={(e) => setDraft({ ...draft, message: e.target.value })}
+                placeholder="Include your payment reference if this is about a charge."
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button type="button" className="btn-primary" disabled={busy} onClick={() => void createTicket()}>
+                {busy ? 'Sending...' : 'Submit ticket'}
+              </button>
+              <p className="text-xs text-content-muted">Replies arrive by email, and appear below.</p>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </Reveal>
 
       {!user ? (
         <Alert tone="info">
@@ -350,16 +411,18 @@ export default function SupportPage() {
       )}
 
       {/* What to include, so a ticket can be answered on the first reply. */}
-      <section aria-labelledby="before-heading" className="panel-sunken p-4 sm:p-5">
-        <h2 id="before-heading" className="heading-3">
-          Before you write
-        </h2>
-        <ul className="mt-2.5 flex flex-col gap-1.5 text-xs leading-relaxed text-content-secondary">
-          <li>For a charge or refund, include your payment reference from the invoice.</li>
-          <li>For a content problem, include the exam code and the question number.</li>
-          <li>For a technical problem, describe what you tapped and what you expected to happen.</li>
-        </ul>
-      </section>
+      <Reveal>
+        <section aria-labelledby="before-heading" className="panel-sunken p-4 sm:p-5">
+          <h2 id="before-heading" className="heading-3">
+            Before you write
+          </h2>
+          <ul className="mt-2.5 flex flex-col gap-1.5 text-xs leading-relaxed text-content-secondary">
+            <li>For a charge or refund, include your payment reference from the invoice.</li>
+            <li>For a content problem, include the exam code and the question number.</li>
+            <li>For a technical problem, describe what you tapped and what you expected to happen.</li>
+          </ul>
+        </section>
+      </Reveal>
     </div>
   );
 }

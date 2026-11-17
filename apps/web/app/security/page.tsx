@@ -35,39 +35,45 @@ const items: Array<{ id: string; title: string; body: string }> = [
 
 export default function SecurityPage() {
   return (
-    <div className="mx-auto w-full max-w-5xl py-2 sm:py-6">
-      <header className="border-b border-surface-border pb-5">
-        <p className="eyebrow mb-2">Trust</p>
+    <div className="mx-auto w-full max-w-6xl py-2 sm:py-6">
+      <header className="relative isolate overflow-hidden rounded-[2rem] border border-surface-border bg-ink-950 p-6 text-white sm:p-9">
+        <span aria-hidden="true" className="mesh absolute inset-0 -z-10 opacity-80" />
+        <span aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-br from-brand-700/55 via-transparent to-accent-2/35" />
+        <span aria-hidden="true" className="grid-fade absolute inset-0 -z-10 opacity-20" />
+        <span aria-hidden="true" className="orb -right-10 -top-16 h-44 w-44 bg-aqua-400/25" />
+        <p className="mb-2 text-[0.72rem] font-bold uppercase tracking-[0.16em] text-white/75">Trust</p>
         <h1 className="display-2 text-balance">Security at ExamDump Pro</h1>
-        <p className="body-text mt-3 max-w-[68ch] text-pretty">Security is designed in, not bolted on.</p>
+        <p className="mt-3 max-w-[68ch] text-pretty text-sm leading-relaxed text-white/85 sm:text-base">
+          Security is designed in, not bolted on.
+        </p>
       </header>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-12">
+      <div className="mt-8 grid gap-8 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-12">
         <nav aria-label="On this page" className="panel p-4 lg:sticky lg:top-24 lg:self-start lg:p-5">
           <p className="eyebrow mb-3">On this page</p>
-          <ul className="flex flex-col gap-1.5">
-            {items.map((item) => (
+          <ol className="flex flex-col gap-0.5">
+            {items.map((item, index) => (
               <li key={item.id}>
                 <a
                   href={`#${item.id}`}
-                  className="flex min-h-11 items-center rounded-lg px-2 text-sm font-medium text-brand-600 underline-offset-4 hover:bg-surface-overlay hover:underline dark:text-brand-300"
+                  className="group flex min-h-11 items-center gap-2.5 rounded-xl px-2.5 text-sm font-medium text-content-secondary transition-colors hover:bg-surface-overlay hover:text-content-primary"
                 >
+                  <span className="numeric text-[0.6875rem] font-bold text-accent/70 group-hover:text-accent">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
                   {item.title}
                 </a>
               </li>
             ))}
-          </ul>
+          </ol>
         </nav>
 
-        <div className="max-w-[70ch]">
+        <div className="min-w-0 max-w-[70ch]">
           <ul className="grid gap-4 sm:grid-cols-2">
             {items.map((item, index) => (
-              <li key={item.id} id={item.id} className="panel scroll-mt-24 p-5">
+              <li key={item.id} id={item.id} className="tile scroll-mt-24 p-5">
                 <div className="flex items-center gap-2.5">
-                  <span
-                    aria-hidden="true"
-                    className="numeric text-[0.6875rem] font-bold text-accent/70"
-                  >
+                  <span aria-hidden="true" className="numeric text-[0.6875rem] font-bold text-accent/70">
                     {String(index + 1).padStart(2, '0')}
                   </span>
                   <h2 className="heading-2">{item.title}</h2>

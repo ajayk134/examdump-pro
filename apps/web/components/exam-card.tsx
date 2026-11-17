@@ -19,15 +19,6 @@ export interface ExamCardData {
   lastScore?: number | null;
 }
 
-/** Stable hue per provider so cards are visually distinguishable at a glance. */
-function providerHue(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i += 1) {
-    hash = (hash * 31 + id.charCodeAt(i)) % 360;
-  }
-  return hash;
-}
-
 /**
  * Exam summary card.
  *
@@ -46,24 +37,23 @@ export function ExamCard({
   compact?: boolean;
   className?: string;
 }) {
-  const hue = providerHue(exam.providerId);
   const started = typeof exam.progress === 'number' && exam.progress > 0;
   const href = `/exams/${exam.providerId}/${encodeURIComponent(exam.examKey)}`;
 
   return (
     <article
       className={cn(
-        'surface surface-interactive group relative flex flex-col overflow-hidden',
-        'focus-within:border-accent/60',
+        'group relative flex flex-col overflow-hidden rounded-[1.5rem] border border-surface-border bg-surface-raised shadow-xs transition-all duration-300 ease-smooth',
+        'hover:-translate-y-1 hover:border-accent/45 hover:shadow-md focus-within:border-accent/60',
         compact ? 'p-3.5' : 'p-4',
         className,
       )}
     >
-      {/* Provider accent strip */}
+      {/* Brand hairline: the identity's gradient, identical on every card. */}
       <span
         aria-hidden="true"
         className="absolute inset-x-0 top-0 h-[3px]"
-        style={{ background: `linear-gradient(90deg, hsl(${hue} 82% 58%), hsl(${(hue + 40) % 360} 86% 62%))` }}
+        style={{ background: 'linear-gradient(90deg, rgb(var(--accent)), rgb(var(--accent-2)))' }}
       />
 
       <div className="flex items-start justify-between gap-2">
@@ -76,7 +66,7 @@ export function ExamCard({
               </span>
             ) : null}
           </div>
-          <h3 className="mt-1.5 line-clamp-2 text-[0.9375rem] font-semibold leading-snug tracking-[-0.01em]">
+          <h3 className="mt-2 line-clamp-2 font-display text-base font-semibold leading-snug tracking-[-0.015em]">
             {exam.title}
           </h3>
           <p className="mt-1 truncate text-xs text-content-muted">{exam.providerTitle}</p>
@@ -142,7 +132,7 @@ export function ExamCard({
 
 export function ExamCardSkeleton() {
   return (
-    <div className="surface flex flex-col p-4" aria-hidden="true">
+    <div className="panel flex flex-col p-4" aria-hidden="true">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="skeleton mb-2 h-4 w-16 rounded-full" />

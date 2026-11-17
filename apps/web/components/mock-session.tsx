@@ -195,7 +195,7 @@ export function MockSession({
       <div className="mx-auto max-w-2xl">
         <div className="panel p-5" role="status" aria-live="polite">
           <div className="mb-4 flex items-center gap-2.5">
-            <span className="h-5 w-5 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+            <span className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
             <p className="text-sm font-semibold">Preparing your exam…</p>
           </div>
           <div className="space-y-2">
@@ -217,8 +217,12 @@ export function MockSession({
     const score = result.attempt.scorePercent;
     return (
       <div className="mx-auto flex max-w-4xl flex-col gap-5">
-        <div className="panel-lg relative overflow-hidden p-5 text-center sm:p-6">
-          <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-600 via-sky-400 to-brand-400" />
+        <div className="relative overflow-hidden rounded-[2rem] border border-surface-border bg-surface-raised p-5 text-center shadow-sm sm:p-6">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-brand-500/[0.12] via-accent-2/[0.06] to-transparent"
+          />
+          <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-600 via-accent-2 to-aqua-400" />
           <p className="eyebrow">Exam complete</p>
           <div className="mt-3 flex justify-center">
             <ProgressRing value={score} size={116} stroke={9} tone={score >= 70 ? 'success' : 'warning'}>
@@ -314,10 +318,10 @@ export function MockSession({
       ) : null}
 
       {/* Sticky exam header with timer and progress */}
-      <header className="sticky top-14 z-30 -mx-3.5 border-b border-surface-border/60 bg-surface-base/[0.92] px-3.5 py-2 backdrop-blur-lg sm:top-16 sm:mx-0 sm:rounded-xl sm:border sm:px-3">
-        <div className="flex items-center gap-2.5">
+      <header className="sticky top-14 z-30 -mx-3.5 px-3.5 py-2 sm:top-16 sm:mx-0 sm:px-0">
+        <div className="glass flex items-center gap-2.5 rounded-[1.25rem] border border-surface-border/70 px-2.5 py-2 shadow-sm">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[0.6875rem] font-semibold uppercase tracking-wider text-content-muted">
+            <p className="truncate font-mono text-[0.6875rem] font-bold uppercase tracking-[0.1em] text-accent">
               {session.exam.providerTitle} · {session.exam.code}
             </p>
             <div className="mt-1 flex items-center gap-2">
@@ -358,7 +362,10 @@ export function MockSession({
         </div>
       </header>
 
-      <article className="panel p-4 sm:p-5" aria-label={`Question ${index + 1}`}>
+      <article
+        className="relative overflow-hidden rounded-[1.75rem] border border-surface-border bg-surface-raised p-4 shadow-sm sm:p-5"
+        aria-label={`Question ${index + 1}`}
+      >
         <div className="mb-3.5 flex flex-wrap items-center gap-1.5">
           <span className="badge font-mono">Q{current.number ?? index + 1}</span>
           {current.type === 'multiple' ? <span className="badge">Select all that apply</span> : null}
@@ -461,7 +468,7 @@ export function MockSession({
                   aria-label={`Go to question ${i + 1}${isAnswered ? ', answered' : ''}`}
                   aria-current={isCurrent ? 'true' : undefined}
                   className={cn(
-                    'numeric grid aspect-square place-items-center rounded-lg text-xs font-bold transition-all',
+                    'numeric grid aspect-square place-items-center rounded-[0.7rem] text-xs font-bold transition-all',
                     isCurrent
                       ? 'bg-accent text-white shadow-sm'
                       : isAnswered

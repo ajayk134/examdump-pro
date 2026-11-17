@@ -55,31 +55,42 @@ export default function LeaderboardPage() {
       ) : (
         <>
           {podium.length > 0 ? (
-            <section aria-label="Top three candidates">
-              {podium.length === 3 ? (
-                // Podium: first place sits in the middle of the row at every width.
-                <ol className="grid grid-cols-3 items-end gap-2 sm:gap-3">
-                  {[podium[1]!, podium[0]!, podium[2]!].map((row) => (
-                    <li key={row.userId} className="list-none">
-                      <PodiumCard row={row} rank={rows.indexOf(row) + 1} you={user?.id === row.userId} />
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                // One or two entries: centre them rather than leaving gaps.
-                <ol className="flex flex-wrap items-end justify-center gap-2 sm:gap-3">
-                  {podium.map((row) => (
-                    <li key={row.userId} className="w-[9.5rem] list-none">
-                      <PodiumCard row={row} rank={rows.indexOf(row) + 1} you={user?.id === row.userId} />
-                    </li>
-                  ))}
-                </ol>
-              )}
+            <section
+              aria-label="Top three candidates"
+              className="panel-lg relative isolate overflow-hidden p-4 pt-6 sm:p-6"
+            >
+              <div aria-hidden="true" className="mesh pointer-events-none absolute inset-0 opacity-[0.12]" />
+              <div aria-hidden="true" className="orb -right-16 -top-20 h-48 w-48 bg-caution/20" />
+
+              <div className="relative">
+                <p className="eyebrow mb-4 text-center">This period&rsquo;s leaders</p>
+
+                {podium.length === 3 ? (
+                  // Podium: first place sits in the middle of the row at every width.
+                  <ol className="grid grid-cols-3 items-end gap-2 sm:gap-4">
+                    {[podium[1]!, podium[0]!, podium[2]!].map((row) => (
+                      <li key={row.userId} className="list-none">
+                        <PodiumCard row={row} rank={rows.indexOf(row) + 1} you={user?.id === row.userId} />
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  // One or two entries: centre them rather than leaving gaps.
+                  <ol className="flex flex-wrap items-end justify-center gap-2 sm:gap-4">
+                    {podium.map((row) => (
+                      <li key={row.userId} className="w-[10rem] list-none">
+                        <PodiumCard row={row} rank={rows.indexOf(row) + 1} you={user?.id === row.userId} />
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
             </section>
           ) : null}
 
           {rest.length > 0 ? (
-            <section aria-label="Rankings">
+            <section aria-label="Rankings" className="flex flex-col gap-3">
+              <h2 className="heading-3 px-1 text-content-muted">Everyone else</h2>
               <ol className="panel divide-y divide-surface-border overflow-hidden">
                 {rest.map((row, index) => {
                   const you = user?.id === row.userId;
@@ -127,28 +138,27 @@ export default function LeaderboardPage() {
 /** One of the top three: a raised card with an explicit rank, distinct from the list below. */
 function PodiumCard({ row, rank, you }: { row: LeaderboardEntry; rank: number; you: boolean }) {
   const first = rank === 1;
+  const medal = first
+    ? 'bg-gradient-to-br from-caution to-accent-2 text-white shadow-glow-sm'
+    : 'bg-surface-inset text-content-secondary';
 
   return (
     <div
       className={cn(
-        'relative flex flex-col items-center gap-1.5 rounded-2xl border p-3 text-center sm:p-4',
-        first
-          ? 'border-accent/45 bg-gradient-to-b from-accent/[0.1] to-surface-raised pb-4 shadow-glow sm:pb-5'
-          : 'border-surface-border bg-surface-raised',
+        'relative flex h-full flex-col items-center gap-2 rounded-[1.5rem] border p-3 text-center sm:p-4',
+        first ? 'border-caution/45 bg-surface-raised pb-4 shadow-md sm:pb-5' : 'border-surface-border bg-surface-raised',
         you && 'ring-2 ring-accent/60',
       )}
     >
-      <span
-        className={cn(
-          'numeric grid h-6 w-6 place-items-center rounded-full text-[0.6875rem] font-black',
-          first ? 'bg-accent text-white' : 'bg-surface-overlay text-content-secondary',
-        )}
-        aria-label={`Rank ${rank}`}
-      >
-        {rank}
+      <span className="flex items-center gap-1.5">
+        <span
+          className={cn('numeric grid h-6 w-6 place-items-center rounded-full text-[0.6875rem] font-black', medal)}
+          aria-label={`Rank ${rank}`}
+        >
+          {rank}
+        </span>
+        {first ? <IconTrophy width={18} height={18} className="text-caution" aria-hidden="true" /> : null}
       </span>
-
-      {first ? <IconTrophy width={18} height={18} className="text-caution" aria-hidden="true" /> : null}
 
       <Avatar name={row.name} src={row.avatarUrl} size={first ? 52 : 40} />
 

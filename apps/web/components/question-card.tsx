@@ -362,7 +362,10 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
   };
 
   return (
-    <article className="panel p-4 sm:p-5" aria-label={`Question ${index !== undefined ? index + 1 : ''}`}>
+    <article
+      className="relative overflow-hidden rounded-[1.75rem] border border-surface-border bg-surface-raised p-4 shadow-sm sm:p-5"
+      aria-label={`Question ${index !== undefined ? index + 1 : ''}`}
+    >
       <header className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="numeric text-sm font-bold text-content-secondary">
@@ -413,13 +416,13 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
                   disabled={revealed}
                   aria-pressed={isSelected}
                   className={cn(
-                    'flex w-full items-start gap-3 rounded-xl border p-3 text-left text-sm transition-all duration-150 disabled:cursor-default sm:p-3.5',
+                    'flex w-full items-start gap-3 rounded-[1rem] border p-3 text-left text-sm transition-all duration-200 ease-smooth disabled:cursor-default sm:p-3.5',
                     choiceClass(choice.key),
                   )}
                 >
                   <span
                     className={cn(
-                      'grid h-6 w-6 shrink-0 place-items-center rounded-lg border text-xs font-bold transition-colors',
+                      'grid h-7 w-7 shrink-0 place-items-center rounded-[0.7rem] border text-xs font-bold transition-colors',
                       letterClass(choice.key),
                     )}
                   >
@@ -521,7 +524,7 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
 
       {revealed ? (
         <div className="mt-5 space-y-4 border-t border-surface-border pt-4">
-          <div className="rounded-xl border border-positive/30 bg-positive/[0.06] p-3.5 sm:p-4">
+          <div className="rounded-[1.25rem] border border-positive/30 bg-positive/[0.06] p-3.5 sm:p-4">
             <p className="text-[0.8125rem] font-semibold text-positive">
               Suggested answer: {stripAnswerLabel(question.answerText ?? '') || correct || 'See explanation'}
             </p>
@@ -557,7 +560,7 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
       ) : null}
 
       {hintText || hintLoading || hintError ? (
-        <div className="mt-4 rounded-xl border border-caution/30 bg-caution/[0.06] p-3.5 sm:p-4">
+        <div className="mt-4 rounded-[1.25rem] border border-caution/30 bg-caution/[0.06] p-3.5 sm:p-4">
           <div className="mb-1.5 flex items-center justify-between gap-2">
             <p className="flex items-center gap-1.5 text-sm font-semibold text-caution">
               <IconSparkles width={16} height={16} /> Hint
@@ -597,7 +600,11 @@ export function QuestionCard({ question, index, providerId, examKey, onAnswered,
       ) : null}
 
       {aiText || aiLoading || aiError ? (
-        <div className="mt-4 rounded-xl border border-accent/30 bg-accent/[0.05] p-3.5 sm:p-4">
+        <div className="relative mt-4 overflow-hidden rounded-[1.25rem] border border-accent/30 bg-accent/[0.05] p-3.5 sm:p-4">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-accent/15 blur-2xl"
+          />
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="flex items-center gap-1.5 text-[0.8125rem] font-semibold text-accent">
               <IconSparkles width={15} height={15} /> AI explanation

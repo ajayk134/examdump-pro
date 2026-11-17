@@ -15,6 +15,15 @@ function scoreTone(score: number): string {
   return 'text-negative';
 }
 
+/** Left rail colour for each mobile log entry. */
+function statusBar(status: string, score?: number): string {
+  if (status !== 'completed') return 'bg-surface-border-strong';
+  const value = score ?? 0;
+  if (value >= 80) return 'bg-positive';
+  if (value >= 60) return 'bg-caution';
+  return 'bg-negative';
+}
+
 function Score({ status, score }: { status: string; score?: number }) {
   if (status !== 'completed') {
     return <span className="badge capitalize">{status.replace('_', ' ')}</span>;
@@ -43,9 +52,9 @@ export default function HistoryPage() {
   const pagination = data?.pagination;
 
   return (
-    <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5">
+    <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 sm:gap-6">
       <PageHeader
-        eyebrow="Analytics"
+        eyebrow="Activity"
         title="Practice history"
         description="Every attempt, score and session time. Retake one or ask the AI tutor about it."
         actions={
@@ -68,6 +77,7 @@ export default function HistoryPage() {
         />
       ) : (
         <>
+          {/* A log: a dense table with room, stacked entries on a phone. */}
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="caption">
               {pagination
@@ -80,7 +90,7 @@ export default function HistoryPage() {
           </div>
 
           <TableScroll className="hidden md:block">
-            <table className="tbl min-w-[640px]">
+            <table className="tbl min-w-[680px]">
               <caption className="sr-only">Practice attempts, newest first</caption>
               <thead>
                 <tr>
@@ -97,16 +107,18 @@ export default function HistoryPage() {
               <tbody>
                 {data.items.map((attempt) => (
                   <tr key={attempt.id}>
-                    <th scope="row" className="border-t border-surface-border px-3 py-2.5 text-left align-middle font-medium">
+                    <th scope="row" className="text-left font-medium">
                       {attempt.examCode || attempt.examKey}
                     </th>
                     <td className="capitalize text-content-muted">{attempt.mode}</td>
                     <td>
                       <Score status={attempt.status} score={attempt.scorePercent} />
                     </td>
-                    <td className="text-content-muted">{attempt.timeSpentMs ? formatDuration(attempt.timeSpentMs) : '—'}</td>
+                    <td className="numeric text-content-muted">
+                      {attempt.timeSpentMs ? formatDuration(attempt.timeSpentMs) : '—'}
+                    </td>
                     <td className="whitespace-nowrap text-content-muted">{formatDateTime(attempt.createdAt)}</td>
-                    <td className="text-right">
+                    <td>
                       <div className="flex justify-end gap-1">
                         <Link
                           href={`/study?provider=${encodeURIComponent(attempt.providerId)}&exam=${encodeURIComponent(attempt.examKey)}&mode=practice`}
@@ -128,10 +140,14 @@ export default function HistoryPage() {
             </table>
           </TableScroll>
 
-          {/* Phone layout: one card per attempt, nothing truncated. */}
+          {/* Phone layout: one log entry per attempt, nothing truncated. */}
           <ul className="flex flex-col gap-2.5 md:hidden">
             {data.items.map((attempt) => (
-              <li key={attempt.id} className="panel p-4">
+              <li key={attempt.id} className="panel relative overflow-hidden p-4 pl-[1.15rem]">
+                <span
+                  aria-hidden="true"
+                  className={`absolute inset-y-0 left-0 w-[3px] ${statusBar(attempt.status, attempt.scorePercent)}`}
+                />
                 <div className="flex items-baseline justify-between gap-3">
                   <p className="min-w-0 truncate text-sm font-semibold">{attempt.examCode || attempt.examKey}</p>
                   <Score status={attempt.status} score={attempt.scorePercent} />
@@ -158,7 +174,10 @@ export default function HistoryPage() {
             ))}
           </ul>
 
-          <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-2">
+          <nav
+            aria-label="Pagination"
+            className="flex flex-wrap items-center justify-between gap-2 border-t border-surface-border pt-4"
+          >
             <button
               type="button"
               className="btn-secondary"

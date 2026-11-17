@@ -7,20 +7,31 @@ import { get } from '@/lib/api';
 import type { Exam } from '@/lib/types';
 import { AiChat } from '@/components/ai-chat';
 import { Alert, PageShell, Spinner } from '@/components/ui';
-import { IconChevronRight, IconSearch, IconSparkles } from '@/components/icons';
+import { Reveal } from '@/components/reveal';
+import {
+  IconBook,
+  IconChart,
+  IconChevronRight,
+  IconMessage,
+  IconSearch,
+  IconSparkles,
+} from '@/components/icons';
 
 const POPULAR = ['cisco', 'aws', 'microsoft', 'comptia', 'google', 'pmi'];
 
 const CAPABILITIES = [
   {
+    icon: IconBook,
     title: 'Grounded in your exam',
     body: 'Open a conversation from any exam and the tutor stays on that syllabus.',
   },
   {
+    icon: IconChart,
     title: 'Step-by-step reasoning',
     body: 'See how an answer is reached, why the distractors fail, and a memory hook.',
   },
   {
+    icon: IconMessage,
     title: 'Ask about a question',
     body: 'Every practice question has an Ask AI button that carries its context along.',
   },
@@ -77,7 +88,7 @@ function AskInner() {
             ← All conversations
           </Link>
         </div>
-        <div className="panel mx-auto flex w-full max-w-3xl min-h-0 flex-1 flex-col overflow-hidden rounded-none pt-0 md:mb-4 md:rounded-2xl">
+        <div className="panel mx-auto flex w-full max-w-3xl min-h-0 flex-1 flex-col overflow-hidden rounded-none pt-0 md:mb-4 md:rounded-[2rem] md:shadow-lg">
           <AiChat
             key={`${provider}:${exam}:${questionId ?? ''}`}
             providerId={provider}
@@ -92,13 +103,20 @@ function AskInner() {
 
   return (
     <PageShell className="max-w-3xl">
-      <header className="relative isolate text-center">
-        <div aria-hidden="true" className="grid-fade pointer-events-none absolute inset-x-0 -top-6 h-48 opacity-60" />
-        <span className="relative mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-sky-400 text-white shadow-lg shadow-brand-500/25 ring-1 ring-inset ring-white/25">
-          <IconSparkles width={26} height={26} />
+      <header className="relative isolate overflow-hidden pt-2 text-center sm:pt-6">
+        <div aria-hidden="true" className="mesh pointer-events-none absolute inset-x-0 -top-10 h-56 opacity-[0.16]" />
+        <div aria-hidden="true" className="grid-fade pointer-events-none absolute inset-x-0 -top-8 h-56 opacity-70" />
+        <div aria-hidden="true" className="orb -left-12 -top-6 h-48 w-48 bg-brand-500/25 animate-glow" />
+        <div aria-hidden="true" className="orb -right-10 top-8 h-56 w-56 bg-accent-2/20" />
+
+        <span className="relative mx-auto mb-4 grid h-16 w-16 place-items-center rounded-[1.1rem] bg-gradient-to-br from-brand-500 via-accent-2 to-accent-3 text-white shadow-glow-sm ring-1 ring-inset ring-white/25">
+          <IconSparkles width={30} height={30} />
         </span>
-        <h1 className="display-2 relative text-balance">Ask the AI tutor</h1>
-        <p className="relative mx-auto mt-2.5 max-w-md text-pretty text-sm leading-relaxed text-content-secondary sm:text-base">
+        <p className="eyebrow relative">AI tutor</p>
+        <h1 className="display-1 relative mt-3 text-balance">
+          Ask the <span className="gradient-text animate-gradient">AI tutor</span>
+        </h1>
+        <p className="relative mx-auto mt-4 max-w-md text-pretty text-sm leading-relaxed text-content-secondary sm:text-base">
           Understand any concept, unpack a tricky question, or get a study plan. Grounded in the exam you
           choose.
         </p>
@@ -112,7 +130,7 @@ function AskInner() {
           <IconSearch
             width={18}
             height={18}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-content-muted"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-content-muted"
           />
           <input
             id="ask-search"
@@ -133,7 +151,7 @@ function AskInner() {
                 <li key={`${item.providerId}:${item.key}`}>
                   <Link
                     href={`/ask?provider=${encodeURIComponent(item.providerId)}&exam=${encodeURIComponent(item.key)}`}
-                    className="tile tile-interactive flex min-h-14 items-center justify-between gap-3 px-3 py-2.5"
+                    className="tile tile-interactive group flex min-h-14 items-center justify-between gap-3 px-3.5 py-2.5"
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-semibold text-content-primary">
@@ -145,7 +163,11 @@ function AskInner() {
                     </span>
                     <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-accent">
                       Chat
-                      <IconChevronRight width={14} height={14} />
+                      <IconChevronRight
+                        width={14}
+                        height={14}
+                        className="transition-transform duration-200 group-hover:translate-x-0.5"
+                      />
                     </span>
                   </Link>
                 </li>
@@ -168,19 +190,26 @@ function AskInner() {
         </div>
       </section>
 
-      <section className="mt-5 grid gap-3 sm:grid-cols-3" aria-label="How the tutor helps">
-        {CAPABILITIES.map((item) => (
-          <div key={item.title} className="tile flex items-start gap-3 p-4">
-            <IconSparkles width={18} height={18} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
-            <div>
-              <p className="text-sm font-semibold text-content-primary">{item.title}</p>
-              <p className="mt-0.5 text-xs leading-relaxed text-content-muted">{item.body}</p>
-            </div>
-          </div>
-        ))}
-      </section>
+      <Reveal delay={80}>
+        <section className="mt-5 grid gap-3 sm:grid-cols-3" aria-label="How the tutor helps">
+          {CAPABILITIES.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div key={item.title} className="tile flex items-start gap-3 p-4">
+                <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-[0.9rem] bg-accent/10 text-accent">
+                  <Icon width={17} height={17} aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-content-primary">{item.title}</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-content-muted">{item.body}</p>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      </Reveal>
 
-      <p className="mt-5 text-center text-xs text-content-muted">
+      <p className="mt-6 text-center text-xs text-content-muted">
         Every question also has an <strong className="font-semibold text-content-secondary">Ask AI</strong>{' '}
         button, so the tutor already knows what you are looking at.
       </p>

@@ -494,6 +494,7 @@ export function AnnouncementsPanel() {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState({ title: '', body: '', level: 'info', audience: 'all' });
   const [notice, setNotice] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<AnnouncementRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -637,7 +638,7 @@ export function AnnouncementsPanel() {
                 <button type="button" className="btn-secondary btn-sm" onClick={() => void toggle(a)}>
                   {a.active ? 'Hide' : 'Show'}
                 </button>
-                <button type="button" className="btn-ghost btn-sm" onClick={() => void remove(a.id)}>
+                <button type="button" className="btn-ghost btn-sm text-negative" onClick={() => setConfirmDelete(a)}>
                   Delete
                 </button>
               </div>
@@ -645,6 +646,30 @@ export function AnnouncementsPanel() {
           ))}
         </div>
       )}
+
+      <Dialog
+        open={Boolean(confirmDelete)}
+        onClose={() => setConfirmDelete(null)}
+        title="Delete this announcement?"
+        description={confirmDelete ? `“${confirmDelete.title}” will be removed for everyone.` : undefined}
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setConfirmDelete(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-danger"
+              onClick={() => {
+                if (confirmDelete) void remove(confirmDelete.id);
+                setConfirmDelete(null);
+              }}
+            >
+              Delete
+            </button>
+          </>
+        }
+      />
     </div>
   );
 }
@@ -825,11 +850,17 @@ export function IntegrationsPanel() {
     <div className="flex flex-col gap-3">
       {rows.map((r) => (
         <div key={r.name} className="panel flex flex-wrap items-center justify-between gap-3 p-4">
-          <div className="min-w-0">
-            <p className="font-medium text-content-primary">{r.name}</p>
-            <p className="mt-0.5 font-mono text-xs text-content-muted">{r.detail}</p>
+          <div className="flex min-w-0 items-center gap-3">
+            <span
+              className={cn('h-2.5 w-2.5 shrink-0 rounded-full', r.ok ? 'bg-positive' : 'bg-caution')}
+              aria-hidden="true"
+            />
+            <div className="min-w-0">
+              <p className="font-medium text-content-primary">{r.name}</p>
+              <p className="mt-0.5 font-mono text-xs text-content-muted">{r.detail}</p>
+            </div>
           </div>
-          <span className={r.ok ? 'badge badge-accent' : 'badge'}>{r.status}</span>
+          <span className={r.ok ? 'badge badge-success' : 'badge badge-warning'}>{r.status}</span>
         </div>
       ))}
       <p className="text-xs text-content-muted">Server version {data.version}</p>

@@ -68,7 +68,7 @@ function UnsubscribeInner() {
     <AuthShell title="Email preferences" subtitle={subtitle}>
       {state === 'done' ? (
         <div className="flex flex-col gap-4">
-          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-positive/10 text-positive">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-positive/10 text-positive ring-1 ring-inset ring-positive/20">
             <IconCheckCircle width={22} height={22} />
           </span>
           <p className="body-text text-center">{message}</p>
@@ -82,7 +82,7 @@ function UnsubscribeInner() {
         </div>
       ) : state === 'error' ? (
         <div className="flex flex-col gap-4">
-          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-negative/10 text-negative">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-negative/10 text-negative ring-1 ring-inset ring-negative/20">
             <IconAlertCircle width={22} height={22} />
           </span>
           <p className="text-center text-sm text-negative">{message}</p>
@@ -134,11 +134,7 @@ function UnsubscribeInner() {
 
 export default function UnsubscribePage() {
   return (
-    <Suspense
-      fallback={
-        <div className="mx-auto max-w-xl px-4 py-10 text-center text-content-muted">Loading...</div>
-      }
-    >
+    <Suspense fallback={<Spinner label="Loading..." />}>
       <UnsubscribeInner />
     </Suspense>
   );

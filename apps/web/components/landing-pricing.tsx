@@ -61,7 +61,7 @@ export function LandingPricing() {
 
       {data === null
         ? Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="skeleton min-h-[16rem] rounded-2xl" />
+            <div key={i} className="skeleton min-h-[16rem] rounded-[1.5rem]" />
           ))
         : paid.map((plan) => (
             <PlanTile
@@ -106,17 +106,19 @@ function PlanTile({
   return (
     <div
       className={[
-        'relative flex flex-col rounded-2xl border bg-surface-raised p-4',
-        highlight ? 'border-accent/50 shadow-md ring-1 ring-accent/20' : 'border-surface-border',
+        'relative flex flex-col rounded-[1.5rem] border bg-surface-raised p-4 transition-all duration-300 ease-smooth',
+        highlight
+          ? 'ring-gradient border-transparent shadow-md'
+          : 'border-surface-border shadow-xs hover:-translate-y-1 hover:border-accent/40',
       ].join(' ')}
     >
       {badge ? (
-        <span className="absolute -top-2.5 left-4 rounded-full bg-accent px-2.5 py-0.5 text-[0.6875rem] font-semibold text-white shadow">
+        <span className="absolute -top-2.5 left-4 rounded-full bg-accent px-2.5 py-1 text-[0.6875rem] font-semibold text-white shadow-glow-sm">
           {badge}
         </span>
       ) : null}
-      <p className="text-[0.6875rem] font-bold uppercase tracking-wider text-content-muted">{title}</p>
-      <p className="numeric mt-2 text-2xl font-bold tracking-tight">{price}</p>
+      <p className="font-display text-[0.7rem] font-bold uppercase tracking-[0.12em] text-content-muted">{title}</p>
+      <p className="numeric mt-2 font-display text-3xl font-bold tracking-tight">{price}</p>
       <p className="text-xs text-content-muted">{cadence}</p>
       <p className="mt-3 line-clamp-2 min-h-[2.5rem] text-[0.8125rem] leading-relaxed text-content-secondary">
         {description}

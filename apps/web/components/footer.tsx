@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './providers';
+import { BrandMark, Wordmark } from './brand';
 
 const PRODUCT = [
   { href: '/exams', label: 'Browse exams' },
@@ -38,41 +39,51 @@ export function Footer() {
   }
 
   return (
-    <footer className="has-bottom-nav mt-16 border-t border-surface-border/70 bg-surface-base/60">
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:grid-cols-2 sm:px-6 lg:grid-cols-5">
-        <div className="lg:col-span-2">
-          <Link href="/" className="inline-flex items-center gap-2.5" aria-label="ExamDump Pro home">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-600 to-sky-400 text-base font-black text-white shadow-glow">
-              E
-            </span>
-            <span className="text-base font-bold tracking-tight">
-              ExamDump
-              <span className="bg-gradient-to-r from-brand-500 to-sky-400 bg-clip-text text-transparent dark:from-brand-300 dark:to-sky-300">
-                {' '}
-                Pro
-              </span>
-            </span>
-          </Link>
-          <p className="mt-4 max-w-sm text-sm leading-relaxed text-content-muted">
-            Real practice questions, timed mock exams and an AI tutor that explains every answer — built for
-            professionals preparing for certification.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-2">
-            <Link href="/register" className="btn-primary btn-sm">
-              Get started free
+    <footer className="has-bottom-nav relative mt-20 overflow-hidden border-t border-surface-border/60">
+      {/* Ambient brand glow across the top edge. */}
+      <div
+        aria-hidden="true"
+        className="orb -top-28 left-1/2 h-72 w-[42rem] -translate-x-1/2 bg-gradient-to-r from-brand-500/30 via-accent-2/25 to-aqua-400/25"
+      />
+
+      <div className="relative mx-auto max-w-7xl px-4 pt-14 sm:px-6">
+        <div className="flex flex-col gap-10 lg:flex-row lg:justify-between">
+          <div className="max-w-md">
+            <Link href="/" className="inline-flex items-center gap-3" aria-label="ExamDump Pro home">
+              <BrandMark size={40} />
+              <Wordmark className="text-xl" />
             </Link>
-            <Link href="/exams" className="btn-secondary btn-sm">
-              Browse exams
-            </Link>
+            <p className="mt-4 text-sm leading-relaxed text-content-muted">
+              Real practice questions, timed mock exams and an AI tutor that explains every answer — built for
+              professionals preparing for certification.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Link href="/register" className="btn-primary btn-sm">
+                Get started free
+              </Link>
+              <Link href="/exams" className="btn-secondary btn-sm">
+                Browse exams
+              </Link>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 lg:gap-x-16">
+            <FooterColumn title="Product" links={PRODUCT} />
+            <FooterColumn title="Account" links={ACCOUNT} signedIn={Boolean(user)} onSignOut={signOut} />
+            <FooterColumn title="Legal" links={LEGAL} />
           </div>
         </div>
 
-        <FooterColumn title="Product" links={PRODUCT} />
-        <FooterColumn title="Account" links={ACCOUNT} signedIn={Boolean(user)} onSignOut={signOut} />
-        <FooterColumn title="Legal" links={LEGAL} />
+        {/* Oversized wordmark flourish — desktop only so it can never overflow. */}
+        <p
+          aria-hidden="true"
+          className="mt-12 hidden select-none whitespace-nowrap bg-gradient-to-b from-content-primary/[0.10] to-transparent bg-clip-text font-display text-[8.5rem] font-bold leading-none tracking-[-0.05em] text-transparent lg:block"
+        >
+          ExamDump Pro
+        </p>
       </div>
 
-      <div className="border-t border-surface-border/70">
+      <div className="relative mt-6 border-t border-surface-border/60">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-xs text-content-muted sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <p>© {new Date().getFullYear()} ExamDump Pro. All rights reserved.</p>
           <p className="sm:text-right">
@@ -97,7 +108,7 @@ function FooterColumn({
 }) {
   return (
     <nav aria-label={title}>
-      <p className="heading-3">{title}</p>
+      <p className="eyebrow">{title}</p>
       <ul className="mt-4 flex flex-col gap-2.5 text-sm text-content-muted">
         {links.map((link) => (
           <li key={link.href}>

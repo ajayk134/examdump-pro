@@ -41,7 +41,7 @@ export default function ForgotPasswordPage() {
     >
       {sent ? (
         <div className="flex flex-col gap-4">
-          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-positive/10 text-positive">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-positive/10 text-positive ring-1 ring-inset ring-positive/20">
             <IconCheckCircle width={22} height={22} />
           </span>
           <Alert tone="success">If an account exists for that email, a reset link is on its way.</Alert>
@@ -55,7 +55,7 @@ export default function ForgotPasswordPage() {
           ) : null}
         </div>
       ) : (
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <form onSubmit={onSubmit} className="flex flex-col gap-4" aria-busy={loading}>
           {error ? <Alert tone="error">{error}</Alert> : null}
 
           <div>

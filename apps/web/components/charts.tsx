@@ -9,7 +9,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  * Unique, CSS-safe id for gradient references.
  *
  * `useId()` is unique but historically contains characters (`:`, «» ) that are
- * awkward or invalid inside `url(#…)`, so they are stripped. The distinguishing
+ * awkward or invalid inside `url(#...)`, so they are stripped. The distinguishing
  * part of the id is alphanumeric, so stripping punctuation keeps it unique.
  */
 function useSafeId(): string {
@@ -39,12 +39,21 @@ function shortDate(value: string | undefined): string {
  * at a readable size on a 360 px phone instead of being scaled down with the
  * viewBox. The whole series is also exposed as a visually hidden table, which
  * is the accessible representation — the SVG itself is decorative.
+ *
+ * The line is drawn with the brand spectrum (violet → magenta → cyan) and a
+ * soft under-stroke rather than a flat colour, so the panel reads as part of
+ * the identity while the marks stay legible in both themes.
  */
 export function LineChart({ data, height = 180 }: { data: PerformancePoint[]; height?: number }) {
-  const gradientId = useSafeId();
+  const areaId = useSafeId();
+  const lineId = useSafeId();
 
   if (data.length === 0) {
-    return <p className="py-10 text-center text-sm text-content-muted">Solve some questions to see your progress.</p>;
+    return (
+      <p className="grid h-40 place-items-center px-4 text-center text-sm text-content-muted">
+        Solve some questions to see your progress.
+      </p>
+    );
   }
 
   const width = 640;
@@ -85,9 +94,15 @@ export function LineChart({ data, height = 180 }: { data: PerformancePoint[]; he
           focusable="false"
         >
           <defs>
-            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgb(var(--accent))" stopOpacity="0.32" />
-              <stop offset="100%" stopColor="rgb(var(--accent))" stopOpacity="0" />
+            <linearGradient id={areaId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="rgb(var(--accent))" stopOpacity="0.3" />
+              <stop offset="58%" stopColor="rgb(var(--accent-2))" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="rgb(var(--accent-3))" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id={lineId} x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="rgb(var(--accent))" />
+              <stop offset="55%" stopColor="rgb(var(--accent-2))" />
+              <stop offset="100%" stopColor="rgb(var(--accent-3))" />
             </linearGradient>
           </defs>
 
@@ -108,11 +123,22 @@ export function LineChart({ data, height = 180 }: { data: PerformancePoint[]; he
             );
           })}
 
-          <polyline points={area} fill={`url(#${gradientId})`} stroke="none" />
+          <polyline points={area} fill={`url(#${areaId})`} stroke="none" />
+          {/* Soft under-stroke so the trend has a glow rather than a hard edge. */}
           <polyline
             points={line}
             fill="none"
             stroke="rgb(var(--accent))"
+            strokeOpacity="0.16"
+            strokeWidth="6"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+          <polyline
+            points={line}
+            fill="none"
+            stroke={`url(#${lineId})`}
             strokeWidth="2.25"
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -161,37 +187,66 @@ export function LineChart({ data, height = 180 }: { data: PerformancePoint[]; he
   );
 }
 
-/** Accuracy banding shared by the weak-topic list. */
-function topicTone(accuracy: number): { label: string; color: string; text: string } {
-  if (accuracy < 60) return { label: 'Needs work', color: 'rgb(var(--danger))', text: 'text-negative' };
-  if (accuracy < 80) return { label: 'Shaky', color: 'rgb(var(--warning))', text: 'text-caution' };
-  return { label: 'Solid', color: 'rgb(var(--success))', text: 'text-positive' };
+/**
+ * Accuracy banding shared by the weak-topic list. The band is carried by the
+ * label and the numeric value; the bar itself uses the brand spectrum so the
+ * whole panel stays on-identity.
+ */
+function topicTone(accuracy: number): { label: string; text: string; badge: string } {
+  if (accuracy < 60) return { label: 'Needs work', text: 'text-negative', badge: 'bg-negative/[0.12] text-negative' };
+  if (accuracy < 80) return { label: 'Shaky', text: 'text-caution', badge: 'bg-caution/[0.14] text-caution' };
+  return { label: 'Solid', text: 'text-positive', badge: 'bg-positive/[0.12] text-positive' };
 }
+
+const TOPIC_BAR = 'linear-gradient(90deg, rgb(var(--accent)), rgb(var(--accent-2)) 55%, rgb(var(--accent-3)))';
 
 export function WeakTopicsList({ topics }: { topics: WeakTopic[] }) {
   if (topics.length === 0) {
-    return <p className="py-6 text-center text-sm text-content-muted">Answer more questions to unlock weak-topic analysis.</p>;
+    return (
+      <p className="py-6 text-center text-sm text-content-muted">
+        Answer more questions to unlock weak-topic analysis.
+      </p>
+    );
   }
   return (
-    <ul className="flex flex-col gap-3.5">
-      {topics.map((topic) => {
+    <ul className="flex flex-col gap-2.5">
+      {topics.map((topic, index) => {
         const tone = topicTone(topic.accuracy);
         return (
-          <li key={topic.topic} className="min-w-0">
-            <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-content-primary">{topic.topic}</span>
-              <span className={`text-xs font-medium ${tone.text}`}>{tone.label}</span>
-              <span className={`numeric text-sm font-bold ${tone.text}`}>{topic.accuracy}%</span>
+          <li key={topic.topic} className="min-w-0 rounded-[1rem] bg-surface-raised/80 p-3">
+            <div className="flex items-start gap-3">
+              <span
+                aria-hidden="true"
+                className="numeric mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-[0.6rem] bg-surface-inset text-[0.6875rem] font-black text-content-secondary"
+              >
+                {index + 1}
+              </span>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-content-primary">
+                    {topic.topic}
+                  </span>
+                  <span className={`numeric shrink-0 text-sm font-bold ${tone.text}`}>{topic.accuracy}%</span>
+                </div>
+
+                <div className="mt-2 flex items-center gap-2">
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[0.625rem] font-bold uppercase tracking-wide ${tone.badge}`}>
+                    {tone.label}
+                  </span>
+                  <div className="progress-track h-1.5 min-w-0 flex-1" aria-hidden="true">
+                    <div
+                      className="h-full rounded-full transition-[width] duration-500 ease-smooth"
+                      style={{ width: `${Math.max(2, Math.min(100, topic.accuracy))}%`, backgroundImage: TOPIC_BAR }}
+                    />
+                  </div>
+                </div>
+
+                <p className="caption mt-1.5">
+                  {topic.correct} of {topic.attempts} correct · {topic.questions} questions
+                </p>
+              </div>
             </div>
-            <div className="progress-track h-2" aria-hidden="true">
-              <div
-                className="h-full rounded-full transition-[width] duration-500 ease-smooth"
-                style={{ width: `${Math.max(2, Math.min(100, topic.accuracy))}%`, backgroundColor: tone.color }}
-              />
-            </div>
-            <p className="mt-1 text-xs text-content-muted">
-              {topic.correct} of {topic.attempts} correct · {topic.questions} questions
-            </p>
           </li>
         );
       })}
@@ -206,7 +261,6 @@ export function Donut({ value, size = 96 }: { value: number; size?: number }) {
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
   const offset = circumference - (clamped / 100) * circumference;
-  const end = clamped >= 80 ? 'rgb(var(--success))' : clamped >= 60 ? 'rgb(var(--warning))' : 'rgb(var(--danger))';
 
   return (
     <svg
@@ -241,7 +295,8 @@ export function Donut({ value, size = 96 }: { value: number; size?: number }) {
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="rgb(var(--accent))" />
-          <stop offset="100%" stopColor={end} />
+          <stop offset="55%" stopColor="rgb(var(--accent-2))" />
+          <stop offset="100%" stopColor="rgb(var(--accent-3))" />
         </linearGradient>
       </defs>
       <text

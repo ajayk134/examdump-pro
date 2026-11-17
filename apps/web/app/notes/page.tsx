@@ -42,7 +42,7 @@ export default function NotesPage() {
   if (!user) return <EmptyState title="Sign in to view notes" action={<Link href="/login" className="btn-primary">Sign in</Link>} />;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 sm:gap-6">
       <PageHeader
         eyebrow="Saved"
         title="Notes"
@@ -77,7 +77,7 @@ export default function NotesPage() {
                 <div className="flex min-w-0 items-start gap-3">
                   <span
                     aria-hidden="true"
-                    className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent"
+                    className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-[0.9rem] bg-gradient-to-br from-accent to-accent-2 text-white shadow-glow-sm"
                   >
                     <IconNote width={16} height={16} />
                   </span>
@@ -101,7 +101,7 @@ export default function NotesPage() {
                 </div>
               </div>
 
-              <p className="panel-sunken whitespace-pre-wrap rounded-xl p-3 text-sm leading-relaxed text-content-secondary">
+              <p className="whitespace-pre-wrap rounded-[1rem] bg-surface-sunken p-3.5 text-sm leading-relaxed text-content-secondary">
                 {note.body}
               </p>
             </li>

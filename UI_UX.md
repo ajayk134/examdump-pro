@@ -35,6 +35,21 @@ often studying on a phone between other commitments. Copy addresses them as "you
 | Study | dashboard → exam → practice / mock / timed → results → weak topics |
 | Repeat | recommendations, streak, leaderboard |
 
+## Visual identity
+
+The interface's visual language is "Nova" — deliberately not a neutral blue
+dashboard. A deep indigo ink neutral; an electric-violet primary with magenta and
+cyan gradient partners; a geometric display face (Space Grotesk) over a rounded
+text face (Manrope), self-hosted by `next/font`; generous radii and pill controls;
+and a soft brand mesh behind every page. Light and dark share the same token
+names, so no component branches on the theme.
+
+The identity is defined once, in `apps/web/app/globals.css` +
+`apps/web/tailwind.config.ts`. Components compose from `panel`, `tile`, `btn`,
+`badge`, `mesh`, `gradient-text`, `ring-gradient` and `orb` rather than inventing
+their own colour or shape, so a single token change moves the whole product. See
+[FRONTEND.md](FRONTEND.md) for the full list of tokens and idioms.
+
 ## Interaction standards
 
 - Touch targets ≥ 44 px; usable at 360 px width.

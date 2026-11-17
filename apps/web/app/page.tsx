@@ -3,6 +3,8 @@ import { LandingStats } from '@/components/landing-stats';
 import { LandingDiscovery } from '@/components/landing-discovery';
 import { LandingPricing } from '@/components/landing-pricing';
 import { HeroCta } from '@/components/hero-cta';
+import { Reveal } from '@/components/reveal';
+import { cn } from '@/lib/format';
 import {
   IconArrowRight,
   IconBook,
@@ -12,62 +14,74 @@ import {
   IconClock,
   IconLightning,
   IconMessage,
+  IconPlay,
   IconShield,
   IconSparkles,
   IconTrophy,
 } from '@/components/icons';
 
-/* ------------------------------------------------------------------ */
-/* Hero                                                                */
-/* ------------------------------------------------------------------ */
-
 export default function HomePage() {
   return (
-    <div className="flex flex-col gap-16 pb-6 sm:gap-24 lg:gap-28">
+    <div className="flex flex-col gap-20 pb-6 sm:gap-28 lg:gap-32">
       <Hero />
-      <LandingStats />
-      <DiscoverySection />
-      <HowItWorks />
-      <FeatureStory />
-      <PricingPreview />
-      <ClosingCta />
+      <Reveal>
+        <TrustStrip />
+      </Reveal>
+      <Reveal>
+        <HowItWorks />
+      </Reveal>
+      <Reveal>
+        <FeatureStory />
+      </Reveal>
+      <Reveal>
+        <TutorBand />
+      </Reveal>
+      <Reveal>
+        <PricingPreview />
+      </Reveal>
+      <Reveal>
+        <ClosingCta />
+      </Reveal>
     </div>
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Hero                                                                */
+/* ------------------------------------------------------------------ */
+
 function Hero() {
   return (
     <section className="relative isolate pt-2 sm:pt-6">
-      {/* Ambient technical grid, clipped to the hero. */}
-      <div aria-hidden="true" className="grid-fade pointer-events-none absolute inset-x-0 -top-10 h-72 opacity-60" />
+      <div aria-hidden="true" className="grid-fade pointer-events-none absolute inset-x-0 -top-10 h-80" />
+      <div aria-hidden="true" className="orb -left-16 top-10 h-64 w-64 bg-brand-500/25 animate-glow" />
+      <div aria-hidden="true" className="orb right-0 top-40 h-72 w-72 bg-accent-2/20" />
 
-      <div className="relative grid items-center gap-10 lg:grid-cols-[1.05fr_1fr] lg:gap-14">
+      <div className="relative grid items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
         <div className="max-w-xl">
-          <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/[0.08] px-3 py-1 text-[0.6875rem] font-bold uppercase tracking-[0.1em] text-accent">
+          <p className="inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/[0.08] px-3.5 py-1.5 text-[0.7rem] font-bold uppercase tracking-[0.14em] text-accent">
             <IconSparkles width={13} height={13} />
             AI tutor on every plan
           </p>
 
-          <h1 className="display-1 text-balance">
+          <h1 className="display-1 mt-5 text-balance">
             Pass your next certification with{' '}
-            <span className="bg-gradient-to-r from-brand-500 via-brand-400 to-sky-400 bg-clip-text text-transparent dark:from-brand-300 dark:via-sky-300 dark:to-brand-400">
-              confidence
-            </span>
+            <span className="gradient-text animate-gradient">confidence</span>
           </h1>
 
-          <p className="mt-5 max-w-lg text-pretty text-[0.9375rem] leading-relaxed text-content-secondary sm:text-lg">
+          <p className="mt-6 max-w-lg text-pretty text-base leading-relaxed text-content-secondary sm:text-lg">
             Real exam questions, timed mock exams and an AI tutor that explains every answer — built for the way
             working professionals actually study.
           </p>
 
-          <div className="mt-8 flex flex-col items-stretch gap-2.5 sm:flex-row sm:items-center">
+          <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
             <HeroCta />
             <Link href="/exams" className="btn-secondary btn-lg">
               Browse exams
             </Link>
           </div>
 
-          <ul className="mt-7 flex flex-wrap gap-x-5 gap-y-2 text-xs text-content-muted">
+          <ul className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-xs text-content-muted">
             {['5 questions free on every exam', 'No card to start', 'Cancel any time'].map((item) => (
               <li key={item} className="inline-flex items-center gap-1.5">
                 <IconCheck width={14} height={14} className="text-positive" />
@@ -79,29 +93,24 @@ function Hero() {
 
         <HeroMock />
       </div>
+
+      <div className="relative mt-16 sm:mt-20">
+        <LandingStats />
+      </div>
     </section>
   );
 }
 
 /**
- * Illustrative product preview.
- *
- * Structural chrome only — no real question content, scores or names — so the
- * page never presents invented data as fact.
+ * Illustrative product preview. Structural chrome only — no real question
+ * content, scores or names — so the page never presents invented data as fact.
  */
 function HeroMock() {
   return (
     <div className="relative mx-auto w-full max-w-md lg:mx-0">
-      {/*
-        The halo is inset rather than a plain `-inset-6`: a decorative box that
-        bleeds past the viewport widens the layout viewport on a phone, which
-        drags the fixed bottom nav out to the document width. 12 px each side is
-        invisible for a blurred glow at 360 px; the full bleed returns at `sm`,
-        where the centred card leaves room for it.
-      */}
-      <div aria-hidden="true" className="absolute -inset-x-3 -inset-y-6 -z-10 rounded-[2rem] bg-accent/[0.07] blur-2xl sm:-inset-x-6" />
+      <div aria-hidden="true" className="absolute -inset-x-3 -inset-y-8 -z-10 rounded-[2.5rem] bg-gradient-to-br from-brand-500/15 via-accent-2/10 to-aqua-400/10 blur-2xl sm:-inset-x-6" />
 
-      <div className="panel-lg overflow-hidden p-0 shadow-lg">
+      <div className="ring-gradient overflow-hidden rounded-[1.85rem] bg-surface-raised shadow-lg animate-float">
         <div className="flex items-center gap-2 border-b border-surface-border bg-surface-overlay/70 px-4 py-3">
           <span className="flex gap-1.5" aria-hidden="true">
             <span className="h-2.5 w-2.5 rounded-full bg-negative/50" />
@@ -116,7 +125,7 @@ function HeroMock() {
 
         <div className="p-4 sm:p-5">
           <div className="progress-track h-1.5">
-            <div className="h-full rounded-full bg-gradient-to-r from-brand-600 to-sky-400" style={{ width: '20%' }} />
+            <div className="h-full rounded-full bg-gradient-to-r from-brand-500 via-brand-600 to-accent-2" style={{ width: '20%' }} />
           </div>
 
           <p className="eyebrow mt-5">Cloud architecture</p>
@@ -129,9 +138,9 @@ function HeroMock() {
               <li
                 key={letter}
                 className={[
-                  'flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm',
+                  'flex items-center gap-3 rounded-[1rem] border px-3 py-2.5 text-sm',
                   index === 1
-                    ? 'border-accent/50 bg-accent/[0.07] font-medium'
+                    ? 'border-accent/50 bg-accent/[0.08] font-medium'
                     : 'border-surface-border text-content-secondary',
                 ].join(' ')}
               >
@@ -148,7 +157,7 @@ function HeroMock() {
             ))}
           </ul>
 
-          <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-accent/25 bg-accent/[0.06] p-3">
+          <div className="mt-4 flex items-start gap-2.5 rounded-[1rem] border border-accent/25 bg-accent/[0.06] p-3">
             <IconSparkles width={16} height={16} className="mt-0.5 shrink-0 text-accent" />
             <div className="min-w-0 flex-1 space-y-1.5">
               <p className="text-xs font-semibold text-accent">AI explanation</p>
@@ -165,20 +174,21 @@ function HeroMock() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Discovery                                                           */
+/* Trust + discovery                                                   */
 /* ------------------------------------------------------------------ */
 
-function DiscoverySection() {
+function TrustStrip() {
   return (
     <section className="section" aria-labelledby="discovery-heading">
-      <div className="section-head">
+      <div className="section-head flex-col items-start gap-2 sm:flex-row sm:items-end">
         <div>
           <p className="eyebrow mb-2">Find your exam</p>
           <h2 id="discovery-heading" className="display-2 text-balance">
             Start from the catalogue
           </h2>
           <p className="body-text mt-2 max-w-xl">
-            160+ certification providers, 1,800+ exams. Search by code or title, or jump straight into what is popular.
+            Hundreds of certification providers and thousands of exams. Search by code or title, or jump straight
+            into what is popular.
           </p>
         </div>
         <Link href="/exams" className="btn-secondary btn-sm hidden shrink-0 sm:inline-flex">
@@ -220,25 +230,28 @@ const STEPS = [
 function HowItWorks() {
   return (
     <section className="section" aria-labelledby="steps-heading">
-      <div className="mx-auto max-w-xl text-center">
+      <div className="mx-auto max-w-2xl text-center">
         <p className="eyebrow mb-2">How it works</p>
         <h2 id="steps-heading" className="display-2 text-balance">
           Three steps to exam-ready
         </h2>
       </div>
 
-      <ol className="relative grid gap-6 sm:grid-cols-3 sm:gap-8">
+      <ol className="relative grid gap-5 sm:grid-cols-3 sm:gap-6">
         {STEPS.map((step) => {
           const Icon = step.icon;
           return (
-            <li key={step.n} className="relative flex flex-col gap-3">
+            <li
+              key={step.n}
+              className="group relative flex flex-col gap-3 rounded-[1.5rem] border border-surface-border bg-surface-raised p-5 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:shadow-md"
+            >
               <div className="flex items-center gap-3">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-accent/10 text-accent">
-                  <Icon width={20} height={20} />
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-accent-2 text-white shadow-glow-sm">
+                  <Icon width={22} height={22} />
                 </span>
-                <span className="numeric text-3xl font-black leading-none text-accent/20">{step.n}</span>
+                <span className="numeric font-display text-4xl font-bold leading-none text-accent/25">{step.n}</span>
               </div>
-              <h3 className="heading-2">{step.title}</h3>
+              <h3 className="heading-1">{step.title}</h3>
               <p className="text-[0.8125rem] leading-relaxed text-content-muted">{step.body}</p>
             </li>
           );
@@ -249,7 +262,7 @@ function HowItWorks() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Feature storytelling                                                */
+/* Feature storytelling — alternating rows, not a card wall            */
 /* ------------------------------------------------------------------ */
 
 const FEATURES = [
@@ -259,15 +272,13 @@ const FEATURES = [
     body: 'Comfortable reading width, keyboard shortcuts, instant grading and explanations that stay on screen while you think.',
     points: ['1–9 answer shortcuts', 'Bookmark and revisit', 'Explanation after every answer'],
     icon: IconBook,
-    tone: 'accent' as const,
   },
   {
     eyebrow: 'Mock exams',
-    title: 'Sit the real thing before you sit the real thing',
-    body: 'Randomised 60-question mocks with a countdown timer, question navigator and server-graded score report.',
+    title: 'Sit the real thing before the real thing',
+    body: 'Randomised 60-question mocks with a countdown timer, question navigator and a server-graded score report.',
     points: ['Countdown timer', 'Flag and review', 'Pass/fail readiness report'],
     icon: IconTrophy,
-    tone: 'caution' as const,
   },
   {
     eyebrow: 'Analytics',
@@ -275,66 +286,70 @@ const FEATURES = [
     body: 'Every answer is tracked, so your dashboard can point at the weak topics holding your score back.',
     points: ['Accuracy trend', 'Weak-topic breakdown', 'Recommendations that adapt'],
     icon: IconChart,
-    tone: 'positive' as const,
-  },
-  {
-    eyebrow: 'AI tutor',
-    title: 'Ask why, not just what',
-    body: 'Get a hint before answering, a plain-language explanation after, or open a full conversation about the topic.',
-    points: ['Hints before you commit', 'Step-by-step reasoning', 'Chat about any question'],
-    icon: IconMessage,
-    tone: 'accent' as const,
   },
 ];
 
 function FeatureStory() {
   return (
     <section className="section" aria-labelledby="features-heading">
-      <div className="mx-auto max-w-xl text-center">
+      <div className="mx-auto max-w-2xl text-center">
         <p className="eyebrow mb-2">Why ExamDump Pro</p>
         <h2 id="features-heading" className="display-2 text-balance">
           One system, not a question dump
         </h2>
-        <p className="body-text mt-2.5">Practice, simulation, analysis and tutoring share one coherent workflow.</p>
+        <p className="body-text mt-3">Practice, simulation, analysis and tutoring share one coherent workflow.</p>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {FEATURES.map((feature) => {
+      <div className="flex flex-col gap-12 sm:gap-16">
+        {FEATURES.map((feature, index) => {
           const Icon = feature.icon;
-          const tone = {
-            accent: 'text-accent bg-accent/10',
-            caution: 'text-caution bg-caution/[0.12]',
-            positive: 'text-positive bg-positive/[0.12]',
-          }[feature.tone];
+          const flip = index % 2 === 1;
           return (
-            <article key={feature.title} className="panel flex flex-col gap-4 p-5 sm:p-6">
-              <div className="flex items-center gap-3">
-                <span className={`grid h-11 w-11 place-items-center rounded-2xl ${tone}`}>
-                  <Icon width={20} height={20} />
+            <div
+              key={feature.title}
+              className={cn(
+                'grid items-center gap-8 lg:grid-cols-2 lg:gap-14',
+                flip && 'lg:[&>*:first-child]:order-2',
+              )}
+            >
+              <div className="max-w-lg">
+                <span className="inline-grid h-12 w-12 place-items-center rounded-2xl bg-accent/10 text-accent">
+                  <Icon width={22} height={22} />
                 </span>
-                <p className="eyebrow">{feature.eyebrow}</p>
+                <p className="eyebrow mt-4">{feature.eyebrow}</p>
+                <h3 className="display-2 mt-2 text-balance">{feature.title}</h3>
+                <p className="body-text mt-3 text-base">{feature.body}</p>
+                <ul className="mt-5 flex flex-col gap-2.5">
+                  {feature.points.map((point) => (
+                    <li key={point} className="flex items-center gap-2.5 text-sm text-content-secondary">
+                      <IconCheckCircle width={17} height={17} className="shrink-0 text-positive" />
+                      {point}
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <div>
-                <h3 className="heading-1 text-balance">{feature.title}</h3>
-                <p className="body-text mt-2">{feature.body}</p>
+
+              <div className="relative">
+                <div
+                  aria-hidden="true"
+                  className={cn(
+                    'orb h-56 w-56',
+                    flip ? 'left-0 bg-aqua-400/20' : 'right-0 bg-accent-2/20',
+                  )}
+                />
+                <div className="ring-gradient relative overflow-hidden rounded-[1.75rem] bg-surface-raised p-6 shadow-md">
+                  <FeatureArt kind={feature.eyebrow} />
+                </div>
               </div>
-              <ul className="mt-auto flex flex-col gap-2 border-t border-surface-border pt-4">
-                {feature.points.map((point) => (
-                  <li key={point} className="flex items-center gap-2 text-[0.8125rem] text-content-secondary">
-                    <IconCheckCircle width={16} height={16} className="shrink-0 text-positive" />
-                    {point}
-                  </li>
-                ))}
-              </ul>
-            </article>
+            </div>
           );
         })}
       </div>
 
-      <ul className="mt-2 grid gap-3 sm:grid-cols-3">
+      <ul className="grid gap-3 sm:grid-cols-3">
         {[
           { icon: IconLightning, title: 'Built for momentum', body: 'Streaks, session progress and leaderboards keep a daily habit going.' },
-          { icon: IconCheckCircle, title: 'Excellent on a phone', body: 'Bottom navigation, swipe between questions and thumb-sized controls.' },
+          { icon: IconCheckCircle, title: 'Excellent on a phone', body: 'Floating navigation, swipe between questions and thumb-sized controls.' },
           { icon: IconShield, title: 'Private by default', body: 'Your answers and notes stay yours. No ads, no data selling.' },
         ].map((item) => {
           const Icon = item.icon;
@@ -353,6 +368,104 @@ function FeatureStory() {
   );
 }
 
+/** Small abstract visuals, structurally illustrative (no real data). */
+function FeatureArt({ kind }: { kind: string }) {
+  if (kind === 'Practice') {
+    return (
+      <div className="flex flex-col gap-2.5" aria-hidden="true">
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className={cn(
+              'flex items-center gap-3 rounded-xl border px-3 py-2.5',
+              i === 0 ? 'border-accent/45 bg-accent/[0.07]' : 'border-surface-border',
+            )}
+          >
+            <span className={cn('h-5 w-5 shrink-0 rounded-md', i === 0 ? 'bg-accent' : 'bg-surface-inset')} />
+            <span className="h-2 flex-1 rounded-full bg-surface-inset" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (kind === 'Mock exams') {
+    return (
+      <div className="flex flex-col gap-4" aria-hidden="true">
+        <div className="flex items-center justify-center">
+          <div className="grid h-24 w-24 place-items-center rounded-full border-4 border-accent/25 text-center">
+            <span className="numeric font-display text-2xl font-bold text-accent">42:10</span>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-1.5">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <span
+              key={i}
+              className={cn('h-6 flex-1 rounded-md', i < 6 ? 'bg-brand-500/70' : 'bg-surface-inset')}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-end gap-2" aria-hidden="true">
+      {[38, 62, 50, 80, 70, 92].map((h, i) => (
+        <span
+          key={i}
+          className="flex-1 rounded-lg bg-gradient-to-t from-brand-500/35 to-accent-2/80"
+          style={{ height: `${h}px` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* AI tutor band                                                       */
+/* ------------------------------------------------------------------ */
+
+function TutorBand() {
+  return (
+    <section aria-labelledby="tutor-heading" className="section">
+      <div className="mesh relative overflow-hidden rounded-[2rem] border border-surface-border p-6 text-white sm:p-10">
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-br from-brand-600/70 via-brand-700/60 to-accent-2/50" />
+        <div className="relative grid gap-8 lg:grid-cols-2 lg:items-center">
+          <div className="max-w-lg">
+            <p className="text-[0.7rem] font-bold uppercase tracking-[0.16em] text-white/80">AI tutor</p>
+            <h2 id="tutor-heading" className="display-2 mt-3 text-balance">
+              Ask why, not just what
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-white/85 sm:text-base">
+              Get a hint before you answer, a plain-language explanation after, or open a full conversation about
+              the topic. Every plan includes it.
+            </p>
+            <Link href="/ask" className="btn mt-6 bg-white text-brand-700 hover:bg-white/90">
+              Try the AI tutor
+              <IconArrowRight width={16} height={16} />
+            </Link>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-white/15 px-4 py-2.5 text-sm backdrop-blur">
+              Why is option B correct here?
+            </div>
+            <div className="max-w-[90%] rounded-2xl rounded-bl-sm bg-surface-raised/95 px-4 py-3 text-sm text-content-secondary shadow-lg">
+              <span className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-accent">
+                <IconSparkles width={13} height={13} /> AI tutor
+              </span>
+              It meets the recovery objective because the design keeps a redundant path available across zones…
+            </div>
+            <div className="flex items-center gap-2 pl-1 text-xs text-white/70">
+              <span className="dot-pulse" aria-hidden="true" />
+              Composing an answer
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Pricing + closing CTA                                               */
 /* ------------------------------------------------------------------ */
@@ -360,20 +473,21 @@ function FeatureStory() {
 function PricingPreview() {
   return (
     <section className="section" aria-labelledby="pricing-heading">
-      <div className="mx-auto max-w-xl text-center">
+      <div className="mx-auto max-w-2xl text-center">
         <p className="eyebrow mb-2">Pricing</p>
         <h2 id="pricing-heading" className="display-2 text-balance">
           Start free, upgrade when it counts
         </h2>
-        <p className="body-text mt-2.5">
-          Every plan includes the AI tutor and the full practice interface. Pricing is decided on our secure checkout.
+        <p className="body-text mt-3">
+          Every plan includes the AI tutor and the full practice interface. Pricing is decided on our secure
+          checkout.
         </p>
       </div>
 
       <LandingPricing />
 
       <div className="text-center">
-        <Link href="/pricing" className="link text-sm">
+        <Link href="/pricing" className="link">
           Compare every plan and what is included →
         </Link>
       </div>
@@ -383,26 +497,25 @@ function PricingPreview() {
 
 function ClosingCta() {
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-surface-border bg-gradient-to-br from-brand-600 via-brand-500 to-sky-400 px-5 py-12 text-center text-white sm:px-10 sm:py-16">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_-20%,rgba(255,255,255,0.28),transparent_60%)]"
-      />
-      <div className="relative mx-auto max-w-xl">
-        <h2 className="text-[1.7rem] font-extrabold leading-tight tracking-tight sm:text-4xl">
-          Your exam date is already set
-        </h2>
-        <p className="mx-auto mt-3 max-w-md text-pretty text-sm leading-relaxed text-white/85 sm:text-base">
-          Start with the free questions today. Upgrade only when you want the full bank and analytics.
-        </p>
-        <div className="mt-7 flex flex-col items-stretch justify-center gap-2.5 sm:flex-row">
-          <Link href="/register" className="btn bg-white px-6 text-brand-700 hover:bg-white/90">
-            Create free account
-            <IconArrowRight width={16} height={16} />
-          </Link>
-          <Link href="/exams" className="btn border border-white/30 bg-white/10 text-white hover:bg-white/20">
-            Browse exams
-          </Link>
+    <section className="mesh relative overflow-hidden rounded-[2.25rem] border border-surface-border">
+      <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-br from-brand-600 via-brand-600/90 to-accent-2" />
+      <div aria-hidden="true" className="absolute -right-10 -top-10 h-56 w-56 rounded-full bg-aqua-400/30 blur-3xl" />
+      <div className="relative px-5 py-14 text-center text-white sm:px-10 sm:py-20">
+        <div className="mx-auto max-w-2xl">
+          <h2 className="display-1 text-balance">Your exam date is already set</h2>
+          <p className="mx-auto mt-4 max-w-md text-pretty text-sm leading-relaxed text-white/85 sm:text-base">
+            Start with the free questions today. Upgrade only when you want the full bank and analytics.
+          </p>
+          <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row">
+            <Link href="/register" className="btn bg-white px-7 text-brand-700 hover:bg-white/90">
+              Create free account
+              <IconArrowRight width={16} height={16} />
+            </Link>
+            <Link href="/exams" className="btn border border-white/30 bg-white/10 text-white hover:bg-white/20">
+              <IconPlay width={15} height={15} />
+              Browse exams
+            </Link>
+          </div>
         </div>
       </div>
     </section>

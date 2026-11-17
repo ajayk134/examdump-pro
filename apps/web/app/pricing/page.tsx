@@ -16,7 +16,7 @@ import type {
   Subscription,
   User,
 } from '@/lib/types';
-import { Alert, Badge, EmptyState, PremiumBadge, Spinner, TableScroll } from '@/components/ui';
+import { Alert, EmptyState, PremiumBadge, Spinner, TableScroll } from '@/components/ui';
 import { IconCheck, IconChevronDown, IconSparkles, IconX } from '@/components/icons';
 import { cn, formatDate, formatMoneyMinor } from '@/lib/format';
 
@@ -264,24 +264,23 @@ export default function PricingPage() {
 
   return (
     <div className="flex flex-col gap-12 sm:gap-14">
-      <header className="mx-auto max-w-2xl text-center">
-        <span className="badge mx-auto mb-4">
+      <header className="relative isolate mx-auto max-w-3xl overflow-hidden text-center pb-2">
+        <div aria-hidden="true" className="grid-fade pointer-events-none absolute inset-x-0 -top-8 h-64" />
+        <div aria-hidden="true" className="orb -left-10 top-0 h-52 w-52 bg-brand-500/25" />
+        <div aria-hidden="true" className="orb -right-10 top-6 h-52 w-52 bg-accent-2/20" />
+        <span className="badge badge-accent relative mx-auto mb-5">
           <IconSparkles width={13} height={13} />
           Pricing
         </span>
-        <h1 className="display-2 text-balance">
-          Pass once. Practice{' '}
-          <span className="bg-gradient-to-r from-brand-500 via-brand-400 to-sky-400 bg-clip-text text-transparent dark:from-brand-300 dark:via-sky-300 dark:to-brand-400">
-            without limits
-          </span>
-          .
+        <h1 className="display-1 relative text-balance">
+          Pass once. Practice <span className="gradient-text animate-gradient">without limits</span>.
         </h1>
-        <p className="body-text mx-auto mt-4 max-w-xl text-pretty sm:text-[0.9375rem]">
+        <p className="body-text relative mx-auto mt-5 max-w-xl text-pretty text-base">
           Every exam has {freeQuestions} free questions. Unlock full question banks, timed mocks, AI explanations
           and analytics with a pass that fits how many exams you are taking.
         </p>
         {me?.entitlements.expiresAt ? (
-          <p className="caption mt-3">
+          <p className="caption relative mt-4">
             Your current access runs until{' '}
             <strong className="text-content-primary">{formatDate(me.entitlements.expiresAt)}</strong>.
           </p>
@@ -679,7 +678,7 @@ export default function PricingPage() {
           </h2>
         </div>
 
-        <div className="mx-auto w-full max-w-3xl overflow-hidden rounded-2xl border border-surface-border bg-surface-raised shadow-xs">
+        <div className="mx-auto w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-surface-border bg-surface-raised shadow-sm">
           {FAQ_ITEMS.map((item) => (
             <details key={item.q} className="group border-t border-surface-border first:border-t-0">
               <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 text-sm font-semibold text-content-primary transition-colors hover:bg-surface-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent sm:px-5 [&::-webkit-details-marker]:hidden">
@@ -719,41 +718,49 @@ function PlanCard(props: {
   return (
     <div
       className={cn(
-        'relative flex h-full flex-col rounded-2xl border bg-surface-raised p-5',
-        props.highlight ? 'border-accent/55 shadow-md ring-1 ring-accent/25' : 'border-surface-border shadow-xs',
+        'relative flex h-full flex-col overflow-hidden rounded-[1.75rem] border p-5 transition-all duration-300 sm:p-6',
+        props.highlight
+          ? 'ring-gradient border-transparent bg-surface-raised shadow-lg'
+          : 'border-surface-border bg-surface-raised shadow-xs hover:-translate-y-1 hover:border-accent/40 hover:shadow-md',
       )}
     >
       {props.highlight ? (
-        <span
+        <div
           aria-hidden="true"
-          className="absolute inset-x-0 top-0 h-0.5 rounded-t-2xl bg-gradient-to-r from-brand-600 to-sky-400"
+          className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-brand-500/25 blur-3xl"
         />
       ) : null}
 
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="eyebrow min-w-0 break-words">{props.name}</h3>
+      <div className="relative flex items-start justify-between gap-3">
+        <h3 className="font-display text-[0.72rem] font-bold uppercase tracking-[0.14em] text-content-secondary">
+          {props.name}
+        </h3>
         <div className="flex shrink-0 flex-col items-end gap-1">
-          {badge ? <Badge tone={props.highlight ? 'accent' : 'default'}>{badge}</Badge> : null}
-          {props.current ? <Badge tone="success">Current plan</Badge> : null}
+          {badge ? (
+            <span className={cn('badge', props.highlight && 'badge-accent')}>{badge}</span>
+          ) : null}
+          {props.current ? <span className="badge badge-success">Current</span> : null}
         </div>
       </div>
 
-      <p className="numeric mt-3 text-3xl font-bold tracking-tight">{props.price}</p>
-      <p className="caption mt-1">{props.cadence}</p>
-      <p className="mt-3 min-h-[2.5rem] text-[0.8125rem] leading-relaxed text-content-secondary">
+      <p className="numeric relative mt-4 font-display text-4xl font-bold tracking-tight">{props.price}</p>
+      <p className="caption relative mt-1">{props.cadence}</p>
+      <p className="relative mt-3 min-h-[2.5rem] text-[0.8125rem] leading-relaxed text-content-secondary">
         {props.description}
       </p>
 
-      <ul className="mt-4 flex flex-1 flex-col gap-2">
+      <ul className="relative mt-5 flex flex-1 flex-col gap-2.5">
         {props.features.map((f) => (
-          <li key={f} className="flex items-start gap-2 text-[0.8125rem] leading-relaxed text-content-secondary">
-            <IconCheck width={15} height={15} className="mt-0.5 shrink-0 text-positive" />
+          <li key={f} className="flex items-start gap-2.5 text-[0.8125rem] leading-relaxed text-content-secondary">
+            <span className="mt-[0.15rem] grid h-4 w-4 shrink-0 place-items-center rounded-full bg-positive/15 text-positive">
+              <IconCheck width={11} height={11} />
+            </span>
             <span>{f}</span>
           </li>
         ))}
       </ul>
 
-      <div className="mt-5">{props.cta}</div>
+      <div className="relative mt-6">{props.cta}</div>
     </div>
   );
 }

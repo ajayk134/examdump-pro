@@ -42,7 +42,7 @@ function VerifyEmailInner() {
 
       {status === 'success' ? (
         <div className="flex flex-col gap-4">
-          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-positive/10 text-positive">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-positive/10 text-positive ring-1 ring-inset ring-positive/20">
             <IconCheckCircle width={22} height={22} />
           </span>
           <Alert tone="success">Your email is verified. You are all set!</Alert>

@@ -57,7 +57,7 @@ function LoginForm() {
         </>
       }
     >
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <form onSubmit={onSubmit} className="flex flex-col gap-4" aria-busy={loading}>
         {error ? <Alert tone="error">{error}</Alert> : null}
 
         <div>
@@ -91,7 +91,7 @@ function LoginForm() {
              */}
             <Link
               href="/forgot-password"
-              className="mb-1.5 inline-block text-xs font-medium text-brand-600 hover:underline max-sm:-my-2 max-sm:py-2 dark:text-brand-300"
+              className="mb-1.5 inline-block text-xs font-semibold text-accent underline-offset-4 hover:underline max-sm:-my-2 max-sm:py-2"
             >
               Forgot password?
             </Link>

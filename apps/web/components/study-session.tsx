@@ -211,11 +211,11 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
   return (
     <div className="mx-auto w-full max-w-3xl">
       {/* ---------- Header: progress + palette trigger ---------- */}
-      <header className="sticky top-14 z-30 -mx-3.5 mb-3 border-b border-surface-border/60 bg-surface-base/[0.92] px-3.5 py-2 backdrop-blur-lg sm:top-16 sm:mx-0 sm:rounded-xl sm:border sm:px-3">
-        <div className="flex items-center gap-2">
+      <header className="sticky top-14 z-30 -mx-3.5 mb-3 px-3.5 py-2 sm:top-16 sm:mx-0 sm:px-0">
+        <div className="glass flex items-center gap-2.5 rounded-[1.25rem] border border-surface-border/70 px-2.5 py-2 shadow-sm">
           <Link
             href={`/exams/${encodeURIComponent(providerId)}/${encodeURIComponent(examKey)}`}
-            className="icon-btn -ml-1 shrink-0"
+            className="icon-btn -ml-0.5 shrink-0"
             aria-label="Back to exam"
           >
             <IconArrowLeft />
@@ -223,10 +223,13 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <p className="truncate text-[0.8125rem] font-semibold">
-                Question {index + 1}
+              <span className="truncate font-mono text-[0.6875rem] font-bold uppercase tracking-[0.1em] text-accent">
+                {examKey}
+              </span>
+              <span className="truncate text-[0.8125rem] font-semibold">
+                Q{index + 1}
                 <span className="text-content-muted"> / {total}</span>
-              </p>
+              </span>
               {restored ? (
                 <Badge tone="accent" className="hidden sm:inline-flex">
                   Resumed
@@ -239,6 +242,12 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
                 {doneCount}/{total}
               </span>
             </div>
+          </div>
+
+          <div className="hidden shrink-0 sm:block">
+            <ProgressRing value={progress} size={40} stroke={4} label={`${Math.round(progress)}% answered`}>
+              <span className="numeric text-[0.625rem] font-bold text-accent">{Math.round(progress)}%</span>
+            </ProgressRing>
           </div>
 
           <div className="flex shrink-0 items-center gap-0.5">
@@ -363,7 +372,7 @@ export function StudySession({ providerId, examKey, mode }: { providerId: string
                   aria-label={`Go to question ${i + 1}${isDone ? ' (answered)' : ''}`}
                   aria-current={isCurrent ? 'true' : undefined}
                   className={cn(
-                    'numeric grid aspect-square place-items-center rounded-lg text-xs font-bold transition-all',
+                    'numeric grid aspect-square place-items-center rounded-[0.7rem] text-xs font-bold transition-all',
                     isCurrent
                       ? 'bg-accent text-white shadow-sm'
                       : isDone

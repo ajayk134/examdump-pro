@@ -47,7 +47,7 @@ function ResetForm() {
         </Link>
       }
     >
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <form onSubmit={onSubmit} className="flex flex-col gap-4" aria-busy={loading}>
         {!token ? <Alert tone="error">This reset link is missing its token.</Alert> : null}
         {error ? <Alert tone="error">{error}</Alert> : null}
 

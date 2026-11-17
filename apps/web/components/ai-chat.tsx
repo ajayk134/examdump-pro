@@ -13,7 +13,7 @@ import {
 import { del, get, patch, post, streamPost, ApiError } from '@/lib/api';
 import type { AiConversation, AiConversationDetail, ChatMessage } from '@/lib/types';
 import { Markdown } from './markdown';
-import { Alert, Spinner } from './ui';
+import { Alert } from './ui';
 import {
   IconChevronDown,
   IconCopy,
@@ -52,7 +52,7 @@ interface ChatPanelProps {
 function AssistantAvatar({ size = 30 }: { size?: number }) {
   return (
     <span
-      className="grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-600 to-sky-400 text-white shadow-sm shadow-brand-500/30 ring-1 ring-inset ring-white/25"
+      className="grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-500 via-accent-2 to-accent-3 text-white shadow-glow-sm ring-1 ring-inset ring-white/25"
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
@@ -91,7 +91,7 @@ function ReasoningPanel({ text, streaming }: { text: string; streaming?: boolean
   if (!text.trim()) return null;
 
   return (
-    <div className="mb-2.5 overflow-hidden rounded-xl border border-surface-border bg-surface-overlay/60">
+    <div className="mb-2.5 overflow-hidden rounded-[1.1rem] border border-surface-border bg-surface-overlay/50">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -122,7 +122,7 @@ function ReasoningPanel({ text, streaming }: { text: string; streaming?: boolean
       {open ? (
         <div
           ref={bodyRef}
-          className="max-h-44 overflow-y-auto border-t border-surface-border px-3 py-2"
+          className="scroll-thin max-h-44 overflow-y-auto border-t border-surface-border px-3 py-2"
         >
           <p className="whitespace-pre-wrap text-xs leading-relaxed text-content-muted">{text}</p>
         </div>
@@ -456,7 +456,7 @@ export function AiChat({
       {/* Header */}
       <div
         className={cn(
-          'flex shrink-0 items-center gap-2 border-b border-surface-border bg-surface-raised/85 px-3 backdrop-blur sm:px-4',
+          'relative z-10 flex shrink-0 items-center gap-2.5 border-b border-surface-border bg-surface-raised/80 px-3 backdrop-blur-md sm:px-4',
           embedded ? 'py-2' : 'py-2.5',
           '[@media(max-height:480px)]:py-1',
         )}
@@ -571,21 +571,24 @@ export function AiChat({
               <div className="h-24 w-full skeleton" />
             </div>
           ) : !hasMessages ? (
-            <div className="flex flex-col items-center gap-3 py-10 text-center sm:py-16">
-              <AssistantAvatar size={52} />
-              <div>
-                <p className="heading-3">Ask anything about this {questionAnchored ? 'question' : 'exam'}</p>
-                <p className="body-text mx-auto mt-1 max-w-sm">
+            <div className="flex flex-col items-center gap-4 py-12 text-center sm:py-20">
+              <div className="relative inline-grid place-items-center">
+                <span aria-hidden="true" className="orb -inset-4 bg-accent-2/25" />
+                <AssistantAvatar size={56} />
+              </div>
+              <div className="max-w-sm">
+                <p className="heading-2">Ask anything about this {questionAnchored ? 'question' : 'exam'}</p>
+                <p className="body-text mx-auto mt-1.5">
                   Step-by-step reasoning, why distractors are wrong, examples and memory tricks.
                 </p>
               </div>
             </div>
           ) : (
-            <ol className="flex flex-col gap-5" aria-label="Conversation">
+            <ol className="flex flex-col gap-5 sm:gap-6" aria-label="Conversation">
               {messages.map((message) =>
                 message.role === 'user' ? (
                   <li key={message.id} className="flex justify-end">
-                    <div className="max-w-[85%] rounded-2xl rounded-br-md bg-accent px-3.5 py-2.5 text-sm leading-relaxed break-words whitespace-pre-wrap text-[rgb(var(--accent-contrast))] shadow-sm sm:max-w-[75%]">
+                    <div className="max-w-[85%] rounded-[1.4rem] rounded-br-md bg-accent px-4 py-2.5 text-sm leading-relaxed break-words whitespace-pre-wrap text-[rgb(var(--accent-contrast))] shadow-md shadow-accent/25 sm:max-w-[75%]">
                       {message.content}
                     </div>
                   </li>
@@ -593,7 +596,8 @@ export function AiChat({
                   <li key={message.id} className="flex gap-2.5 sm:gap-3">
                     <AssistantAvatar />
                     <div className="min-w-0 flex-1">
-                      <p className="mb-1 text-[0.6875rem] font-bold uppercase tracking-[0.09em] text-content-muted">
+                      <p className="mb-1.5 flex items-center gap-1.5 text-[0.6875rem] font-bold uppercase tracking-[0.09em] text-content-muted">
+                        <IconSparkles width={12} height={12} className="text-accent" aria-hidden="true" />
                         AI tutor
                       </p>
 
@@ -624,11 +628,11 @@ export function AiChat({
                       ) : null}
 
                       {!message.pending ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-1">
+                        <div className="mt-2.5 flex flex-wrap items-center gap-1">
                           <button
                             type="button"
                             onClick={() => void copyMessage(message)}
-                            className="icon-btn !h-9 !w-9 touch:!h-10 touch:!w-10"
+                            className="icon-btn !h-9 !w-9 touch:!h-11 touch:!w-11"
                             aria-label="Copy answer"
                             title="Copy"
                           >
@@ -638,7 +642,7 @@ export function AiChat({
                             <button
                               type="button"
                               onClick={regenerate}
-                              className="icon-btn !h-9 !w-9 touch:!h-10 touch:!w-10"
+                              className="icon-btn !h-9 !w-9 touch:!h-11 touch:!w-11"
                               aria-label="Regenerate answer"
                               title="Regenerate"
                             >
@@ -646,15 +650,15 @@ export function AiChat({
                             </button>
                           ) : null}
                           {copiedId === message.id ? (
-                            <span className="ml-0.5 text-[0.6875rem] font-semibold text-positive" role="status">
+                            <span className="ml-1 text-[0.6875rem] font-semibold text-positive" role="status">
                               Copied
                             </span>
                           ) : null}
                           {message.stopped ? (
-                            <span className="ml-0.5 text-[0.6875rem] text-content-muted">Stopped</span>
+                            <span className="ml-1 text-[0.6875rem] text-content-muted">Stopped</span>
                           ) : null}
                           {message.degraded ? (
-                            <span className="ml-0.5 text-[0.6875rem] font-medium text-caution">
+                            <span className="ml-1 text-[0.6875rem] font-medium text-caution">
                               offline explanation
                             </span>
                           ) : null}
@@ -687,7 +691,7 @@ export function AiChat({
           <button
             type="button"
             onClick={() => scrollToBottom()}
-            className="pointer-events-auto mb-2 inline-flex min-h-10 items-center gap-1.5 rounded-full border border-surface-border-strong bg-surface-raised/95 px-3.5 py-1.5 text-xs font-semibold text-content-primary shadow-lg backdrop-blur transition-colors hover:border-accent/50 touch:min-h-11"
+            className="pointer-events-auto mb-2 inline-flex min-h-10 items-center gap-1.5 rounded-full border border-surface-border-strong bg-surface-raised/95 px-3.5 py-1.5 text-xs font-semibold text-content-primary shadow-lg backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-accent/50 touch:min-h-11"
             aria-label="Jump to latest message"
           >
             <IconChevronDown width={14} height={14} />
@@ -697,7 +701,7 @@ export function AiChat({
       ) : null}
 
       {/* Composer */}
-      <div className="shrink-0 border-t border-surface-border bg-surface-raised/85 px-2.5 py-2 backdrop-blur sm:px-4 sm:py-3 [@media(max-height:480px)]:py-1.5">
+      <div className="shrink-0 border-t border-surface-border bg-surface-raised/80 px-2.5 py-2 backdrop-blur-md sm:px-4 sm:py-3 [@media(max-height:480px)]:py-1.5">
         <div className="mx-auto w-full max-w-3xl">
           {showSuggestions ? (
             <div className="mb-2 -mx-1 flex snap-x snap-mandatory gap-1.5 overflow-x-auto px-1 pb-1 no-scrollbar [@media(max-height:480px)]:mb-1">
@@ -716,7 +720,7 @@ export function AiChat({
           ) : null}
 
           <form onSubmit={onSubmit} aria-label="Ask the AI tutor">
-            <div className="flex items-end gap-1.5 rounded-2xl border border-surface-border-strong bg-surface-base p-1.5 shadow-xs transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
+            <div className="flex items-end gap-1.5 rounded-[1.4rem] border border-surface-border-strong bg-surface-base p-1.5 shadow-xs transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -737,7 +741,7 @@ export function AiChat({
                 <button
                   type="button"
                   onClick={stop}
-                  className="btn-secondary !min-h-10 !rounded-xl !px-3 !py-2"
+                  className="btn-secondary !min-h-10 !rounded-2xl !px-3 !py-2 touch:!min-h-11"
                   aria-label="Stop generating"
                 >
                   <IconStop width={16} height={16} />
@@ -746,7 +750,7 @@ export function AiChat({
                 <button
                   type="submit"
                   disabled={!input.trim()}
-                  className="btn-primary !min-h-10 !rounded-xl !px-3 !py-2"
+                  className="btn-primary !min-h-10 !rounded-2xl !px-3 !py-2 touch:!min-h-11"
                   aria-label="Send message"
                 >
                   <IconSend width={16} height={16} />
