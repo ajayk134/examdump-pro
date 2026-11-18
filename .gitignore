@@ -16,7 +16,6 @@ out/
 !.env.example
 !**/.env.example
 !**/.env.local.example
-!**/.env.production.example
 .dev.vars
 *.pem
 *.key
