@@ -16,5 +16,5 @@ export default defineConfig({
   // Bundle workspace packages so the runtime Docker image stays small and
   // self-contained, but keep node_modules for native/optional resolution.
   noExternal: ['@examdump/shared', '@examdump/data-client'],
-  external: ['fastify', 'bcryptjs', 'jose', 'google-auth-library', 'nodemailer', 'node-cron', 'postgres', 'drizzle-orm'],
+  external: ['fastify', 'bcryptjs', 'jose', 'google-auth-library', 'nodemailer', 'node-cron', 'postgres', 'drizzle-orm', 'pdfkit'],
 });

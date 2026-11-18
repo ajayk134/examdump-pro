@@ -98,6 +98,18 @@ export function buildOpenApi(publicWebUrl: string) {
           responses: { 200: ok('Questions'), 403: err('Quota exceeded') },
         },
       },
+      '/exams/{providerId}/{examKey}/questions.pdf': {
+        get: {
+          tags: ['Exams'],
+          summary: 'Download the full question bank as a PDF (full access required)',
+          security: bearer,
+          parameters: [
+            { in: 'path', name: 'providerId', required: true, schema: { type: 'string' } },
+            { in: 'path', name: 'examKey', required: true, schema: { type: 'string' } },
+          ],
+          responses: { 200: ok('PDF'), 401: err('Authentication required'), 403: err('Full exam access required') },
+        },
+      },
       '/attempts': { get: { tags: ['Attempts'], security: bearer, summary: 'List attempts', responses: { 200: ok('Attempts') } }, post: { tags: ['Attempts'], security: bearer, summary: 'Start attempt', responses: { 201: ok('Attempt started'), 403: err('Quota exceeded') } } },
       '/attempts/{id}': { get: { tags: ['Attempts'], security: bearer, summary: 'Attempt detail', responses: { 200: ok('Attempt'), 404: err('Not found') } } },
       '/attempts/{id}/complete': { post: { tags: ['Attempts'], security: bearer, summary: 'Submit and grade attempt', responses: { 200: ok('Results') } } },

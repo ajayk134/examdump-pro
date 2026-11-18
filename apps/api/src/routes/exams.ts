@@ -3,8 +3,9 @@ import { examSearchQuerySchema, listQuestionsQuerySchema, toClientQuestion } fro
 import type { Env } from '../config/env.js';
 import { optionalAuth, requireAuth } from '../lib/guards.js';
 import { parseOrThrow } from '../lib/validation.js';
-import { notFound, quotaExceeded } from '../lib/errors.js';
+import { notFound, quotaExceeded, forbidden } from '../lib/errors.js';
 import { getDatasetClient } from '../services/dataset.service.js';
+import { createQuestionBankPdf, loadQuestionVoteCounts } from '../services/pdf.service.js';
 import {
   getCatalogExam,
   getProviderExamsFromCatalog,
@@ -246,6 +247,48 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
         isLimited: !access.unlimited,
       },
     });
+  });
+
+  app.get('/:providerId/:examKey/questions.pdf', async (request, reply) => {
+    const { user } = await requireAuth(request, env);
+    const { providerId, examKey } = request.params as { providerId: string; examKey: string };
+
+    const settings = await getSettings(env);
+    const entitlements = await resolveEntitlements(user, settings);
+    if (!canAccessExam(entitlements, examKey, providerId)) {
+      throw forbidden('Full access to this exam is required to download the question bank.');
+    }
+
+    const { provider, exam, questions } = await getDatasetClient(env).getExamQuestions(
+      providerId,
+      examKey,
+    );
+    const votes = await loadQuestionVoteCounts(provider.id, examKey);
+    const doc = createQuestionBankPdf({
+      examCode: exam.code,
+      examTitle: exam.title,
+      providerTitle: provider.title,
+      questions,
+      votes,
+    });
+
+    const safeCode = exam.code.replace(/[^a-zA-Z0-9._-]+/g, '-');
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${safeCode}-question-bank.pdf"`,
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    doc.on('error', (err: Error) => {
+      request.log.error({ err }, 'pdf.download_failed');
+      if (!reply.raw.writableEnded) reply.raw.destroy(err);
+    });
+    reply.raw.on('close', () => {
+      if (!reply.raw.writableEnded) doc.destroy();
+    });
+    doc.pipe(reply.raw);
+    doc.end();
   });
 
   app.get('/:providerId/:examKey/questions', async (request, reply) => {

@@ -116,6 +116,9 @@ export const IconReply = (p: SVGProps<SVGSVGElement>) => (
 export const IconPencil = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
 );
+export const IconDownload = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></svg>
+);
 export const IconThumbUp = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M7 22V11l4-8a2 2 0 0 1 2 2v5h5.5a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.3 22H7z" /><path d="M7 11H4v11h3" /></svg>
 );

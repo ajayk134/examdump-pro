@@ -97,6 +97,7 @@ deployed manually from the host layout described below.
 | YouPI-PG client and webhook verification                              | `apps/api/src/services/payments/youpi.client.ts`                                  |
 | Payment adapter registry                                              | `apps/api/src/services/payments/registry.ts`                                      |
 | Community votes and threaded discussions                              | `apps/api/src/routes/community.ts`, `apps/api/src/services/community.service.ts`  |
+| Downloadable question-bank PDF                                        | `apps/api/src/services/pdf.service.ts`                                            |
 | AI provider calls, fallbacks, prompts, SSE                            | `apps/api/src/services/ai.service.ts`, `apps/api/src/services/ai-chat.service.ts` |
 | Dataset fetch and catalogue sync                                      | `packages/data-client/src/dataset.ts`, `apps/api/src/services/dataset.service.ts` |
 | Browser API client and single-flight refresh                          | `apps/web/lib/api.ts`                                                             |
@@ -156,7 +157,9 @@ focus or paging, so offsets and direct question IDs cannot reach a locked
 question. Topic and question-type filters are not part of the practice flow. The
 client pages by offset until every accessible question is loaded, using the
 backend `Question #: N` identifier for identity and order. Answer keys are
-withheld during question delivery and grading happens on the server.
+withheld during question delivery and grading happens on the server. Full-access
+users can download the same identifier-ordered bank as a PDF; the download
+endpoint re-checks exam access and streams the dataset without a download cap.
 
 ### Payments settle only from verified server-side evidence
 

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { get } from '@/lib/api';
 import type { PracticeFocus, PracticeOptions } from '@/lib/types';
 import { ExamSelect, type SelectedExam } from './exam-select';
+import { DownloadQuestionBank } from './download-question-bank';
 import {
   IconAlertCircle,
   IconBookmark,
@@ -280,6 +281,15 @@ export function PracticeConfig({
           <button type="button" onClick={start} disabled={!canStart} className="btn-primary btn-lg btn-block">
             Start practice
           </button>
+
+          {exam && options && !options.entitlement.isLimited ? (
+            <DownloadQuestionBank
+              providerId={exam.providerId}
+              examKey={exam.examKey}
+              examCode={exam.code}
+              block
+            />
+          ) : null}
 
           {exam && options && options.entitlement.isLimited ? (
             <p className="rounded-xl border border-caution/30 bg-caution/[0.06] px-3 py-2 text-xs text-content-secondary">

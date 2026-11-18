@@ -7,6 +7,7 @@ import { get } from '@/lib/api';
 import type { AttemptSummary, ExamDetail, Paginated } from '@/lib/types';
 import { PracticeConfig } from '@/components/practice-config';
 import { MockConfig } from '@/components/mock-config';
+import { DownloadQuestionBank } from '@/components/download-question-bank';
 import type { SelectedExam } from '@/components/exam-select';
 import { useAuth } from '@/components/providers';
 import {
@@ -229,6 +230,13 @@ export default function ExamWorkspacePage() {
                 Start practice
                 <IconArrowRight className="h-4 w-4" />
               </button>
+              {!limited ? (
+                <DownloadQuestionBank
+                  providerId={providerId}
+                  examKey={examKey}
+                  examCode={data.exam.code}
+                />
+              ) : null}
             </div>
           </div>
         </div>
