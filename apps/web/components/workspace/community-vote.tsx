@@ -132,49 +132,56 @@ export function CommunityVote({
               onClick={() => void vote(choice.key)}
               disabled={Boolean(voting)}
               aria-pressed={picked}
+              title={choice.text || choice.key}
               className={cn(
-                'relative flex w-full items-center gap-3 overflow-hidden rounded-xl border px-3 py-2.5 text-left transition-colors',
+                'group flex w-full flex-col gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
                 picked
                   ? 'border-accent/55 bg-accent/[0.06]'
                   : 'border-surface-border bg-surface-base hover:border-surface-border-strong hover:bg-surface-overlay/35',
                 voting && voting !== choice.key && 'opacity-60',
               )}
             >
+              <span className="flex w-full items-start gap-3">
+                <span
+                  className={cn(
+                    'numeric mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border text-[0.6875rem] font-bold',
+                    picked
+                      ? 'border-transparent bg-accent text-[rgb(var(--accent-contrast))]'
+                      : 'border-surface-border-strong bg-surface-raised text-content-secondary',
+                  )}
+                >
+                  {picked ? <IconCheck width={13} height={13} /> : choice.key}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="line-clamp-2 text-[0.8125rem] leading-snug text-content-secondary">
+                    {choice.text || 'Image option'}
+                  </span>
+                  {picked ? (
+                    <span className="mt-0.5 block text-[0.625rem] font-bold uppercase tracking-[0.08em] text-accent">
+                      Your vote
+                    </span>
+                  ) : null}
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="numeric block text-sm font-bold text-content-primary">
+                    {Math.round(choice.percentage)}%
+                  </span>
+                  <span className="numeric block text-[0.625rem] text-content-muted">
+                    {formatNumber(choice.count)} {choice.count === 1 ? 'vote' : 'votes'}
+                  </span>
+                </span>
+              </span>
               <span
                 aria-hidden="true"
-                className={cn(
-                  'absolute inset-y-0 left-0 transition-[width] duration-500 ease-out',
-                  picked ? 'bg-accent/[0.14]' : 'bg-accent/[0.08]',
-                )}
-                style={{ width: `${Math.max(choice.percentage, choice.count > 0 ? 1.5 : 0)}%` }}
-              />
-              <span
-                className={cn(
-                  'numeric relative grid h-7 w-7 shrink-0 place-items-center rounded-lg border text-[0.6875rem] font-bold',
-                  picked
-                    ? 'border-transparent bg-accent text-[rgb(var(--accent-contrast))]'
-                    : 'border-surface-border-strong bg-surface-raised text-content-secondary',
-                )}
+                className="relative block h-2 w-full overflow-hidden rounded-full bg-surface-inset"
               >
-                {picked ? <IconCheck width={13} height={13} /> : choice.key}
-              </span>
-              <span className="relative min-w-0 flex-1">
-                <span className="line-clamp-2 text-[0.8125rem] leading-snug text-content-secondary">
-                  {choice.text || 'Image option'}
-                </span>
-                {picked ? (
-                  <span className="mt-0.5 block text-[0.625rem] font-bold uppercase tracking-[0.08em] text-accent">
-                    Your vote
-                  </span>
-                ) : null}
-              </span>
-              <span className="relative shrink-0 text-right">
-                <span className="numeric block text-sm font-bold text-content-primary">
-                  {Math.round(choice.percentage)}%
-                </span>
-                <span className="numeric block text-[0.625rem] text-content-muted">
-                  {formatNumber(choice.count)}
-                </span>
+                <span
+                  className={cn(
+                    'absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ease-out',
+                    picked ? 'bg-accent' : 'bg-accent/55',
+                  )}
+                  style={{ width: `${choice.percentage}%` }}
+                />
               </span>
             </button>
           );

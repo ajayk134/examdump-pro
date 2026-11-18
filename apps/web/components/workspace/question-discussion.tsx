@@ -9,6 +9,8 @@ import { Avatar } from '../ui';
 import {
   IconCheck,
   IconMessage,
+  IconPencil,
+  IconReply,
   IconSend,
   IconTrash,
   IconX,
@@ -259,6 +261,7 @@ function CommentNode({
   const [reply, setReply] = useState('');
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(comment.body);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const canManage = currentUser.id === comment.user.id || currentUser.role === 'admin';
@@ -299,10 +302,11 @@ function CommentNode({
   };
 
   const remove = async () => {
-    if (busy || !window.confirm('Delete this comment? Replies stay in the thread.')) return;
+    if (busy) return;
     setBusy(true);
     try {
       await del(`/community/discussions/${comment.id}`);
+      setConfirmingDelete(false);
       onChanged();
     } catch (err) {
       toast((err as Error).message, 'error');
@@ -375,38 +379,62 @@ function CommentNode({
           )}
 
           {!comment.deleted && !editing ? (
-            <div className="mt-2 flex flex-wrap items-center gap-1">
-              <button
-                type="button"
+            <div className="-ml-1.5 mt-1.5 flex flex-wrap items-center gap-0.5">
+              <CommentAction
+                icon={IconReply}
+                label="Reply"
                 onClick={() => {
+                  setEditing(false);
+                  setConfirmingDelete(false);
                   setReplying((open) => !open);
                   setReply('');
                 }}
-                className="rounded-full px-2 py-1 text-[0.6875rem] font-semibold text-content-muted hover:bg-surface-overlay hover:text-content-secondary"
-              >
-                Reply
-              </button>
+              />
               {canManage ? (
                 <>
-                  <button
-                    type="button"
+                  <CommentAction
+                    icon={IconPencil}
+                    label="Edit"
                     onClick={() => {
+                      setReplying(false);
+                      setConfirmingDelete(false);
                       setEditing(true);
                       setEditBody(comment.body);
                     }}
-                    className="rounded-full px-2 py-1 text-[0.6875rem] font-semibold text-content-muted hover:bg-surface-overlay hover:text-content-secondary"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void remove()}
-                    className="rounded-full px-2 py-1 text-[0.6875rem] font-semibold text-content-muted hover:bg-negative/[0.08] hover:text-negative"
-                  >
-                    <IconTrash width={11} height={11} /> Delete
-                  </button>
+                  />
+                  <CommentAction
+                    icon={IconTrash}
+                    label="Delete"
+                    tone="danger"
+                    onClick={() => {
+                      setReplying(false);
+                      setEditing(false);
+                      setConfirmingDelete(true);
+                    }}
+                  />
                 </>
               ) : null}
+            </div>
+          ) : null}
+
+          {confirmingDelete ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-negative/[0.06] px-2.5 py-2">
+              <span className="text-xs font-semibold text-negative">Delete this comment?</span>
+              <div className="ml-auto flex items-center gap-0.5">
+                <CommentAction
+                  icon={IconTrash}
+                  label={busy ? 'Deleting...' : 'Delete'}
+                  tone="danger"
+                  onClick={() => void remove()}
+                  disabled={busy}
+                />
+                <CommentAction
+                  icon={IconX}
+                  label="Cancel"
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={busy}
+                />
+              </div>
             </div>
           ) : null}
 
@@ -430,7 +458,7 @@ function CommentNode({
                   <IconSend width={12} height={12} /> Reply
                 </button>
                 <button type="button" onClick={() => setReplying(false)} className="btn-ghost btn-sm">
-                  Cancel
+                  <IconX width={12} height={12} /> Cancel
                 </button>
               </div>
             </div>
@@ -460,5 +488,36 @@ function CommentNode({
         </div>
       </div>
     </article>
+  );
+}
+
+function CommentAction({
+  icon: Icon,
+  label,
+  onClick,
+  tone = 'default',
+  disabled = false,
+}: {
+  icon: typeof IconReply;
+  label: string;
+  onClick: () => void;
+  tone?: 'default' | 'danger';
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        'inline-flex min-h-9 items-center gap-1 rounded-full px-2.5 text-[0.6875rem] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:cursor-not-allowed disabled:opacity-50',
+        tone === 'danger'
+          ? 'text-content-muted hover:bg-negative/[0.08] hover:text-negative'
+          : 'text-content-muted hover:bg-surface-overlay hover:text-content-secondary',
+      )}
+    >
+      <Icon width={13} height={13} />
+      {label}
+    </button>
   );
 }
