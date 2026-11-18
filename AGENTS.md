@@ -19,7 +19,8 @@ ExamDump Pro is a production certification-exam preparation SaaS.
   server-side at request time. It must never be copied into PostgreSQL,
   fixtures, tests, seed data, logs, documentation, or commits.
 - **Application data** (users, sessions, subscriptions, payments, attempts,
-  progress, analytics, audit) lives in PostgreSQL through Drizzle ORM.
+  progress, analytics, audit, community votes and discussions) lives in
+  PostgreSQL through Drizzle ORM.
 - **Secrets** come from Doppler project `examdump-pro`, config `prd`; the host
   renders them into `/etc/examdump-pro/production.env`.
 - **Production is the only deployed environment.** There is no staging, QA, or

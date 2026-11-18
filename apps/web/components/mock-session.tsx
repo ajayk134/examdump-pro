@@ -12,6 +12,7 @@ import { QuestionWorkspace } from './workspace/question-workspace';
 import { QuestionSheet } from './workspace/question-sheet';
 import { QuestionMap, type MapItem } from './workspace/question-map';
 import { StudyCompanion, type CompanionTab } from './workspace/study-companion';
+import { QuestionCommunity } from './workspace/question-community';
 import { cn, formatDuration } from '@/lib/format';
 import { clearAutosave, loadAutosave, saveAutosave, getPageSizePreference, setPageSizePreference } from '@/lib/local-store';
 import {
@@ -134,6 +135,7 @@ export function MockSession({
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CompleteResponse | null>(null);
   const [chatQuestionId, setChatQuestionId] = useState<string | null>(null);
+  const [communityQuestionId, setCommunityQuestionId] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [companionOpen, setCompanionOpen] = useState(false);
@@ -775,6 +777,21 @@ export function MockSession({
                     >
                       <IconMessage width={14} height={14} /> Ask AI about this
                     </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCommunityQuestionId((current) =>
+                          current === item.questionId ? null : item.questionId,
+                        )
+                      }
+                      className="btn-ghost btn-sm mt-3 ml-2"
+                    >
+                      <IconMessage width={14} height={14} /> Community
+                    </button>
+
+                    {question && communityQuestionId === item.questionId ? (
+                      <QuestionCommunity question={question} providerId={providerId} examKey={examKey} />
+                    ) : null}
                   </div>
                 </details>
               );

@@ -61,6 +61,44 @@ export interface Vote {
   mostVoted: boolean;
 }
 
+export interface CommunityVoteSummary {
+  total: number;
+  counts: Record<string, number>;
+  myVote: string | null;
+}
+
+export interface CommunityComment {
+  id: string;
+  body: string;
+  parentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  edited: boolean;
+  deleted: boolean;
+  user: {
+    id: string;
+    name: string;
+    avatarUrl: string;
+    role: string;
+  };
+  replyTo: { id: string; name: string } | null;
+  replyCount: number;
+  replies: CommunityComment[];
+}
+
+export interface CommunityDiscussionPage {
+  comments: CommunityComment[];
+  totalComments: number;
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
+
 export interface Question {
   id: string;
   number: number | null;

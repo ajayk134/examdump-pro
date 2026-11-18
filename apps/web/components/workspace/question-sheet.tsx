@@ -6,6 +6,7 @@ import { stripOptionLabelFromContent } from '@examdump/shared';
 import { get, post } from '@/lib/api';
 import { QuestionContent } from '../question-content';
 import { Dialog } from '../ui';
+import { QuestionCommunity } from './question-community';
 import {
   IconArrowRight,
   IconBookmark,
@@ -466,6 +467,16 @@ export function QuestionSheet({
               : null}
         </span>
       </div>
+
+      {mode === 'practice' && revealed ? (
+        <QuestionCommunity question={question} providerId={providerId} examKey={examKey} />
+      ) : null}
+
+      {mode === 'practice' && !revealed ? (
+        <p className="mt-3 max-w-[68ch] text-[0.75rem] text-content-muted">
+          Community votes and discussion unlock after you check your answer.
+        </p>
+      ) : null}
 
       <Dialog open={Boolean(zoom)} onClose={() => setZoom(null)} title="Question image">
         {zoom ? (

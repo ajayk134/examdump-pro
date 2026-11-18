@@ -18,6 +18,7 @@ PostgreSQL 16 is the only application datastore. Drizzle schema files in
 | `billing.ts`  | plans, subscriptions, grants, payments, refunds, coupons, referrals, webhooks, invoices |
 | `platform.ts` | settings, flags, notifications, announcements, tickets, errors                          |
 | `mail.ts`     | mail logs, queue, templates, preferences, campaigns, suppressions                       |
+| `community.ts`| question votes and threaded question comments                                           |
 | `enums.ts`    | shared PostgreSQL enum types                                                            |
 
 Export every new table from `apps/api/src/db/schema/index.ts`.

@@ -96,6 +96,7 @@ deployed manually from the host layout described below.
 | Checkout, settlement, invoices                                        | `apps/api/src/services/subscription.service.ts`                                   |
 | YouPI-PG client and webhook verification                              | `apps/api/src/services/payments/youpi.client.ts`                                  |
 | Payment adapter registry                                              | `apps/api/src/services/payments/registry.ts`                                      |
+| Community votes and threaded discussions                              | `apps/api/src/routes/community.ts`, `apps/api/src/services/community.service.ts`  |
 | AI provider calls, fallbacks, prompts, SSE                            | `apps/api/src/services/ai.service.ts`, `apps/api/src/services/ai-chat.service.ts` |
 | Dataset fetch and catalogue sync                                      | `packages/data-client/src/dataset.ts`, `apps/api/src/services/dataset.service.ts` |
 | Browser API client and single-flight refresh                          | `apps/web/lib/api.ts`                                                             |
@@ -167,6 +168,16 @@ happens on the server.
 
 See [`.github/instructions/payments.instructions.md`](.github/instructions/payments.instructions.md)
 before touching any payment file.
+
+### Community data is scoped to one question
+
+Community votes and discussions live in PostgreSQL, keyed by
+`provider/exam/questionId` because question IDs are only unique within an exam.
+A voter has one row per question; changing the answer updates that row instead of
+adding a second vote. Discussion comments can nest, deletes are soft so replies
+never disappear, and only the author or an admin may edit or delete a comment.
+The question experience reveals both panels only after the learner has committed
+to an answer, so neither can act as an answer key during practice or a mock.
 
 ### Background work is in-process and PostgreSQL-backed
 
@@ -286,7 +297,7 @@ tests.
 
 ## Database and migrations
 
-PostgreSQL 16 holds 54 application tables across seven schema groups:
+PostgreSQL 16 holds 56 application tables across eight schema groups:
 
 | Group      | Tables / purpose                                                                                               |
 | ---------- | -------------------------------------------------------------------------------------------------------------- |
@@ -296,9 +307,10 @@ PostgreSQL 16 holds 54 application tables across seven schema groups:
 | `billing`  | plans, subscriptions, access grants, payments, refunds, coupons, referrals, webhooks, reconciliation, invoices |
 | `platform` | settings, feature flags, notifications, announcements, support tickets, error events                           |
 | `mail`     | mail logs, durable queue, templates, preferences, campaigns, suppressions                                      |
+| `community`| question votes and threaded question discussions                                                               |
 | `enums`    | PostgreSQL enum types shared by the above                                                                      |
 
-Migrations live in `apps/api/src/db/migrations` (`0000`–`0008`) and are applied
+Migrations live in `apps/api/src/db/migrations` (`0000`–`0009`) and are applied
 by a custom runner:
 
 - Statements execute individually because `ALTER TYPE ... ADD VALUE` cannot run

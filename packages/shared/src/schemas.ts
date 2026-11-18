@@ -196,6 +196,33 @@ export const noteSchema = z.object({
   body: z.string().min(1, 'Note cannot be empty').max(5000),
 });
 
+/** Community question context shared by votes and discussions. */
+export const questionCommunityQuerySchema = z.object({
+  provider: z.string().trim().min(1).max(160),
+  exam: z.string().trim().min(1).max(240),
+  questionId: z.string().trim().min(1).max(200),
+});
+
+export const questionVoteSchema = questionCommunityQuerySchema.extend({
+  /** One option key from the question's actual choice list. */
+  choice: z.string().trim().min(1).max(8),
+});
+
+export const questionDiscussionSchema = questionCommunityQuerySchema.extend({
+  body: z.string().trim().min(2, 'Write at least 2 characters').max(2000),
+  parentId: z.string().uuid().optional(),
+});
+
+export const questionDiscussionUpdateSchema = z.object({
+  body: z.string().trim().min(2, 'Write at least 2 characters').max(2000),
+});
+
+export const questionDiscussionListQuerySchema = questionCommunityQuerySchema.extend({
+  sort: z.enum(['newest', 'oldest']).default('newest'),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(10),
+});
+
 export const listQuestionsQuerySchema = z.object({
   mode: z.enum(QUESTION_MODES).default('practice'),
   limit: z.coerce.number().int().min(1).max(200).optional(),

@@ -15,6 +15,7 @@ import { examRoutes } from './routes/exams.js';
 import { attemptRoutes } from './routes/attempts.js';
 import { bookmarkRoutes } from './routes/bookmarks.js';
 import { noteRoutes } from './routes/notes.js';
+import { communityRoutes } from './routes/community.js';
 import { analyticsRoutes } from './routes/analytics.js';
 import { notificationRoutes } from './routes/notifications.js';
 import { leaderboardRoutes } from './routes/leaderboard.js';
@@ -265,6 +266,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       await api.register(async (r) => attemptRoutes(r, env), { prefix: '/attempts' });
       await api.register(async (r) => bookmarkRoutes(r, env), { prefix: '/bookmarks' });
       await api.register(async (r) => noteRoutes(r, env), { prefix: '/notes' });
+      await api.register(async (r) => communityRoutes(r, env), { prefix: '/community' });
       await api.register(async (r) => analyticsRoutes(r, env), { prefix: '/analytics' });
       await api.register(async (r) => notificationRoutes(r, env), { prefix: '/notifications' });
       await api.register(async (r) => leaderboardRoutes(r, env), { prefix: '/leaderboard' });
