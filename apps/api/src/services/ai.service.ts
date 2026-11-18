@@ -232,33 +232,60 @@ export function buildExplanationMessages(
 
 export function buildHintMessages(
   question: NormalizedQuestion,
-  context: { examTitle: string; examCode: string; providerTitle: string },
+  context: {
+    examTitle: string;
+    examCode: string;
+    providerTitle: string;
+    previousHints?: string[];
+  },
   level: 1 | 2 | 3 = 1,
 ): AiMessage[] {
   const guidance = {
-    1: 'Level 1 - Orientation. Name the concept or property the question is really testing and one general elimination principle. Do not mention any option letter, option wording, or the correct answer.',
-    2: 'Level 2 - Narrowing. Point to the exact constraint or evidence in the stem that matters, and explain what kind of answer satisfies it. Do not name the correct option.',
+    1: 'Level 1 - Orientation. Name the concept or property the question is really testing, and point to the part of the stem that matters. Do not mention any option letter, option wording, or the correct answer.',
+    2: 'Level 2 - Narrowing. Point to the exact constraint or evidence in the stem that decides the item, and explain what kind of answer satisfies it. Do not name or quote the correct option.',
     3: 'Level 3 - Final nudge. Explain which kinds of options can be ruled out and what the surviving answer must contain. You may reason about option properties, but never state the answer letter or quote the correct option verbatim.',
   }[level];
+
+  const answer = (question.answerText || question.answer || '').trim();
+  const reference = question.explanation.trim().slice(0, 1_200);
+  const previous = (context.previousHints ?? [])
+    .map((hint) => hint.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(-3);
 
   return [
     {
       role: 'system',
       content:
-        'You are a patient exam coach. Give a progressive nudge without revealing the answer. ' +
+        'You are a patient exam coach writing one progressive nudge for a specific practice question. ' +
         (level === 3 ? 'Maximum 85 words. ' : 'Maximum 55 words. ') +
-        'Plain text only, no headings or bullet symbols.',
+        'Plain text only, no headings or bullet symbols. ' +
+        'Never state, imply, or quote the correct answer, and never write "the answer is". ' +
+        'The private reference is for your reasoning only; do not reveal it. ' +
+        'Use a concrete term, value, or condition from this question so the hint cannot be pasted onto a different question.',
     },
     {
       role: 'user',
       content: [
         `Exam: ${context.examCode} (${context.examTitle}) - ${context.providerTitle}`,
+        question.title ? `Scenario: ${question.title}` : '',
+        `Question type: ${question.type}`,
         `Question: ${question.stemText}`,
         question.choices.length
           ? `Choices:\n${question.choices.map((c) => `${c.key}. ${c.text}`).join('\n')}`
-          : 'No choice list for this item.',
+          : 'No choice list for this item; it depends on an exhibit or visual.',
+        answer ? `Private reference answer (never disclose): ${answer}` : '',
+        reference ? `Private reference explanation (never disclose): ${reference}` : '',
+        previous.length
+          ? `Hints already shown (do not repeat or paraphrase):\n${previous.map((hint) => `- ${hint}`).join('\n')}`
+          : '',
         '',
         guidance,
+        'Requirements:',
+        '- Ground the hint in this question, not in general exam advice.',
+        '- Quote or paraphrase a specific term, value, or condition from the stem; generic filler like "focus on the key concept" is not acceptable.',
+        '- Add a new angle at each level; never reuse a sentence from an earlier hint.',
+        '- Do not name an option letter or quote a choice verbatim at levels 1 and 2.',
       ].join('\n'),
     },
   ];
@@ -269,20 +296,46 @@ export function buildHintMessages(
  *
  * Reasoning models occasionally consume the whole hint budget internally and
  * emit an empty answer (finishReason "length"). Rather than show nothing, derive
- * a nudge from the dataset: point at the topic and the shape of the right answer
- * without ever naming which option is correct.
+ * a nudge from the dataset. The stem excerpt makes the hint specific to this
+ * question, and each level adds a different kind of clue.
  */
-export function curatedHint(question: NormalizedQuestion): string {
-  const title = (question.title || '').trim();
-  const answerCount = (question.answer || '').length;
+export function curatedHint(
+  question: NormalizedQuestion,
+  level: 1 | 2 | 3 = 1,
+  _previousHints: string[] = [],
+): string {
+  const compact = (value: string, max: number): string => {
+    const text = value.replace(/\s+/g, ' ').trim();
+    return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+  };
 
-  if (title && title.length <= 60) {
-    return `Focus on ${title}. Re-read the scenario for the specific constraint it imposes, then eliminate any option that does not satisfy it.`;
+  const title = compact(question.title || '', 80);
+  const stem = compact(question.stemText || '', 140);
+  const clue = stem || title || 'the question stem';
+  const multi = (question.answer || '').length > 1 || question.type === 'multiple';
+  const multiNote = multi
+    ? ' This item may have more than one correct option, so judge each statement independently.'
+    : '';
+  const topic = title ? `This item is about ${title}. ` : '';
+
+  if (level === 3) {
+    return (
+      `Compare the surviving options against the stem: “${clue}”. Rule out any choice that adds an assumption, ` +
+      `changes the scope, or ignores a stated condition. The remaining answer should fit the scenario without qualification.${multiNote}`
+    );
   }
-  if (answerCount > 1) {
-    return 'This item has more than one correct option. Check each statement independently rather than assuming a single answer.';
+
+  if (level === 2) {
+    return (
+      `The decision turns on the evidence in “${clue}”. Find the option that satisfies that exact condition, ` +
+      `then discard choices that only sound related or answer a different requirement.${multiNote}`
+    );
   }
-  return 'Re-read the scenario for its key constraint, then eliminate options that contradict it — the remaining choice is usually the answer.';
+
+  return (
+    `${topic}Re-read the stem: “${clue}”. Name the concept or property it is testing before comparing the options; ` +
+    `eliminate any choice that does not address that exact idea.${multiNote}`
+  );
 }
 
 /**

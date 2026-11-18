@@ -382,6 +382,11 @@ streaming chat endpoint surfaces an error instead of inventing an answer. SSE ch
 is served at `/api/ai/chat/...` and nginx disables buffering for that path. AI
 quotas are fair-use daily limits, not an entitlement gate.
 
+Progressive hints are generated server-side for the actual question and the
+requested level. The client sends the hints already shown so the next level adds
+a new clue, and hint responses are marked `no-store` so a cached nudge never
+appears on a different question.
+
 ---
 
 ## Production

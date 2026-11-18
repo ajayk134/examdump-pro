@@ -16,6 +16,17 @@ interface HintEntry {
 const EMPTY: HintEntry = { texts: [], loading: false, error: '' };
 const LEVELS = ['Orientation', 'Narrow it down', 'Final nudge'] as const;
 
+function compact(value: string, max: number): string {
+  const text = value.replace(/\s+/g, ' ').trim();
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+}
+
+/** A question-specific reading focus, so two items never show the same primer. */
+function questionFocus(question: Question): string {
+  const stem = compact(question.stemText || '', 150);
+  return stem || compact(question.title || '', 120) || 'this item';
+}
+
 /**
  * Progressive hints.
  *
@@ -47,7 +58,8 @@ export function HintPanel({
   const { toast } = useToast();
   const [entries, setEntries] = useState<Record<string, HintEntry>>({});
   const abort = useRef<AbortController | null>(null);
-  const entry = entries[question.id] ?? EMPTY;
+  const entryKey = `${providerId}/${examKey}/${question.id}`;
+  const entry = entries[entryKey] ?? EMPTY;
 
   useEffect(
     () => () => {
@@ -61,19 +73,21 @@ export function HintPanel({
       abort.current?.abort();
       abort.current = null;
     };
-  }, [question.id]);
+  }, [entryKey]);
 
   const primer = useMemo(() => {
-    const lines: string[] = [];
+    const focus = questionFocus(question);
     if (question.type === 'multiple') {
-      lines.push('More than one statement can be true. Judge each option independently.');
-    } else if (question.choices.length === 0) {
-      lines.push('Study the exhibit for sequence, labels and constraints before choosing.');
-    } else {
-      lines.push('Find the single constraint or keyword that changes the outcome.');
+      return [
+        `Focus on “${focus}”. Treat each option as a separate true/false statement — more than one may be correct.`,
+      ];
     }
-    lines.push('Name what the question is testing before comparing the options.');
-    return lines;
+    if (question.choices.length === 0 || question.stemImages.length > 0) {
+      return [
+        `Focus on “${focus}”. Read the exhibit for sequence, labels, and constraints before choosing.`,
+      ];
+    }
+    return [`Focus on “${focus}”. Find the one option that satisfies it without adding an assumption.`];
   }, [question]);
 
   const requestHint = async () => {
@@ -85,50 +99,53 @@ export function HintPanel({
     if (entry.loading || entry.texts.length >= LEVELS.length) return;
     const retrying = Boolean(entry.error);
     const level = (retrying ? entry.texts.length : entry.texts.length + 1) as 1 | 2 | 3;
+    const previousHints = (retrying ? entry.texts.slice(0, -1) : entry.texts)
+      .map((text) => text.trim())
+      .filter(Boolean);
     const controller = new AbortController();
     abort.current?.abort();
     abort.current = controller;
 
     setEntries((current) => {
-      const previous = current[question.id] ?? EMPTY;
+      const previous = current[entryKey] ?? EMPTY;
       const texts = [...previous.texts];
       if (retrying && texts.length > 0) texts[texts.length - 1] = '';
       else texts.push('');
-      return { ...current, [question.id]: { texts, loading: true, error: '' } };
+      return { ...current, [entryKey]: { texts, loading: true, error: '' } };
     });
 
     const patch = (text: string) =>
       setEntries((current) => {
-        const previous = current[question.id] ?? EMPTY;
+        const previous = current[entryKey] ?? EMPTY;
         const texts = [...previous.texts];
         texts[texts.length - 1] = `${texts[texts.length - 1] ?? ''}${text}`;
-        return { ...current, [question.id]: { ...previous, texts } };
+        return { ...current, [entryKey]: { ...previous, texts } };
       });
 
     try {
       await streamPost(
         '/ai/hint/stream',
-        { provider: providerId, exam: examKey, questionId: question.id, level },
+        { provider: providerId, exam: examKey, questionId: question.id, level, previousHints },
         {
           onDelta: (text) => patch(text),
           onDone: () => onConsumed(),
           onError: (message) =>
             setEntries((current) => ({
               ...current,
-              [question.id]: { ...(current[question.id] ?? EMPTY), loading: false, error: message },
+              [entryKey]: { ...(current[entryKey] ?? EMPTY), loading: false, error: message },
             })),
         },
         controller.signal,
       );
       setEntries((current) => {
-        const previous = current[question.id] ?? EMPTY;
-        return { ...current, [question.id]: { ...previous, loading: false } };
+        const previous = current[entryKey] ?? EMPTY;
+        return { ...current, [entryKey]: { ...previous, loading: false } };
       });
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
       setEntries((current) => ({
         ...current,
-        [question.id]: { ...(current[question.id] ?? EMPTY), loading: false, error: (err as Error).message },
+        [entryKey]: { ...(current[entryKey] ?? EMPTY), loading: false, error: (err as Error).message },
       }));
     } finally {
       if (abort.current === controller) abort.current = null;
@@ -151,7 +168,7 @@ export function HintPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex-1 px-4 py-4">
+      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
         <div className="rounded-2xl bg-accent/[0.055] p-4">
           <p className="flex items-center gap-1.5 text-[0.6875rem] font-bold uppercase tracking-[0.1em] text-accent">
             <IconSparkles width={12} height={12} /> Orient first
@@ -244,7 +261,7 @@ export function HintPanel({
               abort.current?.abort();
               setEntries((current) => ({
                 ...current,
-                [question.id]: { ...(current[question.id] ?? EMPTY), loading: false },
+                [entryKey]: { ...(current[entryKey] ?? EMPTY), loading: false },
               }));
             }}
             className="mt-1 flex w-full items-center justify-center gap-1.5 py-1.5 text-[0.6875rem] font-semibold text-content-muted hover:text-content-secondary"

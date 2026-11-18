@@ -54,7 +54,8 @@ export function ExplainPanel({
   const { toast } = useToast();
   const [entries, setEntries] = useState<Record<string, ExplainEntry>>({});
   const abort = useRef<AbortController | null>(null);
-  const entry = entries[question.id] ?? EMPTY;
+  const entryKey = `${providerId}/${examKey}/${question.id}`;
+  const entry = entries[entryKey] ?? EMPTY;
   const answerKey = question.answer ?? '';
   /**
    * Reasoning models sometimes narrate their plan in the visible channel
@@ -77,7 +78,7 @@ export function ExplainPanel({
       abort.current?.abort();
       abort.current = null;
     };
-  }, [question.id]);
+  }, [entryKey]);
 
   const run = async () => {
     if (!user) {
@@ -91,15 +92,15 @@ export function ExplainPanel({
 
     setEntries((current) => ({
       ...current,
-      [question.id]: { text: '', loading: true, error: '', done: false },
+      [entryKey]: { text: '', loading: true, error: '', done: false },
     }));
 
     const patch = (text: string) =>
       setEntries((current) => {
-        const previous = current[question.id] ?? EMPTY;
+        const previous = current[entryKey] ?? EMPTY;
         return {
           ...current,
-          [question.id]: { ...previous, text: previous.text + text },
+          [entryKey]: { ...previous, text: previous.text + text },
         };
       });
 
@@ -113,13 +114,13 @@ export function ExplainPanel({
             onConsumed();
             setEntries((current) => ({
               ...current,
-              [question.id]: { ...(current[question.id] ?? EMPTY), loading: false, done: true },
+              [entryKey]: { ...(current[entryKey] ?? EMPTY), loading: false, done: true },
             }));
           },
           onError: (message) =>
             setEntries((current) => ({
               ...current,
-              [question.id]: { ...(current[question.id] ?? EMPTY), loading: false, error: message },
+              [entryKey]: { ...(current[entryKey] ?? EMPTY), loading: false, error: message },
             })),
         },
         controller.signal,
@@ -128,7 +129,7 @@ export function ExplainPanel({
       if ((err as Error).name === 'AbortError') return;
       setEntries((current) => ({
         ...current,
-        [question.id]: { ...(current[question.id] ?? EMPTY), loading: false, error: (err as Error).message },
+        [entryKey]: { ...(current[entryKey] ?? EMPTY), loading: false, error: (err as Error).message },
       }));
     } finally {
       if (abort.current === controller) abort.current = null;
@@ -150,7 +151,7 @@ export function ExplainPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex-1 space-y-4 px-4 py-4">
+      <div className="scroll-thin min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4">
         <div
           className={cn(
             'rounded-2xl p-4',
@@ -248,7 +249,7 @@ export function ExplainPanel({
               <IconSparkles width={12} height={12} /> Tutor walkthrough
             </p>
             {walkthrough ? (
-              <div className="answer-prose text-[0.875rem]">
+              <div className="answer-prose min-w-0 break-words text-[0.875rem]">
                 <Markdown content={walkthrough} />
                 {entry.loading ? <span className="caret" aria-hidden="true" /> : null}
               </div>
@@ -277,7 +278,7 @@ export function ExplainPanel({
               abort.current?.abort();
               setEntries((current) => ({
                 ...current,
-                [question.id]: { ...(current[question.id] ?? EMPTY), loading: false },
+                [entryKey]: { ...(current[entryKey] ?? EMPTY), loading: false },
               }));
             }}
             className="btn-secondary btn-block"

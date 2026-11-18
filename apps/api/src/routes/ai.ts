@@ -223,6 +223,8 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
     async (request, reply) => {
       const { user } = await requireAuth(request, env);
       const input = parseOrThrow(aiExplainSchema, request.body);
+      const level = input.level ?? 1;
+      const previousHints = input.previousHints ?? [];
 
       const settings = await getSettings(env);
       const entitlements = await resolveEntitlements(user, settings);
@@ -236,8 +238,9 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
       // Without a model we can still offer the curated fallback, but there is
       // nothing to stream, so answer with a normal JSON response.
       if (!aiConfigured(env)) {
+        reply.header('Cache-Control', 'no-store');
         return reply.send({
-          hint: question.explanation?.slice(0, 220) || 'Review the key terms in the question stem.',
+          hint: curatedHint(question, level, previousHints),
           degraded: true,
         });
       }
@@ -249,7 +252,7 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
       const res = reply.raw;
       res.writeHead(200, {
         'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
+        'Cache-Control': 'no-cache, no-store, no-transform',
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no',
       });
@@ -287,9 +290,10 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
             examTitle: exam.title,
             examCode: exam.code,
             providerTitle: provider.title,
-          }, input.level ?? 1),
-          maxTokens: input.level === 3 ? 260 : 220,
-          temperature: 0.4,
+            previousHints,
+          }, level),
+          maxTokens: level === 3 ? 260 : 220,
+          temperature: 0.6,
         })) {
           // Hints are a single short nudge; showing the model's planning text
           // here would be noise, so only answer-channel text is forwarded.
@@ -298,7 +302,7 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
           if (chunk.type === 'done' && !answerText.trim() && !res.writableEnded) {
             // Nothing visible was produced: stream the curated fallback so the
             // learner always gets a real hint instead of an empty panel.
-            const fallback = curatedHint(question);
+            const fallback = curatedHint(question, level, previousHints);
             answerText = fallback;
             wroteAny = true;
             await send({ type: 'delta', channel: 'answer', text: fallback });
@@ -332,6 +336,8 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
   app.post('/hint', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { user } = await requireAuth(request, env);
     const input = parseOrThrow(aiExplainSchema, request.body);
+    const level = input.level ?? 1;
+    const previousHints = input.previousHints ?? [];
     const settings = await getSettings(env);
     const entitlements = await resolveEntitlements(user, settings);
     // Hints are part of basic doubt clearing: open to every signed-in account.
@@ -341,8 +347,9 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
       input.exam,
       input.questionId,
     );
+    reply.header('Cache-Control', 'no-store');
     if (!aiConfigured(env)) {
-      return reply.send({ hint: question.explanation?.slice(0, 220) || 'Review the key terms in the question stem.', degraded: true });
+      return reply.send({ hint: curatedHint(question, level, previousHints), degraded: true });
     }
 
     const limit = aiDailyLimit(env, entitlements.plan);
@@ -354,20 +361,21 @@ export async function aiRoutes(app: FastifyInstance, env: Env): Promise<void> {
           examTitle: exam.title,
           examCode: exam.code,
           providerTitle: provider.title,
-        }, input.level ?? 1),
-        maxTokens: input.level === 3 ? 200 : 160,
-        temperature: 0.4,
+          previousHints,
+        }, level),
+        maxTokens: level === 3 ? 200 : 160,
+        temperature: 0.6,
       });
       await incrementUsage(user.id, 'aiExplanations', 1);
       // Same empty-answer guard as the streaming route: a reasoning model can
       // return an empty string after spending its whole budget internally.
       if (!result.text.trim()) {
-        return reply.send({ hint: curatedHint(question), model: result.model, degraded: true });
+        return reply.send({ hint: curatedHint(question, level, previousHints), model: result.model, degraded: true });
       }
       return reply.send({ hint: result.text, model: result.model, degraded: false });
     } catch {
       await incrementUsage(user.id, 'aiExplanations', 1);
-      return reply.send({ hint: curatedHint(question), degraded: true });
+      return reply.send({ hint: curatedHint(question, level, previousHints), degraded: true });
     }
   });
 

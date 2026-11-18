@@ -339,6 +339,11 @@ export const aiExplainSchema = z.object({
   choice: z.array(z.string().trim().max(8)).max(8).optional(),
   /** Progressive hint depth: 1 orientation, 2 narrowing, 3 final nudge. */
   level: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+  /**
+   * Earlier hints already shown for this question. The server uses them to make
+   * the next hint build on the previous one instead of repeating it.
+   */
+  previousHints: z.array(z.string().trim().min(1).max(1200)).max(3).optional(),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
