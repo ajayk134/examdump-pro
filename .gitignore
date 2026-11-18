@@ -38,6 +38,5 @@ Thumbs.db
 # runtime
 tmp/
 .cache/
-backups/
 # Local QA screenshots (regenerated on demand, never shipped)
 qa/
