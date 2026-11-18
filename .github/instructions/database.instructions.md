@@ -66,6 +66,15 @@ No current schema module, route, or service reads them. Treat them as historical
 a fresh database skips it; production already has it. Do not build new features
 on these tables without an explicit decision.
 
+## Catalogue visibility
+
+`0010_catalog_visibility.sql` adds an `enabled` boolean (default `true`) to
+`catalog_providers` and `catalog_exams`. Admins toggle these from the admin
+Visibility tab. Keep the semantics: an exam is hidden when it **or** its
+provider is disabled, and the dataset sync must never overwrite `enabled`.
+Visibility only hides content from discovery and direct requests; it never
+deletes catalogue rows or revokes subscriptions, grants, or access records.
+
 ## Verification
 
 ```bash

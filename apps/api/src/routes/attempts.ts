@@ -6,6 +6,7 @@ import { requireAuth } from '../lib/guards.js';
 import { parseOrThrow } from '../lib/validation.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { getDatasetClient } from '../services/dataset.service.js';
+import { getExamVisibility } from '../services/catalog.service.js';
 import { canAccessExam, resolveEntitlements } from '../services/entitlement.service.js';
 import { getSettings } from '../services/settings.service.js';
 import { assertWithinQuota, incrementUsage } from '../services/usage.service.js';
@@ -50,6 +51,12 @@ export async function attemptRoutes(app: FastifyInstance, env: Env): Promise<voi
     const input = parseOrThrow(startAttemptSchema, request.body);
     const settings = await getSettings(env);
     const entitlements = await resolveEntitlements(user, settings);
+
+    // A disabled exam is hidden from regular users everywhere, including here.
+    const visibility = await getExamVisibility(input.provider, input.exam);
+    if (visibility.known && !visibility.visible && user.role !== 'admin') {
+      throw notFound('Exam not found');
+    }
 
     const { provider, exam, questions } = await getDatasetClient(env).getExamQuestions(
       input.provider,

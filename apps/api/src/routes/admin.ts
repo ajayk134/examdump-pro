@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, or, sql } from 
 import {
   adminUserListQuerySchema,
   assignRoleSchema,
+  catalogVisibilitySchema,
   createCouponAdminSchema,
   createPlanAdminSchema,
   createRoleSchema,
@@ -36,7 +37,14 @@ import {
 } from '../db/schema/index.js';
 import { serializeUser } from '../lib/serializers.js';
 import { recordAudit } from '../services/audit.service.js';
-import { catalogCounts } from '../services/catalog.service.js';
+import {
+  catalogCounts,
+  getProviderById,
+  listExamsForAdmin,
+  listProvidersForAdmin,
+  setExamEnabled,
+  setProviderEnabled,
+} from '../services/catalog.service.js';
 import { syncDatasetCatalog } from '../services/dataset.service.js';
 import { getSettings, updateSettings } from '../services/settings.service.js';
 import { createNotification } from '../services/notification.service.js';
@@ -584,6 +592,59 @@ export async function adminRoutes(app: FastifyInstance, env: Env): Promise<void>
       ip: request.ip,
     });
     return reply.send({ result });
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* Catalogue visibility (providers + individual exams)                 */
+  /* ------------------------------------------------------------------ */
+
+  app.get('/catalog/providers', async (request, reply) => {
+    await requirePermission(request, env, 'exams.manage');
+    return reply.send({ providers: await listProvidersForAdmin() });
+  });
+
+  app.get('/catalog/providers/:providerId/exams', async (request, reply) => {
+    await requirePermission(request, env, 'exams.manage');
+    const { providerId } = request.params as { providerId: string };
+    const provider = await getProviderById(providerId);
+    if (!provider) throw notFound('Provider not found');
+    return reply.send({ provider, exams: await listExamsForAdmin(providerId) });
+  });
+
+  app.patch('/catalog/providers/:providerId', async (request, reply) => {
+    const { user: admin } = await requirePermission(request, env, 'exams.manage');
+    const { providerId } = request.params as { providerId: string };
+    const { enabled } = parseOrThrow(catalogVisibilitySchema, request.body);
+    const provider = await setProviderEnabled(providerId, enabled);
+    if (!provider) throw notFound('Provider not found');
+    await recordAudit({
+      actorId: admin.id,
+      actorEmail: admin.email,
+      action: enabled ? 'admin.provider_enabled' : 'admin.provider_disabled',
+      targetType: 'catalog_provider',
+      targetId: provider.providerId,
+      metadata: { title: provider.title, enabled },
+      ip: request.ip,
+    });
+    return reply.send({ provider });
+  });
+
+  app.patch('/catalog/exams/:providerId/:examKey', async (request, reply) => {
+    const { user: admin } = await requirePermission(request, env, 'exams.manage');
+    const { providerId, examKey } = request.params as { providerId: string; examKey: string };
+    const { enabled } = parseOrThrow(catalogVisibilitySchema, request.body);
+    const exam = await setExamEnabled(providerId, examKey, enabled);
+    if (!exam) throw notFound('Exam not found');
+    await recordAudit({
+      actorId: admin.id,
+      actorEmail: admin.email,
+      action: enabled ? 'admin.exam_enabled' : 'admin.exam_disabled',
+      targetType: 'catalog_exam',
+      targetId: `${exam.providerId}:${exam.key}`,
+      metadata: { title: exam.title, enabled },
+      ip: request.ip,
+    });
+    return reply.send({ exam });
   });
 
   app.get('/system/health', async (request, reply) => {

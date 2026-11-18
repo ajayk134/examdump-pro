@@ -119,6 +119,11 @@ export const featureFlagSchema = z.object({
   rolloutPercent: z.number().int().min(0).max(100).default(100),
 });
 
+/** Toggle visibility of a whole provider or one exam from the admin console. */
+export const catalogVisibilitySchema = z.object({
+  enabled: z.boolean(),
+});
+
 export const emailTemplateSchema = z.object({
   key: z.string().trim().min(2).max(64).regex(/^[a-z0-9_-]+$/),
   subject: z.string().trim().min(1).max(200),

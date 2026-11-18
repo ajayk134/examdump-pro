@@ -180,3 +180,9 @@ export const IconExpand = (p: SVGProps<SVGSVGElement>) => (
 export const IconList = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01" /></svg>
 );
+export const IconEye = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
+);
+export const IconEyeOff = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M9.9 5.2A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.7 3.6" /><path d="M6.1 6.1A17 17 0 0 0 2 12s3.5 7 10 7a10.6 10.6 0 0 0 4.1-.8" /><path d="m2 2 20 20" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></svg>
+);

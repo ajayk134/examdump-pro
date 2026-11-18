@@ -11,6 +11,7 @@ import {
   IconBook,
   IconChart,
   IconCheckCircle,
+  IconEye,
   IconGrid,
   IconHistory,
   IconMessage,
@@ -31,6 +32,7 @@ import {
   WebhooksPanel,
 } from '@/components/admin-ops';
 import { EmailCenterPanel } from '@/components/admin-email';
+import { VisibilityPanel } from '@/components/admin-visibility';
 
 type Tab =
   | 'overview'
@@ -45,7 +47,8 @@ type Tab =
   | 'integrations'
   | 'settings'
   | 'audit'
-  | 'dataset';
+  | 'dataset'
+  | 'visibility';
 
 const TABS: Array<{ id: Tab; label: string; icon: ComponentType<SVGProps<SVGSVGElement>> }> = [
   { id: 'overview', label: 'Overview', icon: IconGrid },
@@ -61,6 +64,7 @@ const TABS: Array<{ id: Tab; label: string; icon: ComponentType<SVGProps<SVGSVGE
   { id: 'settings', label: 'Settings', icon: IconSettings },
   { id: 'audit', label: 'Audit log', icon: IconHistory },
   { id: 'dataset', label: 'Dataset', icon: IconBook },
+  { id: 'visibility', label: 'Visibility', icon: IconEye },
 ];
 
 interface AdminStats {
@@ -198,6 +202,7 @@ export default function AdminPage() {
           {tab === 'settings' ? <SettingsPanel /> : null}
           {tab === 'audit' ? <AuditPanel /> : null}
           {tab === 'dataset' ? <DatasetPanel /> : null}
+          {tab === 'visibility' ? <VisibilityPanel /> : null}
         </div>
       </div>
     </PageShell>

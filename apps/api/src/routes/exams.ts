@@ -8,9 +8,13 @@ import { getDatasetClient } from '../services/dataset.service.js';
 import { createQuestionBankPdf, loadQuestionVoteCounts } from '../services/pdf.service.js';
 import {
   getCatalogExam,
+  getExamVisibility,
   getProviderExamsFromCatalog,
+  getProviderVisibility,
+  hasCatalogProviders,
   listProviders,
   searchExams,
+  type VisibilityState,
 } from '../services/catalog.service.js';
 import {
   canAccessExam,
@@ -29,12 +33,23 @@ import {
 interface Context {
   entitlements: Entitlements;
   userId?: string;
+  /** Admins may preview hidden providers/exams; regular users may not. */
+  isAdmin: boolean;
 }
 
 interface ExamAccess {
   unlimited: boolean;
   questionsPerExam: number | null;
   plan: 'free' | 'premium';
+}
+
+/**
+ * Hide a disabled provider/exam from regular users. Admins keep access so they
+ * can verify content before re-enabling it. Unknown entries are allowed through
+ * so the dataset fallback still works before the catalogue is first synced.
+ */
+function assertVisible(state: VisibilityState, isAdmin: boolean, label: string): void {
+  if (state.known && !state.visible && !isAdmin) throw notFound(`${label} not found`);
 }
 
 /** Access for one specific exam, honouring single-exam and all-exam plans. */
@@ -52,6 +67,7 @@ async function resolveContext(request: FastifyRequest, env: Env): Promise<Contex
   return {
     entitlements: await resolveEntitlements(auth?.user ?? null, settings),
     userId: auth?.user?.id,
+    isAdmin: auth?.user?.role === 'admin',
   };
 }
 
@@ -59,7 +75,10 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
   app.get('/providers', async (request, reply) => {
     void request;
     let providers = await listProviders();
-    if (providers.length === 0) {
+    // Only fall back to the live dataset when the catalogue was never synced.
+    // If every provider is deliberately disabled, honour that instead of
+    // re-exposing them from GitHub.
+    if (!(await hasCatalogProviders())) {
       try {
         const live = await getDatasetClient(env).getProviders();
         providers = live.map((p) => ({
@@ -70,6 +89,7 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
           slug: p.slug,
           examCount: 0,
           totalQuestions: 0,
+          enabled: true,
           syncedAt: new Date(),
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -96,6 +116,8 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
 
   app.get('/:providerId', async (request, reply) => {
     const { providerId } = request.params as { providerId: string };
+    const auth = await optionalAuth(request, env);
+    assertVisible(await getProviderVisibility(providerId), auth?.user?.role === 'admin', 'Provider');
 
     interface ProviderView {
       providerId: string;
@@ -139,6 +161,7 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
           title: e.title,
           slug: '',
           questionCount: e.questionCount,
+          enabled: true,
           syncedAt: new Date(),
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -154,6 +177,7 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
   app.get('/:providerId/:examKey', async (request, reply) => {
     const { providerId, examKey } = request.params as { providerId: string; examKey: string };
     const ctx = await resolveContext(request, env);
+    assertVisible(await getExamVisibility(providerId, examKey), ctx.isAdmin, 'Exam');
     const catalogExam = await getCatalogExam(providerId, examKey);
     const access = examAccess(ctx.entitlements, examKey, providerId);
 
@@ -215,6 +239,7 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
   app.get('/:providerId/:examKey/practice-options', async (request, reply) => {
     const { providerId, examKey } = request.params as { providerId: string; examKey: string };
     const ctx = await resolveContext(request, env);
+    assertVisible(await getExamVisibility(providerId, examKey), ctx.isAdmin, 'Exam');
     const access = examAccess(ctx.entitlements, examKey, providerId);
     const { provider, exam, questions } = await getDatasetClient(env).getExamQuestions(providerId, examKey);
 
@@ -252,6 +277,7 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
   app.get('/:providerId/:examKey/questions.pdf', async (request, reply) => {
     const { user } = await requireAuth(request, env);
     const { providerId, examKey } = request.params as { providerId: string; examKey: string };
+    assertVisible(await getExamVisibility(providerId, examKey), user.role === 'admin', 'Exam');
 
     const settings = await getSettings(env);
     const entitlements = await resolveEntitlements(user, settings);
@@ -295,6 +321,7 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
     const { providerId, examKey } = request.params as { providerId: string; examKey: string };
     const query = parseOrThrow(listQuestionsQuerySchema, request.query);
     const ctx = await resolveContext(request, env);
+    assertVisible(await getExamVisibility(providerId, examKey), ctx.isAdmin, 'Exam');
     const access = examAccess(ctx.entitlements, examKey, providerId);
 
     const { provider, exam, questions } = await getDatasetClient(env).getExamQuestions(providerId, examKey);
@@ -366,6 +393,7 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
       questionId: string;
     };
     const ctx = await resolveContext(request, env);
+    assertVisible(await getExamVisibility(providerId, examKey), ctx.isAdmin, 'Exam');
     const access = examAccess(ctx.entitlements, examKey, providerId);
     const { provider, exam, questions } = await getDatasetClient(env).getExamQuestions(providerId, examKey);
 

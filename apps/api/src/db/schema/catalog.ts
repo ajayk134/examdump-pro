@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   integer,
   pgTable,
@@ -25,6 +26,12 @@ export const catalogProviders = pgTable(
     slug: text('slug').notNull(),
     examCount: integer('exam_count').notNull().default(0),
     totalQuestions: integer('total_questions').notNull().default(0),
+    /**
+     * Admin visibility switch. Disabling a provider hides it and every one of
+     * its exams from regular users without deleting catalogue rows or revoking
+     * any entitlements. The dataset sync never overwrites this column.
+     */
+    enabled: boolean('enabled').notNull().default(true),
     syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt,
     updatedAt,
@@ -48,6 +55,12 @@ export const catalogExams = pgTable(
     title: text('title').notNull(),
     slug: text('slug').notNull(),
     questionCount: integer('question_count').notNull().default(0),
+    /**
+     * Admin visibility switch, independent of the owning provider. A disabled
+     * exam stays in the catalogue with its questions and entitlements intact
+     * but is hidden from discovery and direct requests for regular users.
+     */
+    enabled: boolean('enabled').notNull().default(true),
     syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt,
     updatedAt,

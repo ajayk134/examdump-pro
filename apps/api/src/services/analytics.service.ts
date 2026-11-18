@@ -8,6 +8,7 @@ import {
   userStats,
   users,
 } from '../db/schema/index.js';
+import { visibleExamConditions } from './catalog.service.js';
 import { todayKey } from './usage.service.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -295,19 +296,24 @@ export async function getRecommendations(userId: string, limit = 4) {
 
   const recommendations: Array<{ reason: string; exam: ReturnType<typeof examView> }> = [];
   for (const p of weak) {
-    const [exam] = await db.select().from(catalogExams).where(eq(catalogExams.key, p.examKey)).limit(1);
+    const [exam] = await db
+      .select()
+      .from(catalogExams)
+      .where(and(eq(catalogExams.key, p.examKey), ...visibleExamConditions()))
+      .limit(1);
     if (exam) recommendations.push({ reason: 'Focus area - improve your weakest exam', exam: examView(exam) });
   }
 
   const providerIds = [...new Set(progress.map((p) => p.providerId))];
   if (recommendations.length < limit) {
     const startedKeys = [...started];
-    const conditions = startedKeys.length ? [notInArray(catalogExams.key, startedKeys)] : [];
+    const conditions = visibleExamConditions();
+    if (startedKeys.length) conditions.push(notInArray(catalogExams.key, startedKeys));
     if (providerIds.length) conditions.push(inArray(catalogExams.providerId, providerIds));
     const popular = await db
       .select()
       .from(catalogExams)
-      .where(conditions.length ? and(...conditions) : undefined)
+      .where(and(...conditions))
       .orderBy(desc(catalogExams.questionCount))
       .limit(limit - recommendations.length);
     for (const exam of popular) {
@@ -319,7 +325,12 @@ export async function getRecommendations(userId: string, limit = 4) {
   }
 
   if (recommendations.length === 0) {
-    const popular = await db.select().from(catalogExams).orderBy(desc(catalogExams.questionCount)).limit(limit);
+    const popular = await db
+      .select()
+      .from(catalogExams)
+      .where(and(...visibleExamConditions()))
+      .orderBy(desc(catalogExams.questionCount))
+      .limit(limit);
     for (const exam of popular) {
       recommendations.push({ reason: 'Popular with learners', exam: examView(exam) });
     }

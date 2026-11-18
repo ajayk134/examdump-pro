@@ -134,6 +134,10 @@ export function buildOpenApi(publicWebUrl: string) {
       '/admin/users': { get: { tags: ['Admin'], security: bearer, summary: 'List users', responses: { 200: ok('Users') } } },
       '/admin/settings': { get: { tags: ['Admin'], security: bearer, summary: 'Get settings', responses: { 200: ok('Settings') } }, patch: { tags: ['Admin'], security: bearer, summary: 'Update settings', responses: { 200: ok('Settings updated') } } },
       '/admin/dataset/sync': { post: { tags: ['Admin'], security: bearer, summary: 'Sync dataset catalog from GitHub', responses: { 200: ok('Sync result') } } },
+      '/admin/catalog/providers': { get: { tags: ['Admin'], security: bearer, summary: 'List providers with visibility state', responses: { 200: ok('Providers') } } },
+      '/admin/catalog/providers/{providerId}/exams': { get: { tags: ['Admin'], security: bearer, summary: 'List a provider\'s exams with visibility state', responses: { 200: ok('Exams') } } },
+      '/admin/catalog/providers/{providerId}': { patch: { tags: ['Admin'], security: bearer, summary: 'Enable or disable an entire provider', responses: { 200: ok('Provider'), 404: err('Not found') } } },
+      '/admin/catalog/exams/{providerId}/{examKey}': { patch: { tags: ['Admin'], security: bearer, summary: 'Enable or disable one exam', responses: { 200: ok('Exam'), 404: err('Not found') } } },
     },
     externalDocs: { url: `${publicWebUrl}/api/docs`, description: 'Full documentation' },
   };

@@ -100,6 +100,7 @@ deployed manually from the host layout described below.
 | Downloadable question-bank PDF                                        | `apps/api/src/services/pdf.service.ts`                                            |
 | AI provider calls, fallbacks, prompts, SSE                            | `apps/api/src/services/ai.service.ts`, `apps/api/src/services/ai-chat.service.ts` |
 | Dataset fetch and catalogue sync                                      | `packages/data-client/src/dataset.ts`, `apps/api/src/services/dataset.service.ts` |
+| Admin provider/exam visibility                                        | `apps/api/src/services/catalog.service.ts`, `apps/web/components/admin-visibility.tsx` |
 | Browser API client and single-flight refresh                          | `apps/web/lib/api.ts`                                                             |
 | Production API base resolution                                        | `apps/web/lib/api-base.ts`                                                        |
 | Auth/theme/toast providers                                            | `apps/web/components/providers.tsx`                                               |
@@ -308,14 +309,14 @@ PostgreSQL 16 holds 56 application tables across eight schema groups:
 | ---------- | -------------------------------------------------------------------------------------------------------------- |
 | `identity` | users, sessions, auth tokens, roles/permissions, login attempts, audit logs                                    |
 | `learning` | attempts, question results, exam progress, user stats, bookmarks, notes, goals, daily usage                    |
-| `catalog`  | provider and exam metadata synced from GitHub                                                                  |
+| `catalog`  | provider and exam metadata synced from GitHub, with admin visibility flags                                    |
 | `billing`  | plans, subscriptions, access grants, payments, refunds, coupons, referrals, webhooks, reconciliation, invoices |
 | `platform` | settings, feature flags, notifications, announcements, support tickets, error events                           |
 | `mail`     | mail logs, durable queue, templates, preferences, campaigns, suppressions                                      |
 | `community`| question votes and threaded question discussions                                                               |
 | `enums`    | PostgreSQL enum types shared by the above                                                                      |
 
-Migrations live in `apps/api/src/db/migrations` (`0000`–`0009`) and are applied
+Migrations live in `apps/api/src/db/migrations` (`0000`–`0010`) and are applied
 by a custom runner:
 
 - Statements execute individually because `ALTER TYPE ... ADD VALUE` cannot run
