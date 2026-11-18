@@ -5,15 +5,26 @@ import Link from 'next/link';
 import type { CommunityVoteSummary, Question } from '@/lib/types';
 import { get, post } from '@/lib/api';
 import { cn, formatNumber } from '@/lib/format';
-import { IconCheck, IconThumbUp } from '../icons';
+import { IconThumbUp } from '../icons';
 import { useAuth, useToast } from '../providers';
+
+const SEGMENT_COLORS = [
+  'rgb(var(--accent))',
+  'rgb(var(--accent-2))',
+  'rgb(var(--accent-3))',
+  'rgb(var(--success))',
+  'rgb(var(--warning))',
+  'rgb(var(--danger))',
+  'rgb(var(--content-muted))',
+];
 
 /**
  * Community poll for one question.
  *
- * The server owns the counts and the one-vote-per-user rule. The UI only knows
- * the question's actual option list, so it works for two, three, four or more
- * options without a fixed layout.
+ * The server owns the counts and the one-vote-per-user rule. Single-answer
+ * questions accept one label; multi-answer questions allow a set and submit it
+ * as one persisted vote. The combined bar is split by each option's share of
+ * all selections, so the segments always fill exactly 100%.
  */
 export function CommunityVote({
   question,
@@ -27,10 +38,12 @@ export function CommunityVote({
   const { user } = useAuth();
   const { toast } = useToast();
   const [summary, setSummary] = useState<CommunityVoteSummary | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
   const [loading, setLoading] = useState(Boolean(user));
-  const [voting, setVoting] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const multi = question.type === 'multiple' || (question.answer?.length ?? 0) > 1;
   const params = useMemo(() => {
     const search = new URLSearchParams({
       provider: providerId,
@@ -55,27 +68,56 @@ export function CommunityVote({
 
   useEffect(() => {
     setSummary(null);
+    setSelected([]);
     void load();
   }, [load]);
 
-  const vote = async (choice: string) => {
-    if (!user || voting) return;
-    setVoting(choice);
+  useEffect(() => {
+    setSelected(summary?.myVote ? summary.myVote.split(',').filter(Boolean) : []);
+  }, [summary]);
+
+  const total = summary?.total ?? 0;
+  const rows = question.choices.map((choice, index) => {
+    const count = summary?.counts[choice.key] ?? 0;
+    return {
+      ...choice,
+      count,
+      percentage: total > 0 ? (count / total) * 100 : 0,
+      color: SEGMENT_COLORS[index % SEGMENT_COLORS.length]!,
+    };
+  });
+
+  const save = async (keys: string[]) => {
+    if (!user || saving || keys.length === 0) return;
+    setSaving(true);
     setError('');
+    setSelected(keys);
     try {
       const next = await post<CommunityVoteSummary>('/community/votes', {
         provider: providerId,
         exam: examKey,
         questionId: question.id,
-        choice,
+        choice: keys.join(','),
       });
       setSummary(next);
     } catch (err) {
+      setSelected(summary?.myVote ? summary.myVote.split(',').filter(Boolean) : []);
       setError((err as Error).message);
       toast((err as Error).message, 'error');
     } finally {
-      setVoting(null);
+      setSaving(false);
     }
+  };
+
+  const choose = (key: string) => {
+    if (saving) return;
+    if (!multi) {
+      void save([key]);
+      return;
+    }
+    setSelected((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key].sort(),
+    );
   };
 
   if (question.choices.length === 0) return null;
@@ -96,12 +138,8 @@ export function CommunityVote({
     );
   }
 
-  const total = summary?.total ?? 0;
-  const rows = question.choices.map((choice) => {
-    const count = summary?.counts[choice.key] ?? 0;
-    const percentage = total > 0 ? (count / total) * 100 : 0;
-    return { ...choice, count, percentage };
-  });
+  const savedSelection = summary?.myVote ? summary.myVote.split(',').filter(Boolean) : [];
+  const selectionChanged = selected.join(',') !== savedSelection.join(',');
 
   return (
     <section
@@ -114,7 +152,7 @@ export function CommunityVote({
             <IconThumbUp width={13} height={13} /> Community vote
           </p>
           <h3 id={`community-vote-${question.id}`} className="mt-1 text-sm font-bold text-content-primary">
-            What did others pick?
+            {multi ? 'Select every answer that applies' : 'Pick the answer you chose'}
           </h3>
         </div>
         <span className="numeric rounded-full bg-surface-overlay px-2.5 py-1 text-[0.6875rem] font-bold text-content-secondary">
@@ -122,83 +160,108 @@ export function CommunityVote({
         </span>
       </div>
 
-      <div className="mt-3 space-y-2">
-        {rows.map((choice) => {
-          const picked = summary?.myVote === choice.key;
+      <div
+        role="group"
+        aria-label={multi ? 'Select all answer options that apply' : 'Select one answer option'}
+        className="mt-3 flex flex-wrap gap-2"
+      >
+        {question.choices.map((choice) => {
+          const picked = selected.includes(choice.key);
           return (
             <button
               key={choice.key}
               type="button"
-              onClick={() => void vote(choice.key)}
-              disabled={Boolean(voting)}
+              onClick={() => choose(choice.key)}
+              disabled={saving}
               aria-pressed={picked}
+              aria-label={choice.text ? `${choice.key}: ${choice.text}` : choice.key}
               title={choice.text || choice.key}
               className={cn(
-                'group flex w-full flex-col gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
+                'numeric grid h-11 min-w-11 place-items-center rounded-xl border px-3 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:cursor-not-allowed disabled:opacity-60',
                 picked
-                  ? 'border-accent/55 bg-accent/[0.06]'
-                  : 'border-surface-border bg-surface-base hover:border-surface-border-strong hover:bg-surface-overlay/35',
-                voting && voting !== choice.key && 'opacity-60',
+                  ? 'border-transparent bg-accent text-[rgb(var(--accent-contrast))] shadow-sm'
+                  : 'border-surface-border-strong bg-surface-base text-content-secondary hover:border-accent/45 hover:text-accent',
               )}
             >
-              <span className="flex w-full items-start gap-3">
-                <span
-                  className={cn(
-                    'numeric mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border text-[0.6875rem] font-bold',
-                    picked
-                      ? 'border-transparent bg-accent text-[rgb(var(--accent-contrast))]'
-                      : 'border-surface-border-strong bg-surface-raised text-content-secondary',
-                  )}
-                >
-                  {picked ? <IconCheck width={13} height={13} /> : choice.key}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="line-clamp-2 text-[0.8125rem] leading-snug text-content-secondary">
-                    {choice.text || 'Image option'}
-                  </span>
-                  {picked ? (
-                    <span className="mt-0.5 block text-[0.625rem] font-bold uppercase tracking-[0.08em] text-accent">
-                      Your vote
-                    </span>
-                  ) : null}
-                </span>
-                <span className="shrink-0 text-right">
-                  <span className="numeric block text-sm font-bold text-content-primary">
-                    {Math.round(choice.percentage)}%
-                  </span>
-                  <span className="numeric block text-[0.625rem] text-content-muted">
-                    {formatNumber(choice.count)} {choice.count === 1 ? 'vote' : 'votes'}
-                  </span>
-                </span>
-              </span>
-              <span
-                aria-hidden="true"
-                className="relative block h-2 w-full overflow-hidden rounded-full bg-surface-inset"
-              >
-                <span
-                  className={cn(
-                    'absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ease-out',
-                    picked ? 'bg-accent' : 'bg-accent/55',
-                  )}
-                  style={{ width: `${choice.percentage}%` }}
-                />
-              </span>
+              {choice.key}
             </button>
           );
         })}
       </div>
 
-      {loading ? <p className="mt-2 text-xs text-content-muted">Loading community votes…</p> : null}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[0.6875rem] text-content-muted">
+          {multi
+            ? 'Select all that apply, then save your vote.'
+            : 'Your vote is saved as soon as you pick an option.'}
+        </p>
+        {multi && selected.length > 0 && selectionChanged ? (
+          <button
+            type="button"
+            onClick={() => void save(selected)}
+            disabled={saving}
+            className="btn-primary btn-sm"
+          >
+            {saving ? 'Saving...' : 'Save vote'}
+          </button>
+        ) : null}
+      </div>
+
+      <div className="mt-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[0.625rem] font-bold uppercase tracking-[0.1em] text-content-muted">Results</p>
+          <p className="numeric text-[0.6875rem] text-content-muted">
+            {formatNumber(total)} {total === 1 ? 'vote' : 'votes'}
+          </p>
+        </div>
+        <div
+          role="img"
+          aria-label={
+            total > 0
+              ? rows
+                  .filter((row) => row.count > 0)
+                  .map((row) => `${row.key}: ${Math.round(row.percentage)} percent`)
+                  .join(', ')
+              : 'No community votes yet'
+          }
+          className="mt-2 flex h-3 w-full overflow-hidden rounded-full bg-surface-inset"
+        >
+          {rows.map((row) =>
+            row.count > 0 ? (
+              <span
+                key={row.key}
+                title={`${row.key}: ${Math.round(row.percentage)}%`}
+                className="h-full transition-[width] duration-500 ease-out first:rounded-l-full last:rounded-r-full"
+                style={{ width: `${row.percentage}%`, backgroundColor: row.color }}
+              />
+            ) : null,
+          )}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+          {rows.map((row) => (
+            <span
+              key={row.key}
+              className="inline-flex items-center gap-1.5 text-[0.6875rem] text-content-muted"
+            >
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: row.color }}
+              />
+              <span className="numeric font-bold text-content-secondary">{row.key}</span>
+              <span>{Math.round(row.percentage)}%</span>
+              <span className="numeric text-content-muted/70">({formatNumber(row.count)})</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {loading ? <p className="mt-2 text-xs text-content-muted">Loading community votes...</p> : null}
       {error ? (
         <p className="mt-2 text-xs text-negative" role="alert">
           {error}
         </p>
       ) : null}
-      <p className="mt-2 text-[0.6875rem] text-content-muted">
-        {summary?.myVote
-          ? 'You can change your vote at any time.'
-          : 'Pick the option you think is right. One vote per learner.'}
-      </p>
     </section>
   );
 }

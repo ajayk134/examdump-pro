@@ -204,8 +204,8 @@ export const questionCommunityQuerySchema = z.object({
 });
 
 export const questionVoteSchema = questionCommunityQuerySchema.extend({
-  /** One option key from the question's actual choice list. */
-  choice: z.string().trim().min(1).max(8),
+  /** One option key, or a comma-separated set for multi-answer questions. */
+  choice: z.string().trim().min(1).max(64),
 });
 
 export const questionDiscussionSchema = questionCommunityQuerySchema.extend({

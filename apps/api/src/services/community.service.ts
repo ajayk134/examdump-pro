@@ -7,6 +7,7 @@
  * so replies stay attached to a tombstone.
  */
 import { and, asc, count, eq } from 'drizzle-orm';
+import type { NormalizedQuestion } from '@examdump/shared';
 import type { Env } from '../config/env.js';
 import { getDb } from '../db/client.js';
 import { questionComments, questionVotes, users } from '../db/schema/index.js';
@@ -138,6 +139,61 @@ async function loadQuestion(env: Env, context: CommunityQuestionContext) {
   return question;
 }
 
+export function isMultiAnswerQuestion(
+  question: Pick<NormalizedQuestion, 'type' | 'answer'>,
+): boolean {
+  return question.type === 'multiple' || question.answer.length > 1;
+}
+
+/**
+ * Parse the submitted choice field. Single-answer questions accept one option
+ * key; multi-answer questions accept a comma-separated selection. The stored
+ * value and `myVote` use the same comma-separated form.
+ */
+export function parseVoteKeys(
+  question: Pick<NormalizedQuestion, 'type' | 'answer' | 'choices'>,
+  raw: string,
+): string[] {
+  const allowed = new Set(question.choices.map((choice) => choice.key));
+  const keys = [
+    ...new Set(
+      raw
+        .trim()
+        .toUpperCase()
+        .split(',')
+        .map((key) => key.trim())
+        .filter(Boolean),
+    ),
+  ].sort();
+
+  if (keys.length === 0 || keys.some((key) => !allowed.has(key))) {
+    throw badRequest('Choose one of the listed answer options.');
+  }
+  if (!isMultiAnswerQuestion(question) && keys.length > 1) {
+    throw badRequest('This question accepts one answer option.');
+  }
+  return keys;
+}
+
+function storedVoteKeys(
+  question: Pick<NormalizedQuestion, 'choices'>,
+  stored: string,
+): string[] {
+  const allowed = new Set(question.choices.map((choice) => choice.key));
+  const parts = stored
+    .toUpperCase()
+    .split(',')
+    .map((key) => key.trim())
+    .filter(Boolean);
+  // Older/simple single votes are stored as one key. Accept a compact letter
+  // string too, so a multi vote written before the comma format still counts.
+  const candidates =
+    parts.length === 1 && !allowed.has(parts[0]!) && /^[A-Z]+$/.test(parts[0]!)
+      ? [...parts[0]!]
+      : parts;
+  return [...new Set(candidates)].filter((key) => allowed.has(key));
+}
+
 export async function getVoteSummary(
   env: Env,
   userId: string,
@@ -172,14 +228,17 @@ export async function getVoteSummary(
   const counts: Record<string, number> = {};
   for (const choice of question.choices) counts[choice.key] = 0;
   for (const row of rows) {
-    if (row.choiceKey in counts) counts[row.choiceKey] = (counts[row.choiceKey] ?? 0) + Number(row.value);
+    for (const key of storedVoteKeys(question, row.choiceKey)) {
+      counts[key] = (counts[key] ?? 0) + Number(row.value);
+    }
   }
   const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
+  const mineKeys = mine ? storedVoteKeys(question, mine.choiceKey) : [];
 
   return {
     total,
     counts,
-    myVote: mine?.choiceKey && mine.choiceKey in counts ? mine.choiceKey : null,
+    myVote: mineKeys.length > 0 ? mineKeys.join(',') : null,
   };
 }
 
@@ -190,9 +249,8 @@ export async function castVote(
   choice: string,
 ): Promise<CommunityVoteSummary> {
   const question = await loadQuestion(env, context);
-  if (!question.choices.some((option) => option.key === choice)) {
-    throw badRequest('Choose one of the listed answer options.');
-  }
+  const keys = parseVoteKeys(question, choice);
+  const stored = keys.join(',');
 
   await getDb()
     .insert(questionVotes)
@@ -201,7 +259,7 @@ export async function castVote(
       providerId: context.provider,
       examKey: context.exam,
       questionId: context.questionId,
-      choiceKey: choice,
+      choiceKey: stored,
     })
     .onConflictDoUpdate({
       target: [
@@ -210,7 +268,7 @@ export async function castVote(
         questionVotes.examKey,
         questionVotes.questionId,
       ],
-      set: { choiceKey: choice, updatedAt: new Date() },
+      set: { choiceKey: stored, updatedAt: new Date() },
     });
 
   return getVoteSummary(env, userId, context);

@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { createTestContext, registerVerifiedUser, type TestContext } from './helpers.js';
+import { createTestContext, DATASET, registerVerifiedUser, type TestContext } from './helpers.js';
 
 let ctx: TestContext;
 let app: FastifyInstance;
 
 const question = { provider: 'cisco', exam: '200-301', questionId: 'Question #: 1' };
+const multiQuestion = { provider: 'cisco', exam: '200-301', questionId: 'Question #: multi' };
 const voteUrl = `/api/community/votes?${new URLSearchParams(question).toString()}`;
 const discussionUrl = `/api/community/discussions?${new URLSearchParams({
   ...question,
@@ -13,6 +14,22 @@ const discussionUrl = `/api/community/discussions?${new URLSearchParams({
 }).toString()}`;
 
 beforeAll(async () => {
+  const exam = DATASET['data/cisco/200-301.json'] as Record<string, Record<string, unknown>>;
+  const questions = exam['200-301']!;
+  questions['Question #: multi'] = {
+    Title: 'Multi-answer question',
+    Question: { content: [{ type: 'text', value: 'Which two options apply?' }] },
+    Choices: {
+      A: { content: [{ type: 'text', value: 'A. First option' }] },
+      B: { content: [{ type: 'text', value: 'B. Second option' }] },
+      C: { content: [{ type: 'text', value: 'C. Third option' }] },
+      D: { content: [{ type: 'text', value: 'D. Fourth option' }] },
+    },
+    Answer: { content: [{ type: 'text', value: 'Suggested Answer: AC' }] },
+    Explanation: { content: [{ type: 'text', value: 'A and C are correct.' }] },
+    Vote_count: [],
+  };
+
   ctx = await createTestContext();
   app = ctx.app;
 });
@@ -86,6 +103,47 @@ describe('community votes', () => {
       url: '/api/community/votes',
       headers: { cookie },
       payload: { ...question, choice: 'Z' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('accepts one persisted multi-answer selection and counts each option', async () => {
+    const first = await registerVerifiedUser(app);
+    const second = await registerVerifiedUser(app);
+    const url = `/api/community/votes?${new URLSearchParams(multiQuestion).toString()}`;
+
+    const multi = await app.inject({
+      method: 'POST',
+      url: '/api/community/votes',
+      headers: { cookie: first.cookie },
+      payload: { ...multiQuestion, choice: 'A,C' },
+    });
+    expect(multi.statusCode).toBe(200);
+    expect(multi.json()).toMatchObject({ total: 2, myVote: 'A,C' });
+    expect(multi.json().counts).toMatchObject({ A: 1, B: 0, C: 1, D: 0 });
+
+    const secondVote = await app.inject({
+      method: 'POST',
+      url: '/api/community/votes',
+      headers: { cookie: second.cookie },
+      payload: { ...multiQuestion, choice: 'C' },
+    });
+    expect(secondVote.statusCode).toBe(200);
+    expect(secondVote.json()).toMatchObject({ total: 3 });
+    expect(secondVote.json().counts).toMatchObject({ A: 1, C: 2 });
+
+    const mine = await app.inject({ method: 'GET', url, headers: { cookie: first.cookie } });
+    expect(mine.statusCode).toBe(200);
+    expect(mine.json().myVote).toBe('A,C');
+  });
+
+  it('rejects multiple options on a single-answer question', async () => {
+    const { cookie } = await registerVerifiedUser(app);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/community/votes',
+      headers: { cookie },
+      payload: { ...question, choice: 'A,B' },
     });
     expect(res.statusCode).toBe(400);
   });
