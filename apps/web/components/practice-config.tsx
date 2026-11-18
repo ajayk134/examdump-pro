@@ -2,9 +2,9 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { get } from '@/lib/api';
-import type { PracticeFocus, PracticeOptions, QuestionKind } from '@/lib/types';
+import type { PracticeFocus, PracticeOptions } from '@/lib/types';
 import { ExamSelect, type SelectedExam } from './exam-select';
 import {
   IconAlertCircle,
@@ -12,7 +12,6 @@ import {
   IconCheckCircle,
   IconLightning,
   IconSparkles,
-  IconX,
 } from './icons';
 import { Alert, Skeleton } from './ui';
 import { cn, formatNumber } from '@/lib/format';
@@ -31,12 +30,6 @@ const FOCUS_META: Array<{
   { id: 'bookmarked', label: 'Bookmarked', hint: 'Saved for later', icon: IconBookmark },
 ];
 
-const KIND_META: Record<QuestionKind, { label: string; short: string }> = {
-  single: { label: 'Single choice', short: 'Single' },
-  multiple: { label: 'Multi-select', short: 'Multi' },
-  dragdrop: { label: 'Drag & drop', short: 'Drag & drop' },
-};
-
 const COUNT_PRESETS = [10, 20, 40];
 
 export function PracticeConfig({
@@ -54,9 +47,7 @@ export function PracticeConfig({
   const [exam, setExam] = useState<SelectedExam | null>(initialExam);
   const [options, setOptions] = useState<PracticeOptions | null>(null);
   const [optionsError, setOptionsError] = useState('');
-  const [kinds, setKinds] = useState<QuestionKind[]>([]);
   const [focus, setFocus] = useState<PracticeFocus>('all');
-  const [topic, setTopic] = useState<string | null>(null);
   const [count, setCount] = useState<number | 'all'>('all');
 
   useEffect(() => {
@@ -71,9 +62,7 @@ export function PracticeConfig({
     let cancelled = false;
     setOptions(null);
     setOptionsError('');
-    setKinds([]);
     setFocus('all');
-    setTopic(null);
     setCount('all');
     get<PracticeOptions>(
       `/exams/${encodeURIComponent(exam.providerId)}/${encodeURIComponent(exam.examKey)}/practice-options`,
@@ -90,34 +79,15 @@ export function PracticeConfig({
   }, [exam]);
 
   const facets = options?.facets;
-  const availableKinds = useMemo(
-    () => (facets?.kinds ?? []).map((kind) => kind.id),
-    [facets],
-  );
   const accessible = options?.accessibleQuestions ?? 0;
-  const multiTopic = (facets?.topics.length ?? 0) > 1;
 
-  /** How many questions the current targeting will actually draw. */
-  const matching = useMemo(() => {
-    if (!facets) return 0;
-    const focusCount = facets.focus.find((entry) => entry.id === focus)?.count ?? 0;
-    if (!multiTopic || !topic) return focusCount;
-    // Topic counts are not cross-tabulated with focus, so treat the topic as a
-    // narrowing cap rather than pretending to know the exact intersection.
-    const topicCount = facets.topics.find((entry) => entry.id === topic)?.count ?? 0;
-    return Math.min(focusCount, topicCount);
-  }, [facets, focus, multiTopic, topic]);
-
-  const typeFactor = useMemo(() => {
-    if (kinds.length === 0 || kinds.length === availableKinds.length) return 1;
-    // rough share, used only to cap the count selector
-    return kinds.length / Math.max(1, availableKinds.length);
-  }, [kinds, availableKinds]);
-
-  const cap = Math.max(
-    1,
-    Math.min(Math.floor(matching * typeFactor), options?.limits.maxPractice ?? 200),
+  /** How many questions the current focus will actually draw. */
+  const matching = useMemo(
+    () => facets?.focus.find((entry) => entry.id === focus)?.count ?? 0,
+    [facets, focus],
   );
+
+  const cap = Math.max(1, matching);
 
   const countOptions = useMemo(() => {
     const presets = COUNT_PRESETS.filter((preset) => preset < cap);
@@ -125,13 +95,6 @@ export function PracticeConfig({
   }, [cap]);
 
   const effectiveCount = count === 'all' ? cap : Math.min(count, cap);
-
-  const toggleKind = useCallback((kind: QuestionKind) => {
-    setKinds((current) =>
-      current.includes(kind) ? current.filter((entry) => entry !== kind) : [...current, kind],
-    );
-    setCount('all');
-  }, []);
 
   function start() {
     if (!exam) return;
@@ -141,12 +104,7 @@ export function PracticeConfig({
       mode: 'practice',
       focus,
       count: String(effectiveCount),
-      random: '1',
     });
-    if (kinds.length > 0 && kinds.length < availableKinds.length) {
-      params.set('types', kinds.join(','));
-    }
-    if (multiTopic && topic) params.set('topic', topic);
     router.push(`/practice/session?${params.toString()}`);
   }
 
@@ -259,86 +217,6 @@ export function PracticeConfig({
                 </p>
               </fieldset>
 
-              {availableKinds.length > 1 ? (
-                <fieldset className="mt-4">
-                  <legend className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-content-muted">
-                    Question type
-                  </legend>
-                  <div className="flex flex-wrap gap-1.5">
-                    {facets?.kinds.map((kind) => {
-                      const selected = kinds.includes(kind.id);
-                      return (
-                        <button
-                          key={kind.id}
-                          type="button"
-                          onClick={() => toggleKind(kind.id)}
-                          aria-pressed={selected}
-                          className={cn(
-                            'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
-                            selected
-                              ? 'border-accent bg-accent/10 text-accent'
-                              : 'border-surface-border text-content-secondary hover:border-accent/40',
-                          )}
-                        >
-                          {selected ? <IconCheckCircle className="h-3.5 w-3.5" /> : null}
-                          {KIND_META[kind.id].label}
-                          <span className="numeric text-content-muted">{formatNumber(kind.count)}</span>
-                        </button>
-                      );
-                    })}
-                    {kinds.length > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => setKinds([])}
-                        className="inline-flex items-center gap-1 rounded-full px-2 py-1.5 text-xs font-semibold text-content-muted hover:text-content-primary"
-                      >
-                        <IconX className="h-3.5 w-3.5" /> Clear
-                      </button>
-                    ) : null}
-                  </div>
-                </fieldset>
-              ) : null}
-
-              {multiTopic ? (
-                <fieldset className="mt-4">
-                  <legend className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-content-muted">
-                    Topic
-                  </legend>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setTopic(null)}
-                      aria-pressed={topic === null}
-                      className={cn(
-                        'rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
-                        topic === null
-                          ? 'border-accent bg-accent/10 text-accent'
-                          : 'border-surface-border text-content-secondary hover:border-accent/40',
-                      )}
-                    >
-                      All topics
-                    </button>
-                    {facets?.topics.map((entry) => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        onClick={() => setTopic(entry.id)}
-                        aria-pressed={topic === entry.id}
-                        className={cn(
-                          'rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
-                          topic === entry.id
-                            ? 'border-accent bg-accent/10 text-accent'
-                            : 'border-surface-border text-content-secondary hover:border-accent/40',
-                        )}
-                      >
-                        {entry.label}
-                        <span className="numeric ml-1.5 text-content-muted">{formatNumber(entry.count)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </fieldset>
-              ) : null}
-
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.12em] text-content-muted">
                   Questions
@@ -392,14 +270,6 @@ export function PracticeConfig({
             <div className="flex items-center justify-between gap-2">
               <dt className="text-content-muted">Focus</dt>
               <dd className="font-semibold">{FOCUS_META.find((entry) => entry.id === focus)?.label}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <dt className="text-content-muted">Type</dt>
-              <dd className="font-semibold">
-                {kinds.length === 0 || kinds.length === availableKinds.length
-                  ? 'All types'
-                  : kinds.map((kind) => KIND_META[kind].short).join(', ')}
-              </dd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt className="text-content-muted">Hints</dt>

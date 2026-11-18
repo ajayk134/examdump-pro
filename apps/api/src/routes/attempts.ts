@@ -74,17 +74,12 @@ export async function attemptRoutes(app: FastifyInstance, env: Env): Promise<voi
       }
       selectedIds = [...new Set(input.questionIds)];
     } else {
-      // Targeting is applied to what the plan unlocks, never to the full bank,
-      // so a filter cannot be used to reach a locked question.
+      // Focus targeting is applied to what the plan unlocks, never to the full
+      // bank, so a filter cannot be used to reach a locked question.
       let pool = accessible;
       const focus = input.focus ?? 'all';
-      if (input.topic || (input.types && input.types.length > 0) || focus !== 'all') {
-        pool = filterQuestions(
-          pool,
-          exam.code,
-          { topic: input.topic, types: input.types, focus },
-          await loadQuestionSets(user.id, exam.key),
-        );
+      if (focus !== 'all') {
+        pool = filterQuestions(pool, { focus }, await loadQuestionSets(user.id, exam.key));
       }
       if (pool.length === 0) {
         throw badRequest('No questions match those filters. Try widening them.');

@@ -161,10 +161,8 @@ export const startAttemptSchema = z.object({
   mode: z.enum(QUESTION_MODES).default('practice'),
   questionIds: z.array(z.string().max(200)).max(500).optional(),
   timeLimitSeconds: z.number().int().min(30).max(21_600).optional(),
-  /** Number of questions to draw after filtering. Omit for "all". */
+  /** Number of questions to draw after applying the focus filter. */
   count: z.number().int().min(1).max(200).optional(),
-  topic: z.string().trim().max(200).optional(),
-  types: z.array(z.enum(QUESTION_KINDS)).max(3).optional(),
   focus: z.enum(PRACTICE_FOCUS).optional(),
 });
 
@@ -225,14 +223,12 @@ export const questionDiscussionListQuerySchema = questionCommunityQuerySchema.ex
 
 export const listQuestionsQuerySchema = z.object({
   mode: z.enum(QUESTION_MODES).default('practice'),
-  limit: z.coerce.number().int().min(1).max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(5000).optional(),
   offset: z.coerce.number().int().min(0).default(0),
   random: z.coerce.boolean().optional(),
   seed: z.coerce.number().int().optional(),
   includeAnswer: z.coerce.boolean().optional(),
-  /** Practice targeting: see PRACTICE_FOCUS / QUESTION_KINDS. */
-  topic: z.string().trim().max(200).optional(),
-  types: z.string().trim().max(60).optional(),
+  /** Practice history targeting. Topic/type filtering is intentionally absent. */
   focus: z.enum(PRACTICE_FOCUS).default('all'),
 });
 

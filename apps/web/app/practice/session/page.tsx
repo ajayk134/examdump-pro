@@ -11,11 +11,8 @@ function PracticeSessionInner() {
   const provider = params.get('provider');
   const exam = params.get('exam');
   const focus = params.get('focus') ?? 'all';
-  const types = params.get('types') ?? undefined;
-  const topic = params.get('topic') ?? undefined;
   const countRaw = Number(params.get('count'));
   const count = Number.isFinite(countRaw) && countRaw > 0 ? countRaw : undefined;
-  const random = params.get('random') === '1' || params.get('mode') === 'random';
 
   if (!provider || !exam) {
     return (
@@ -38,12 +35,9 @@ function PracticeSessionInner() {
     <StudySession
       providerId={provider}
       examKey={exam}
-      mode={random ? 'random' : 'practice'}
+      mode="practice"
       focus={focus}
-      types={types}
-      topic={topic}
       count={count}
-      random={random}
     />
   );
 }

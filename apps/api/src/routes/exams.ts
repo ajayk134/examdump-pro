@@ -23,7 +23,6 @@ import {
   buildFacets,
   filterQuestions,
   loadQuestionSets,
-  parseTypes,
 } from '../lib/question-scope.js';
 
 interface Context {
@@ -233,11 +232,11 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
         providerId: provider.id,
         providerTitle: provider.title,
       },
-      facets: buildFacets(accessible, exam.code, sets),
+      facets: buildFacets(accessible, sets),
       totalQuestions: questions.length,
       accessibleQuestions: accessible.length,
       /** Practice sessions stream questions; mocks are capped server-side. */
-      limits: { maxPractice: env.DATASET_MAX_QUESTIONS_PER_REQUEST, maxMock: 60 },
+      limits: { maxMock: 60 },
       signedIn: Boolean(ctx.userId),
       entitlement: {
         plan: access.plan,
@@ -271,15 +270,9 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
     }
 
     const focus = query.focus ?? 'all';
-    const types = parseTypes(query.types);
-    if (query.topic || types || focus !== 'all') {
+    if (focus !== 'all') {
       const sets = ctx.userId ? await loadQuestionSets(ctx.userId, examKey) : EMPTY_SETS;
-      accessible = filterQuestions(
-        accessible,
-        exam.code,
-        { topic: query.topic, types, focus },
-        sets,
-      );
+      accessible = filterQuestions(accessible, { focus }, sets);
     }
 
     if (access.unlimited && query.random) {
@@ -288,7 +281,7 @@ export async function examRoutes(app: FastifyInstance, env: Env): Promise<void> 
 
     const maxPerRequest = env.DATASET_MAX_QUESTIONS_PER_REQUEST;
     const offset = access.unlimited ? query.offset : 0;
-    const requestedLimit = access.unlimited ? Math.min(query.limit ?? maxPerRequest, maxPerRequest) : accessible.length;
+    const requestedLimit = access.unlimited ? (query.limit ?? maxPerRequest) : accessible.length;
 
     const page = accessible.slice(offset, offset + requestedLimit);
     const clientQuestions = page.map((q) => toClientQuestion(q, includeAnswer));

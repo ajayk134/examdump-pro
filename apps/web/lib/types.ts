@@ -466,11 +466,8 @@ export interface ExamDetail {
 /* ------------------------------------------------------------------ */
 
 export type PracticeFocus = 'all' | 'unseen' | 'missed' | 'mastered' | 'bookmarked';
-export type QuestionKind = 'single' | 'multiple' | 'dragdrop';
 
 export interface PracticeFacets {
-  topics: Array<{ id: string; label: string; count: number }>;
-  kinds: Array<{ id: QuestionKind; count: number }>;
   focus: Array<{ id: PracticeFocus; count: number }>;
 }
 
@@ -488,7 +485,7 @@ export interface PracticeOptions {
   facets: PracticeFacets;
   totalQuestions: number;
   accessibleQuestions: number;
-  limits: { maxPractice: number; maxMock: number };
+  limits: { maxMock: number };
   signedIn: boolean;
   entitlement: {
     plan: string;

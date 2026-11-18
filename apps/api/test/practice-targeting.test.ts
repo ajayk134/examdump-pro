@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import {
   createTestContext,
+  DATASET,
   registerVerifiedUser,
   subscribeUser,
   type RegisteredUser,
@@ -12,6 +13,30 @@ let ctx: TestContext;
 let app: FastifyInstance;
 
 beforeAll(async () => {
+  const exams = DATASET['data/cisco/exams.json'] as Record<string, Record<string, number>>;
+  exams.cisco!['big-250'] = 250;
+  DATASET['data/cisco/big-250.json'] = {
+    'big-250': Object.fromEntries(
+      Array.from({ length: 250 }, (_, index) => {
+        const number = index + 1;
+        return [
+          `Question #: ${number}`,
+          {
+            Title: `Big bank topic ${Math.ceil(number / 50)} question ${number}`,
+            Question: { content: [{ type: 'text', value: `Practice question number ${number}.` }] },
+            Choices: {
+              A: { content: [{ type: 'text', value: 'A. Correct option' }] },
+              B: { content: [{ type: 'text', value: 'B. Distractor' }] },
+            },
+            Answer: { content: [{ type: 'text', value: 'Suggested Answer: A' }] },
+            Explanation: { content: [{ type: 'text', value: 'Option A is correct because it is.' }] },
+            Vote_count: [],
+          },
+        ];
+      }),
+    ),
+  };
+
   ctx = await createTestContext();
   app = ctx.app;
 });
@@ -21,8 +46,6 @@ afterAll(async () => {
 });
 
 interface Facets {
-  topics: Array<{ id: string; count: number }>;
-  kinds: Array<{ id: string; count: number }>;
   focus: Array<{ id: string; count: number }>;
 }
 
@@ -64,8 +87,6 @@ describe('practice targeting', () => {
     expect(body.accessibleQuestions).toBe(5);
     expect(body.signedIn).toBe(true);
     expect(body.entitlement.isLimited).toBe(true);
-    // Free users reach questions 1-5, which span three of the five topics.
-    expect(body.facets.topics.map((topic) => topic.id)).toEqual(['Topic 1', 'Topic 2', 'Topic 3']);
     expect(focusCount(body, 'all')).toBe(5);
     expect(focusCount(body, 'unseen')).toBe(5);
     expect(focusCount(body, 'missed')).toBe(0);
@@ -82,41 +103,76 @@ describe('practice targeting', () => {
     const body = response.json() as OptionsBody;
     expect(body.accessibleQuestions).toBe(10);
     expect(body.entitlement.isLimited).toBe(false);
-    expect(body.facets.topics).toHaveLength(5);
-    expect(body.facets.kinds).toEqual([{ id: 'single', count: 10 }]);
+    expect(focusCount(body, 'all')).toBe(10);
   });
 
-  it('filters by topic and question type', async () => {
+  it('ignores legacy topic and question-type filters', async () => {
     const user = await premiumUser();
 
     const byTopic = await app.inject({
       method: 'GET',
-      url: '/api/exams/cisco/200-301/questions?topic=Topic%205&limit=10&mode=practice&includeAnswer=true',
+      url: '/api/exams/cisco/200-301/questions?topic=Topic%205&types=multiple&limit=50&mode=practice&includeAnswer=true',
       headers: { cookie: user.cookie },
     });
-    const topicBody = byTopic.json() as QuestionsBody;
-    expect(topicBody.questions.map((question) => question.id)).toEqual(['Question #: 9', 'Question #: 10']);
-
-    const byType = await app.inject({
-      method: 'GET',
-      url: '/api/exams/cisco/200-301/questions?types=multiple&limit=10&mode=practice&includeAnswer=true',
-      headers: { cookie: user.cookie },
-    });
-    expect((byType.json() as QuestionsBody).questions).toHaveLength(0);
+    const body = byTopic.json() as QuestionsBody;
+    expect(body.questions.map((question) => question.id)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `Question #: ${index + 1}`),
+    );
   });
 
-  it('never lets a filter reach past the free limit', async () => {
+  it('keeps the free limit even when legacy filters are supplied', async () => {
     const user = await registerVerifiedUser(app);
     const response = await app.inject({
       method: 'GET',
-      url: '/api/exams/cisco/200-301/questions?topic=Topic%205&limit=10&mode=practice&includeAnswer=true',
+      url: '/api/exams/cisco/200-301/questions?topic=Topic%205&types=multiple&limit=10&mode=practice&includeAnswer=true',
       headers: { cookie: user.cookie },
     });
 
     const body = response.json() as QuestionsBody;
-    // Topic 5 only contains questions 9 and 10, which are locked on the free plan.
-    expect(body.questions).toHaveLength(0);
+    expect(body.questions.map((question) => question.id)).toEqual([
+      'Question #: 1',
+      'Question #: 2',
+      'Question #: 3',
+      'Question #: 4',
+      'Question #: 5',
+    ]);
     expect(body.entitlement.lockedQuestions).toBe(5);
+  });
+
+  it('returns every question beyond 200 in backend order for full access', async () => {
+    const user = await premiumUser();
+
+    const firstPage = await app.inject({
+      method: 'GET',
+      url: '/api/exams/cisco/big-250/questions?limit=200&offset=0&mode=practice&includeAnswer=true',
+      headers: { cookie: user.cookie },
+    });
+    expect(firstPage.statusCode).toBe(200);
+    const firstBody = firstPage.json() as QuestionsBody;
+    expect(firstBody.questions).toHaveLength(200);
+    expect(firstBody.questions[0]?.id).toBe('Question #: 1');
+    expect(firstBody.questions[199]?.id).toBe('Question #: 200');
+
+    const secondPage = await app.inject({
+      method: 'GET',
+      url: '/api/exams/cisco/big-250/questions?limit=200&offset=200&mode=practice&includeAnswer=true',
+      headers: { cookie: user.cookie },
+    });
+    const secondBody = secondPage.json() as QuestionsBody;
+    expect(secondBody.questions).toHaveLength(50);
+    expect(secondBody.questions[0]?.id).toBe('Question #: 201');
+    expect(secondBody.questions[49]?.id).toBe('Question #: 250');
+
+    const allAtOnce = await app.inject({
+      method: 'GET',
+      url: '/api/exams/cisco/big-250/questions?limit=5000&mode=practice&includeAnswer=true',
+      headers: { cookie: user.cookie },
+    });
+    const allBody = allAtOnce.json() as QuestionsBody;
+    expect(allBody.questions).toHaveLength(250);
+    expect(allBody.questions.map((question) => question.id)).toEqual(
+      Array.from({ length: 250 }, (_, index) => `Question #: ${index + 1}`),
+    );
   });
 
   it('requires authentication to record practice answers', async () => {
@@ -224,7 +280,7 @@ describe('practice targeting', () => {
     expect((response.json() as { attempt: { totalQuestions: number } }).attempt.totalQuestions).toBe(5);
   });
 
-  it('rejects a targeting filter that matches nothing instead of starting an empty attempt', async () => {
+  it('ignores legacy attempt type filters instead of starting an empty attempt', async () => {
     const user = await premiumUser();
     const response = await app.inject({
       method: 'POST',
@@ -232,6 +288,7 @@ describe('practice targeting', () => {
       headers: { cookie: user.cookie },
       payload: { provider: 'cisco', exam: '200-301', mode: 'mock', types: ['multiple'], count: 10 },
     });
-    expect(response.statusCode).toBe(400);
+    expect(response.statusCode).toBe(201);
+    expect((response.json() as { attempt: { totalQuestions: number } }).attempt.totalQuestions).toBe(10);
   });
 });

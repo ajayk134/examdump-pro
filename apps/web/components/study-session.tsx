@@ -12,6 +12,7 @@ import { QuestionSheet } from './workspace/question-sheet';
 import { QuestionMap, type MapItem } from './workspace/question-map';
 import { StudyCompanion, type CompanionTab } from './workspace/study-companion';
 import { cn } from '@/lib/format';
+import { loadAllQuestionPages } from '@/lib/load-questions';
 import {
   clearAutosave,
   getPageSizePreference,
@@ -66,24 +67,18 @@ export function StudySession({
   examKey,
   mode,
   focus = 'all',
-  types,
-  topic,
   count,
-  random = false,
 }: {
   providerId: string;
   examKey: string;
   mode: Mode;
   focus?: string;
-  types?: string;
-  topic?: string;
   count?: number;
-  random?: boolean;
 }) {
   const router = useRouter();
   const { user } = useAuth();
   const { toast } = useToast();
-  const autosaveKey = `${providerId}/${examKey}/${mode}/${focus}/${types ?? 'any'}/${topic ?? 'all'}/${count ?? 'all'}`;
+  const autosaveKey = `${providerId}/${examKey}/${mode}/${focus}/${count ?? 'all'}`;
 
   const [data, setData] = useState<QuestionsResponse | null>(null);
   const [error, setError] = useState('');
@@ -123,28 +118,44 @@ export function StudySession({
     let cancelled = false;
     setData(null);
     setError('');
-    const params = new URLSearchParams({
-      limit: String(Math.min(count ?? 200, 200)),
-      mode,
-      includeAnswer: 'true',
-      focus,
-    });
-    if (types) params.set('types', types);
-    if (topic) params.set('topic', topic);
-    if (random || mode === 'random') params.set('random', 'true');
-    get<QuestionsResponse>(
-      `/exams/${encodeURIComponent(providerId)}/${encodeURIComponent(examKey)}/questions?${params.toString()}`,
-    )
-      .then((res) => {
-        if (!cancelled) setData(res);
-      })
-      .catch((err) => {
+    const pageSize = 200;
+    const target = count && count > 0 ? count : null;
+
+    async function loadAll() {
+      try {
+        let first: QuestionsResponse | null = null;
+        const collected = await loadAllQuestionPages<Question>(async (offset, limit) => {
+          const params = new URLSearchParams({
+            limit: String(limit),
+            offset: String(offset),
+            mode,
+            includeAnswer: 'true',
+            focus,
+          });
+          const res = await get<QuestionsResponse>(
+            `/exams/${encodeURIComponent(providerId)}/${encodeURIComponent(examKey)}/questions?${params.toString()}`,
+          );
+          if (!first) first = res;
+          return {
+            questions: res.questions,
+            accessible: res.entitlement.accessibleQuestions,
+          };
+        }, target, pageSize);
+
+        if (!cancelled && first) {
+          const response = first as QuestionsResponse;
+          setData({ ...response, questions: collected });
+        }
+      } catch (err) {
         if (!cancelled) setError((err as Error).message);
-      });
+      }
+    }
+
+    void loadAll();
     return () => {
       cancelled = true;
     };
-  }, [providerId, examKey, mode, focus, types, topic, count, random, reloadKey]);
+  }, [providerId, examKey, mode, focus, count, reloadKey]);
 
   /* ---------------- AI capability ---------------- */
 
@@ -332,15 +343,12 @@ export function StudySession({
     const params = new URLSearchParams({
       provider: providerId,
       exam: examKey,
-      mode: random ? 'random' : 'practice',
+      mode: 'practice',
       focus,
     });
-    if (types) params.set('types', types);
-    if (topic) params.set('topic', topic);
     if (count) params.set('count', String(count));
-    if (random) params.set('random', '1');
     return `/practice/session?${params.toString()}`;
-  }, [providerId, examKey, random, focus, types, topic, count]);
+  }, [providerId, examKey, focus, count]);
 
   /* ---------------- actions ---------------- */
 

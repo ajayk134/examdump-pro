@@ -77,27 +77,23 @@ export async function loadQuestionSets(userId: string, examKey: string): Promise
 }
 
 export interface QuestionFilter {
-  topic?: string;
-  types?: QuestionKind[];
   focus?: PracticeFocus;
 }
 
 /**
- * Filter a question list. Order does not matter to the caller because
- * entitlement slicing happens before this is applied.
+ * Filter a question list by the learner's own history. Topic and question-type
+ * filters are deliberately not supported: every question is part of one
+ * unified session. Slicing by entitlement happens before this is applied.
  */
-export function filterQuestions<T extends Pick<NormalizedQuestion, 'id' | 'title' | 'type'>>(
+export function filterQuestions<T extends Pick<NormalizedQuestion, 'id'>>(
   questions: T[],
-  examCode: string,
   filter: QuestionFilter,
   sets: QuestionSets = EMPTY_SETS,
 ): T[] {
-  const types = filter.types && filter.types.length > 0 ? new Set(filter.types) : null;
   const focus = filter.focus && filter.focus !== 'all' ? filter.focus : null;
+  if (!focus) return questions;
 
   return questions.filter((question) => {
-    if (filter.topic && topicForQuestion(question, examCode) !== filter.topic) return false;
-    if (types && !types.has(kindOfQuestion(question))) return false;
     if (focus === 'unseen' && sets.seen.has(question.id)) return false;
     if (focus === 'missed' && !sets.missed.has(question.id)) return false;
     if (focus === 'mastered' && !sets.mastered.has(question.id)) return false;
@@ -107,8 +103,6 @@ export function filterQuestions<T extends Pick<NormalizedQuestion, 'id' | 'title
 }
 
 export interface QuestionFacets {
-  topics: Array<{ id: string; label: string; count: number }>;
-  kinds: Array<{ id: QuestionKind; count: number }>;
   focus: Array<{ id: PracticeFocus; count: number }>;
 }
 
@@ -118,24 +112,15 @@ export interface QuestionFacets {
  * cannot open.
  */
 export function buildFacets(
-  questions: Array<Pick<NormalizedQuestion, 'id' | 'title' | 'type'>>,
-  examCode: string,
+  questions: Array<Pick<NormalizedQuestion, 'id'>>,
   sets: QuestionSets = EMPTY_SETS,
 ): QuestionFacets {
-  const topicCounts = new Map<string, number>();
-  const kindCounts = new Map<QuestionKind, number>();
   let unseen = 0;
   let missed = 0;
   let mastered = 0;
   let saved = 0;
 
   for (const question of questions) {
-    const topic = topicForQuestion(question, examCode);
-    topicCounts.set(topic, (topicCounts.get(topic) ?? 0) + 1);
-
-    const kind = kindOfQuestion(question);
-    kindCounts.set(kind, (kindCounts.get(kind) ?? 0) + 1);
-
     if (sets.missed.has(question.id)) missed += 1;
     else if (sets.mastered.has(question.id)) mastered += 1;
     else unseen += 1;
@@ -143,12 +128,6 @@ export function buildFacets(
   }
 
   return {
-    topics: [...topicCounts.entries()]
-      .map(([id, count]) => ({ id, label: id, count }))
-      .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
-    kinds: (['single', 'multiple', 'dragdrop'] as const)
-      .map((id) => ({ id, count: kindCounts.get(id) ?? 0 }))
-      .filter((kind) => kind.count > 0),
     focus: [
       { id: 'all' as const, count: questions.length },
       { id: 'unseen' as const, count: unseen },
@@ -157,15 +136,4 @@ export function buildFacets(
       { id: 'bookmarked' as const, count: saved },
     ],
   };
-}
-
-/** Parse the comma-separated `types` query parameter. */
-export function parseTypes(raw: string | undefined): QuestionKind[] | undefined {
-  if (!raw) return undefined;
-  const allowed = new Set<QuestionKind>(['single', 'multiple', 'dragdrop']);
-  const parsed = raw
-    .split(',')
-    .map((value) => value.trim())
-    .filter((value): value is QuestionKind => allowed.has(value as QuestionKind));
-  return parsed.length > 0 ? parsed : undefined;
 }

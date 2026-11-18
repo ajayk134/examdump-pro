@@ -151,10 +151,12 @@ grants, plus the `admin` role. The denormalised `users.plan` column is not the
 authority. Free accounts receive the first `FREE_QUESTIONS_PER_EXAM` questions of
 an exam; paid scopes unlock a single exam, up to three exams, or everything.
 
-The API slices the accessible question set **before** filtering or randomising,
-so pagination, topic filters, offsets, and direct question IDs cannot reach a
-locked question. Answer keys are withheld during question delivery and grading
-happens on the server.
+The API slices the accessible question set **before** applying learner-history
+focus or paging, so offsets and direct question IDs cannot reach a locked
+question. Topic and question-type filters are not part of the practice flow. The
+client pages by offset until every accessible question is loaded, using the
+backend `Question #: N` identifier for identity and order. Answer keys are
+withheld during question delivery and grading happens on the server.
 
 ### Payments settle only from verified server-side evidence
 
