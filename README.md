@@ -500,17 +500,24 @@ sudo mv /opt/examdump-pro/web.new /opt/examdump-pro/web
 sudo chown -R examdump:examdump /opt/examdump-pro/web
 ```
 
-Apply migrations **before** starting the new API build. Run the process with the
-same environment source as the service, without printing the env file:
+Apply migrations **before** starting the new API build. The production
+`examdump` role cannot create tables or write the Drizzle history, so a normal
+service-env run fails with `permission denied for database examdump`. Apply the
+pending SQL as `postgres` and record the journal row in the same transaction:
 
 ```bash
-sudo systemd-run --wait --collect --pipe \
-  --uid=examdump --gid=examdump \
-  --property=EnvironmentFile=/etc/examdump-pro/production.env \
-  --property=WorkingDirectory=/opt/examdump-pro/api \
-  --setenv=MIGRATIONS_DIR=/opt/examdump-pro/api/migrations \
-  /opt/examdump-pro/node/bin/node dist/migrate.js
+migration=0009_community
+hash=$(sha256sum "/opt/examdump-pro/api/migrations/$migration.sql" | cut -d' ' -f1)
+when=$(node -p "require('/opt/examdump-pro/api/migrations/meta/_journal.json').entries.find(e => e.tag === '$migration').when")
+
+sudo -u postgres psql -d examdump -v ON_ERROR_STOP=1 -1 <<SQL
+\i /opt/examdump-pro/api/migrations/$migration.sql
+insert into drizzle.__drizzle_migrations ("hash", "created_at") values ('$hash', $when);
+SQL
 ```
+
+The transaction guarantees a failed statement cannot leave a half-applied
+migration. Verify the migration row and the new tables before restarting.
 
 Restart and verify:
 
@@ -574,9 +581,11 @@ them is a product decision, not an incidental documentation change.
    the application uses PostgreSQL only.
 7. **CI does not run frontend tests.** CI runs shared, data-client, and API tests
    plus both builds. Run `npm run test -w @examdump/web` locally for UI changes.
-8. **Production env has no `MIGRATIONS_DIR`.** The deployed SQL is in
+8. **Production migration role.** The deployed SQL is in
    `/opt/examdump-pro/api/migrations`, which the runner does not search by
-   default; pass `MIGRATIONS_DIR` explicitly when migrating from that directory.
+   default, and the `examdump` role cannot create tables or write
+   `drizzle.__drizzle_migrations`. Apply pending SQL as `postgres` and record
+   the journal row in the same transaction.
 9. **Production env retains unused variables.** `MONGODB_URI`, `MONGODB_DB`,
    `UPI_AUTO_APPROVE`, and `MIGRATION_DATABASE_URL` are not read by the current
    `env.ts`/runtime. They are legacy and should not be treated as live config.

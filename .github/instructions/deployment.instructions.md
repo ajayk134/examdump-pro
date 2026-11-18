@@ -56,21 +56,28 @@ the build should not contain one in the first place.
    `/opt/examdump-pro/api`, then `chown -R examdump:examdump`.
 5. Copy `apps/web/.next/standalone` into `/opt/examdump-pro/web`, plus
    `.next/static` into `web/apps/web/.next/static` and `public` if present.
-6. Apply migrations **before** restarting the API. The deployed SQL folder is not
-   a default runner candidate, so set `MIGRATIONS_DIR`.
+6. Apply migrations **before** restarting the API. The production `examdump`
+   role cannot create tables or write the Drizzle history, so apply the pending
+   SQL as `postgres` and record the journal row in the same transaction.
 7. `systemctl restart examdump-api`, verify `/api/health/ready`.
 8. `systemctl restart examdump-web`, verify the public site.
 
-Run migrations with the service environment without printing it:
+Run one pending migration with the exact journal timestamp and file hash:
 
 ```bash
-sudo systemd-run --wait --collect --pipe \
-  --uid=examdump --gid=examdump \
-  --property=EnvironmentFile=/etc/examdump-pro/production.env \
-  --property=WorkingDirectory=/opt/examdump-pro/api \
-  --setenv=MIGRATIONS_DIR=/opt/examdump-pro/api/migrations \
-  /opt/examdump-pro/node/bin/node dist/migrate.js
+migration=0009_community
+hash=$(sha256sum "/opt/examdump-pro/api/migrations/$migration.sql" | cut -d' ' -f1)
+when=$(node -p "require('/opt/examdump-pro/api/migrations/meta/_journal.json').entries.find(e => e.tag === '$migration').when")
+
+sudo -u postgres psql -d examdump -v ON_ERROR_STOP=1 -1 <<SQL
+\i /opt/examdump-pro/api/migrations/$migration.sql
+insert into drizzle.__drizzle_migrations ("hash", "created_at") values ('$hash', $when);
+SQL
 ```
+
+A plain service-env run of `dist/migrate.js` fails with
+`permission denied for database examdump` because the application role is not
+the database owner. Do not grant it broad DDL rights just to run a migration.
 
 ## Verify
 

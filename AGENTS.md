@@ -116,8 +116,10 @@ npm run test -w @examdump/data-client
 - API runs `dist/index.js`; web runs `apps/web/server.js` from the Next.js
   standalone output.
 - **Migrations do not run at boot.** Apply them explicitly before restarting the
-  API. The deployed SQL is in `/opt/examdump-pro/api/migrations`; set
-  `MIGRATIONS_DIR` explicitly because the runner does not search that folder.
+  API. The deployed SQL is in `/opt/examdump-pro/api/migrations`. The production
+  `examdump` role cannot create tables or write `drizzle.__drizzle_migrations`;
+  apply pending SQL as `postgres` and record the journal row in the same
+  transaction.
 - Production currently has payments enabled and YouPI available. Do not assume
   the development defaults from `.env.example` apply.
 - There is no tracked deploy script, container deployment, or backup schedule.
